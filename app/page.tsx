@@ -14,9 +14,9 @@ const LandingPage = () => {
 								Welcome to Fiix
 							</h1>
 							<p className="max-w-[600px] text-muted-foreground md:text-xl">
-								"Fiix is the smart, all-in-one platform designed to streamline
-								and track printer maintenance—built specifically for Fruitbean
-								Ink Refilling Station."
+								&quot;Fiix is the smart, all-in-one platform designed to
+								streamline and track printer maintenance—built specifically for
+								Fruitbean Ink Refilling Station.&quot;
 							</p>
 						</div>
 						<div className="flex flex-col gap-2 min-[400px]:flex-row">
