@@ -2,6 +2,7 @@ import React from "react";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import heroImage from "@/assets/hero-image.png";
+import Link from "next/link";
 
 const LandingPage = () => {
 	return (
@@ -20,8 +21,8 @@ const LandingPage = () => {
 							</p>
 						</div>
 						<div className="flex flex-col gap-2 min-[400px]:flex-row">
-							<Button size="lg" className="px-8">
-								Get Started
+							<Button size="lg" className="px-8" asChild>
+								<Link href="/sign-in">Get Started</Link>
 							</Button>
 							<Button size="lg" variant="outline" className="px-8">
 								Learn More

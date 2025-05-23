@@ -1,4 +1,4 @@
-import createUser from "@/lib/actions/user.action";
+import createUser from "@/app/api/actions/user-action";
 import { verifyWebhook } from "@clerk/nextjs/webhooks";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -13,16 +13,12 @@ export async function POST(req: NextRequest) {
 
 		if (eventType === "user.created") {
 			const { id, first_name, last_name, email_addresses } = evt.data;
-			console.log("User Created in Webhooks");
+
 			const user = {
 				clerkId: id,
 				firstName: first_name!,
 				lastName: last_name!,
 				email: email_addresses[0].email_address,
-				contactNo: "09498858466",
-				birthday: "07/12/1984",
-				role: "Administrator",
-				isActive: true,
 			};
 
 			await createUser(user);
