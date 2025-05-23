@@ -12,6 +12,7 @@ export default async function createUser(params: CreateUserParams) {
 			email: email,
 			firstName: firstName,
 			lastName: lastName,
+			isActive: false,
 		});
 
 		return { success: true };

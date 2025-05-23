@@ -19,6 +19,7 @@ export async function POST(req: NextRequest) {
 				firstName: first_name!,
 				lastName: last_name!,
 				email: email_addresses[0].email_address,
+				isActive: false,
 			};
 
 			await createUser(user);
