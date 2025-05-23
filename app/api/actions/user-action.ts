@@ -8,10 +8,10 @@ export default async function createUser(params: CreateUserParams) {
 
 	try {
 		await db.insert(users).values({
-			clerkId,
-			email,
-			firstName,
-			lastName,
+			clerkId: clerkId,
+			email: email,
+			firstName: firstName,
+			lastName: lastName,
 		});
 
 		return { success: true };
