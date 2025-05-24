@@ -12,6 +12,9 @@ export default async function createUser(params: CreateUserParams) {
 			email: email,
 			firstName: firstName,
 			lastName: lastName,
+			contactNo: "09498858466",
+			birthday: "07/12/1984",
+			role: "Administrator",
 			isActive: false,
 		});
 
