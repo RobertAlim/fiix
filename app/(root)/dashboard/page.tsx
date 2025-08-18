@@ -36,11 +36,9 @@ const SchedulePage = dynamic(() => import("@/components/pages/Schedule"));
 const DashboardRealPage = dynamic(() => import("@/components/pages/Dashboard"));
 
 export default function DashboardPage() {
-	const router = useRouter();
-
 	const searchParams = useSearchParams();
 	const queryPage = searchParams.get("activePage");
-	const { data, isLoading, error } = useDBUser();
+	const { data } = useDBUser();
 	const { setUsers } = useUserStore();
 	const [activePage, setActivePage] = useState("dashboard");
 	const [selectedserialNo, setSelectedSerialNo] = useState<string>("");

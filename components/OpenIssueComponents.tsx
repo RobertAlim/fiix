@@ -3,14 +3,9 @@ import {
 	Card,
 	CardContent,
 	CardHeader,
-	CardFooter,
 	CardTitle,
 	CardDescription,
 } from "@/components/ui/card";
-import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { datetime } from "drizzle-orm/singlestore-core";
 
 interface OpenIssueProps {
 	id: number;
@@ -26,7 +21,6 @@ interface OpenIssueProps {
 }
 
 export function OpenIssueComponent({
-	id,
 	serialNo,
 	client,
 	location,

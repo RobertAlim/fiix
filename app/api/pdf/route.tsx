@@ -4,7 +4,6 @@ import {
 	MaintainReport,
 	MaintenanceReportProps,
 } from "@/components/print/MaintainReport"; // Adjust the import path as necessary
-import ReactPDF from "@react-pdf/renderer";
 import { db } from "@/db";
 import {
 	maintain,
@@ -24,7 +23,12 @@ import {
 } from "@/db/schema";
 import { eq, sql } from "drizzle-orm";
 import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
-import { Readable } from "stream"; // Import Node.js Readable stream
+// import { Readable } from "stream"; // Import Node.js Readable stream
+import { renderToStream } from "@react-pdf/renderer";
+import { Readable } from "node:stream"; // Node stream type + converter
+
+export const runtime = "nodejs"; // react-pdf needs Node (pdfkit internals)
+export const dynamic = "force-dynamic"; // optional: disable static optimization
 
 const r2 = new S3Client({
 	region: "auto",
@@ -172,15 +176,21 @@ export async function GET(request: NextRequest) {
 			signPath: mt.signPath, // this is base64 image string
 		};
 
-		const stream = await ReactPDF.renderToStream(
-			<MaintainReport data={data} />
-		);
+		const nodeStream = await renderToStream(<MaintainReport data={data} />);
 
-		return new NextResponse(stream as any, {
+		// Convert to a Web stream
+		const webStream = Readable.toWeb(nodeStream as Readable);
+
+		// Rebrand as a DOM ReadableStream without using `any`
+		const body = new Response(
+			webStream as unknown as globalThis.ReadableStream<Uint8Array>
+		).body!;
+
+		return new NextResponse(body, {
 			status: 200,
 			headers: {
 				"Content-Type": "application/pdf",
-				"Content-Disposition": "inline; filename=document.pdf",
+				"Content-Disposition": 'inline; filename="document.pdf"',
 			},
 		});
 	} catch (error) {

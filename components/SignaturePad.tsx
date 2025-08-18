@@ -2,7 +2,6 @@
 import React, { useRef, useState } from "react";
 import SignatureCanvas from "react-signature-canvas";
 import { Button } from "@/components/ui/button";
-import { Ghost } from "lucide-react";
 
 export default function SignaturePad({
 	onSave,

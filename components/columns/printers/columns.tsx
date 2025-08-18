@@ -12,7 +12,6 @@ import {
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ArrowUpDown, MoreHorizontal } from "lucide-react";
-import { table } from "console";
 
 export interface Printer {
 	id: number;
@@ -40,7 +39,6 @@ export function diffPrinters(
 	edits: Record<string, PrinterEdit>
 ) {
 	const originalById = new Map(original.map((p) => [p.id, p]));
-	const currentById = new Map(current.map((p) => [p.id, p]));
 
 	// Added: in current but not in original
 	const added = current
@@ -98,10 +96,10 @@ export const getPrinterColumns = (
 ): ColumnDef<Printer>[] => {
 	const { onShowDetailsClick } = props; // Destructure the new prop
 
-	const handleMaintenanceHistory = (printerId: number) => {
-		const url = `/api/pdf?mtId=${printerId}`;
-		window.open(url, "_blank");
-	};
+	// const handleMaintenanceHistory = (printerId: number) => {
+	// 	const url = `/api/pdf?mtId=${printerId}`;
+	// 	window.open(url, "_blank");
+	// };
 
 	return [
 		{

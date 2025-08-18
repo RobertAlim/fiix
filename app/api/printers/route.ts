@@ -10,7 +10,7 @@ import {
 	schedules,
 	scheduleDetails,
 } from "@/db/schema";
-import { eq, sql, and, desc, is } from "drizzle-orm";
+import { eq, sql, and, desc } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { NextResponse } from "next/server";
 

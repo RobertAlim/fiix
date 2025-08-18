@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
-import QRCode from "qrcode";
+import { type IDetectedBarcode } from "@yudiel/react-qr-scanner";
 
 // Dynamically import Scanner to avoid SSR errors
 const Scanner = dynamic(
@@ -19,8 +19,8 @@ type Props = {
 export const ScanQRCodeModalContent = ({ onScan, onClose }: Props) => {
 	const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
 	const [selectedDeviceId, setSelectedDeviceId] = useState<string>();
-	const [textToEncode, setTextToEncode] = useState("");
-	const [qrCodeUrl, setQrCodeUrl] = useState<string | null>(null);
+	// const [textToEncode, setTextToEncode] = useState("");
+	// const [qrCodeUrl, setQrCodeUrl] = useState<string | null>(null);
 
 	// Fetch available video input devices (cameras)
 	useEffect(() => {
@@ -33,25 +33,25 @@ export const ScanQRCodeModalContent = ({ onScan, onClose }: Props) => {
 		});
 	}, []);
 
-	const handleOnScan = (detected: any[]) => {
+	const handleOnScan = (detected: IDetectedBarcode[]) => {
 		if (detected.length > 0) {
 			onScan(detected[0].rawValue);
 			onClose();
 		}
 	};
 
-	const generateQRCode = async () => {
-		try {
-			const url = await QRCode.toDataURL(textToEncode, {
-				errorCorrectionLevel: "H",
-				margin: 2,
-				scale: 8,
-			});
-			setQrCodeUrl(url);
-		} catch (err) {
-			console.error("QR Generation Error:", err);
-		}
-	};
+	// const generateQRCode = async () => {
+	// 	try {
+	// 		const url = await QRCode.toDataURL(textToEncode, {
+	// 			errorCorrectionLevel: "H",
+	// 			margin: 2,
+	// 			scale: 8,
+	// 		});
+	// 		setQrCodeUrl(url);
+	// 	} catch (err) {
+	// 		console.error("QR Generation Error:", err);
+	// 	}
+	// };
 
 	return (
 		<div className="relative w-full max-h-full overflow-hidden rounded-lg border">

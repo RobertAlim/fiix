@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db";
-import { sql, eq, and } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { scheduleDetails as sd, printers, maintain } from "@/db/schema";
 import type { ScheduleDetailRow } from "@/types/tracker";
 

@@ -1,14 +1,12 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
-import dynamic from "next/dynamic";
-import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation"; // Import useRouter
+import React, { useState } from "react";
+
+import { useRouter } from "next/navigation"; // Import useRouter
 
 import { Card, CardContent } from "@/components/ui/card";
 import { useUserStore } from "@/state/userStore";
 import { SchedulesDataTable } from "@/components/TechnicianSchedules";
-const MaintenancePage = dynamic(() => import("@/components/pages/Maintenance"));
 
 // Define the props interface for DashboardRealPage
 interface DashboardRealPageProps {
@@ -22,26 +20,22 @@ interface DashboardRealPageProps {
 
 export default function DashboardPage({ onCardClick }: DashboardRealPageProps) {
 	const { users } = useUserStore();
-	const router = useRouter();
 
 	// State to control which page is currently displayed
-	const [activePage, setActivePage] = useState("dashboard");
+	// const [activePage, setActivePage] = useState("dashboard");
 	// New state to hold the originMTId from the clicked card
-	const [selectedOriginMTId, setSelectedOriginMTId] = useState<string | null>(
-		null
-	);
 
 	const formattedDate = new Intl.DateTimeFormat("en-US").format(new Date());
 	const formattedFullDate = formatFullDate(new Date());
 
 	// This function will be called by the Card component
-	const handleCardClick = (
-		serialNo: string,
-		originMTId: number,
-		schedDetailsId: number
-	) => {
-		setActivePage("maintenance");
-	};
+	// const handleCardClick = (
+	// 	serialNo: string,
+	// 	originMTId: number,
+	// 	schedDetailsId: number
+	// ) => {
+	// 	setActivePage("maintenance");
+	// };
 
 	return (
 		<div className="moving-gradient-border">
@@ -61,7 +55,7 @@ export default function DashboardPage({ onCardClick }: DashboardRealPageProps) {
 									</span>
 								</div>
 								<div className="py-4">
-									And here's your itinerary for the day.
+									And here&lsquo;s your itinerary for the day.
 								</div>
 								<SchedulesDataTable
 									technicianId={users.id}

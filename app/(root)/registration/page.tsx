@@ -27,7 +27,6 @@ const RegistrationPage = () => {
 			toast("OTP sent successfully");
 			setOtpSent(true);
 		} else {
-			const data = await res.json();
 			toast("Error sending OTP");
 		}
 	};

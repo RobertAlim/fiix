@@ -35,19 +35,18 @@ import {
 	MaintainFormData,
 } from "@/validation/maintainSchema";
 import { useRouter } from "next/navigation"; // if not alread
+import Image from "next/image";
 
 type item = {
 	label: string;
 	value: string;
 };
 
-const animatedComponents = makeAnimated();
-
 // Dynamically import Scanner to avoid SSR errors
-const Scanner = dynamic(
-	() => import("@yudiel/react-qr-scanner").then((mod) => mod.Scanner),
-	{ ssr: false }
-);
+// const Scanner = dynamic(
+// 	() => import("@yudiel/react-qr-scanner").then((mod) => mod.Scanner),
+// 	{ ssr: false }
+// );
 
 export default function MaintenancePage({
 	parts,
@@ -65,7 +64,7 @@ export default function MaintenancePage({
 	const [selectedStatusId, setSelectedStatusId] = useState<string | null>(null);
 	const [showRepair, setShowRepair] = useState(false);
 	const [showReplacement, setShowReplacement] = useState(false);
-	const [selectedStatus, setSelectedStatus] = useState<item | null>(null);
+	// const [selectedStatus, setSelectedStatus] = useState<item | null>(null);
 	const [showReplace, setShowReplace] = useState(false);
 	const [isQRModalOpen, setQRModalOpen] = useState(false);
 	const [eSignOpen, setESignOpen] = useState(false);
@@ -161,11 +160,11 @@ export default function MaintenancePage({
 			data.originMTId = originMTId;
 		}
 
-		const res = await fetch("/api/maintain", {
-			method: "POST",
-			body: JSON.stringify(data),
-		});
-		const { id: mtId } = await res.json();
+		// const res = await fetch("/api/maintain", {
+		// 	method: "POST",
+		// 	body: JSON.stringify(data),
+		// });
+		// const { id: mtId } = await res.json();
 
 		// schedDetailsId
 		const schedRes = await fetch("/api/sched-details", {
@@ -178,7 +177,7 @@ export default function MaintenancePage({
 			return;
 		}
 
-		const { success } = await schedRes.json();
+		// const { success } = await schedRes.json();
 
 		setIsSaving(false);
 
@@ -248,10 +247,9 @@ export default function MaintenancePage({
 			setScanned(scannedSerialNo);
 		} else {
 			try {
-				console.log("Scanned Serial No:", scannedSerialNo);
 				const res = await fetch(`/api/maintain?serialNo=${scannedSerialNo}`);
 				const { maintenanceData, signatories, error } = await res.json();
-				console.log("Maintenance Error:", error);
+
 				if (error === "Duplicate") {
 					showAppToast({
 						message: "Duplicate serial number not allowed",
@@ -980,7 +978,7 @@ export default function MaintenancePage({
 											</Button>
 											{signature && (
 												<div className="flex flex-col items-start">
-													<img
+													<Image
 														src={signature}
 														alt="Signature"
 														className="border rounded-md max-w-xs"

@@ -2,11 +2,13 @@
 
 import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
+import Image from "next/image";
 import QRCode from "qrcode";
 import { useSearchParams } from "next/navigation";
 import { capitalCase } from "change-case";
 import { Replace, Wrench } from "lucide-react";
 import { useRouter } from "next/navigation"; // Pages Router
+import { type IDetectedBarcode } from "@yudiel/react-qr-scanner";
 
 // Dynamically import Scanner to avoid SSR errors
 const Scanner = dynamic(
@@ -45,12 +47,12 @@ export default function ScanQRPage() {
 		});
 	}, []);
 
-	const handleOnScan = (detected: any[]) => {
+	const handleOnScan = (detected: IDetectedBarcode[]) => {
 		if (detected.length > 0) {
+			setDecoded(detected[0].rawValue);
 			router.push(
 				`/dashboard?activePage=${callingPage}&scanned=${detected[0].rawValue}`
 			);
-			// setDecoded(detected[0].rawValue);
 		}
 	};
 
@@ -102,6 +104,7 @@ export default function ScanQRPage() {
 					constraints={{
 						deviceId: selectedDeviceId,
 					}}
+					allowMultiple
 				/>
 			)}
 
@@ -133,7 +136,7 @@ export default function ScanQRPage() {
 
 				{qrCodeUrl && (
 					<div className="mt-4">
-						<img src={qrCodeUrl} alt="Generated QR Code" />
+						<Image src={qrCodeUrl} alt="Generated QR Code" />
 						<p className="text-sm text-gray-600 mt-1">🔗 {textToEncode}</p>
 					</div>
 				)}

@@ -9,9 +9,9 @@ import {
 	clients,
 	locations,
 	priorities,
-	maintain,
 } from "@/db/schema"; // Adjust this path to your Drizzle schema
 import { format } from "date-fns";
+import { ensureError } from "@/lib/errors";
 
 // Define the expected structure of the incoming request body
 interface ScheduleMaintenancePayload {
@@ -148,13 +148,14 @@ export async function POST(req: NextRequest) {
 			},
 			{ status: 201 }
 		);
-	} catch (error: any) {
-		console.error("Error creating maintenance schedule:", error);
+	} catch (error: unknown) {
+		const err = ensureError(error);
+		console.error("Error creating maintenance schedule:", err.message);
 
 		// More specific error handling could be added here,
 		// e.g., checking for unique constraint violations if you had them.
 		return NextResponse.json(
-			{ message: error.message || "Internal server error." },
+			{ message: err.message || "Internal server error." },
 			{ status: 500 }
 		);
 	}
@@ -345,8 +346,9 @@ export async function DELETE(req: NextRequest) {
 			{ message: "Schedule and associated details deleted successfully." },
 			{ status: 200 }
 		);
-	} catch (error: any) {
-		console.error("Error deleting scheduledsfadf:", error);
+	} catch (error: unknown) {
+		const err = ensureError(error);
+		console.error("Error deleting scheduledsfadf:", err.message);
 		return NextResponse.json(
 			{ message: "Failed to delete schedule." },
 			{ status: 500 }
