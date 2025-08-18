@@ -36,9 +36,9 @@ export default clerkMiddleware(async (auth, req) => {
 			const data = await res.json();
 
 			// If user is inactive and NOT on profile page → redirect to profile
-			if (!data?.isActive && currentPath !== "/profile") {
+			if (!data?.isActive && currentPath !== "/registration") {
 				const profileUrl = req.nextUrl.clone();
-				profileUrl.pathname = "/profile";
+				profileUrl.pathname = "/registration";
 				return NextResponse.redirect(profileUrl);
 			}
 

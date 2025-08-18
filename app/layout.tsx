@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import { ThemeProvider } from "@/app/context/ThemeContext";
 import { ClerkProvider } from "@clerk/nextjs";
 import { Toaster } from "@/components/ui/sonner";
+import { TanstackProvider } from "@/components/providers/tanstack-provider";
 
 const geistSans = Geist({
 	variable: "--font-geist-sans",
@@ -30,8 +32,10 @@ export default function RootLayout({
 				<body
 					className={`${geistSans.variable} ${geistMono.variable} font-[family-name:var(--font-geist-sans)] antialiased`}
 				>
-					{children}
 					<Toaster />
+					<TanstackProvider>
+						<ThemeProvider>{children}</ThemeProvider>
+					</TanstackProvider>
 				</body>
 			</html>
 		</ClerkProvider>

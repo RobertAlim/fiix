@@ -1,0 +1,2 @@
+ALTER TABLE "maintain" ADD COLUMN "originMTId" integer;--> statement-breakpoint
+ALTER TABLE "maintain" ADD CONSTRAINT "maintain_originMTId_maintain_id_fk" FOREIGN KEY ("originMTId") REFERENCES "public"."maintain"("id") ON DELETE no action ON UPDATE no action;

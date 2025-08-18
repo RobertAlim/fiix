@@ -1,0 +1,1 @@
+ALTER TABLE "scheduleDetails" ADD COLUMN "maintainedDate" timestamp DEFAULT now();

@@ -1,127 +1,47 @@
-"use client";
+import { db } from "@/db";
+import { users } from "@/db/schema";
+import { eq } from "drizzle-orm";
+import { ProfileForm } from "@/components/profile/profile-form";
+import { currentUser } from "@clerk/nextjs/server";
+import { redirect } from "next/navigation";
+import { BackButton } from "@/components/ui/back-button";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { Label } from "@/components/ui/label";
-import { toast } from "sonner";
+export default async function ProfilePage() {
+	const clerkUser = await currentUser();
+	if (!clerkUser) redirect("/sign-in");
 
-const ProfilePage = () => {
-	const [middleName, setMiddleName] = useState("");
-	const [birthday, setBirthday] = useState("");
-	const [contactNo, setContactNo] = useState("");
-	const [otpSent, setOtpSent] = useState(false);
-	const [otpCode, setOtpCode] = useState("");
-	const router = useRouter();
+	// Match on email; adjust if you map by a different key
+	const email = clerkUser.emailAddresses?.[0]?.emailAddress;
+	if (!email) redirect("/");
 
-	const sendOtp = async () => {
-		// const res = await fetch("/api/send-otp", {
-		// 	method: "POST",
-		// 	headers: { "Content-Type": "application/json" },
-		// 	body: JSON.stringify({ number: contactNo }),
-		// });
+	const row = await db
+		.select()
+		.from(users)
+		.where(eq(users.email, email))
+		.limit(1);
+	const me = row[0];
 
-		// if (res.ok) {
-		toast("OTP sent successfully");
-		setOtpSent(true);
-		// } else {
-		// 	const data = await res.json();
-		// 	toast("Error sending OTP");
-		// }
-	};
-
-	const verifyAndSave = async () => {
-		// const res = await fetch("/api/verify-otp", {
-		// 	method: "POST",
-		// 	headers: { "Content-Type": "application/json" },
-		// 	body: JSON.stringify({ number: contactNo, code: otpCode }),
-		// });
-
-		// const data = await res.json();
-		// if (!res.ok) {
-		// 	toast("OTP verification failed", { description: data.error });
-		// 	return;
-		// }
-		alert("Verify and Save is Here!!!");
-
-		const saveRes = await fetch("/api/save-profile", {
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({ middleName, birthday, contactNo, isActive: true }),
-		});
-
-		if (saveRes.ok) {
-			setMiddleName("");
-			setBirthday("");
-			setContactNo("");
-
-			toast("Profile updated successfully");
-			router.push("/dashboard");
-		} else {
-			toast("Failed to update profile");
-		}
-	};
+	if (!me) {
+		// You can redirect to onboarding or show a friendly message
+		return (
+			<div className="max-w-2xl">
+				<h2 className="text-xl font-semibold">No profile record</h2>
+				<p className="text-muted-foreground">
+					Ask an admin to create your user record for {email}.
+				</p>
+			</div>
+		);
+	}
 
 	return (
-		<Card className="max-w-md mx-auto mt-10 p-6">
-			<CardContent className="space-y-4">
+		<div className="flex h-screen items-center justify-center p-4 md:p-8">
+			<div className="flex flex-col gap-6">
 				<div>
-					<Label htmlFor="middlename">Middle Name</Label>
-					<Input
-						id="middlename"
-						value={middleName}
-						onChange={(e) => setMiddleName(e.target.value)}
-					/>
+					<BackButton />
 				</div>
 
-				<div>
-					<Label htmlFor="birthday">Birthday</Label>
-					<Input
-						id="birthday"
-						type="date"
-						value={birthday}
-						onChange={(e) => {
-							alert("Date Selection!!!: " + e.target.value);
-							setBirthday(e.target.value);
-						}}
-					/>
-				</div>
-
-				<div>
-					<Label htmlFor="contactNo">Mobile Number</Label>
-					<Input
-						id="contactNo"
-						placeholder="e.g. 09123456789"
-						value={contactNo}
-						onChange={(e) => setContactNo(e.target.value)}
-					/>
-				</div>
-
-				{otpSent && (
-					<div>
-						<Label htmlFor="otp">Enter OTP</Label>
-						<Input
-							id="otp"
-							value={otpCode}
-							onChange={(e) => setOtpCode(e.target.value)}
-						/>
-					</div>
-				)}
-
-				{!otpSent ? (
-					<Button className="w-full" onClick={sendOtp}>
-						Send OTP
-					</Button>
-				) : (
-					<Button className="w-full" onClick={verifyAndSave}>
-						Verify & Save
-					</Button>
-				)}
-			</CardContent>
-		</Card>
+				<ProfileForm user={me} />
+			</div>
+		</div>
 	);
-};
-
-export default ProfilePage;
+}

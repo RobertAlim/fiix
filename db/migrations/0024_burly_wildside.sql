@@ -1,0 +1,1 @@
+ALTER TABLE "scheduleDetails" ALTER COLUMN "maintainedDate" DROP DEFAULT;

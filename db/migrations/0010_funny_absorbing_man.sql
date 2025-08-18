@@ -1,0 +1,1 @@
+ALTER TABLE "maintain" DROP COLUMN "technicianId";
