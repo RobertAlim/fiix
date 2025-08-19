@@ -27,6 +27,6 @@ export const fetchData = async <T>(
 		return null as T;
 	} catch (e) {
 		// Catch any JSON parsing errors and re-throw with context.
-		throw new Error(`Failed to parse JSON response from ${url}.`);
+		throw new Error(`Failed to parse JSON response from ${url}. ${e}`);
 	}
 };

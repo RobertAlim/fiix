@@ -40,7 +40,7 @@ export default function TaskTracker() {
 	const {
 		data: schedules,
 		isLoading: loadingSchedules,
-		isError: errorSchedules,
+		// isError: errorSchedules,
 	} = useQuery<{ data: ScheduleTrackerRow[] }>({
 		queryKey: ["schedule-tracker"],
 		queryFn: () =>

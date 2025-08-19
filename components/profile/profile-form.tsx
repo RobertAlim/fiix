@@ -22,6 +22,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { showAppToast } from "../ui/apptoast";
+import { ensureError } from "@/lib/errors";
 
 type Props = {
 	user: {
@@ -73,9 +74,10 @@ export function ProfileForm({ user }: Props) {
 					position: "top-right",
 					color: "success", // This will influence the default icon color and potential border
 				});
-			} catch (err: any) {
+			} catch (error: unknown) {
+				const err = ensureError(error);
 				showAppToast({
-					message: "Failed to update your profile.",
+					message: "Failed to update your profile. " + err,
 					description: "Profile update failed.",
 					position: "top-right",
 					color: "error", // This will influence the default icon color and potential border

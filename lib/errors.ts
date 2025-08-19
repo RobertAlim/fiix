@@ -12,9 +12,3 @@ export function ensureError(e: unknown): Error {
 export function getErrorMessage(e: unknown): string {
 	return ensureError(e).message;
 }
-
-export function isErrorWithCode<T extends string>(
-	e: unknown
-): e is Error & { code: T } {
-	return e instanceof Error && typeof (e as any).code === "string";
-}

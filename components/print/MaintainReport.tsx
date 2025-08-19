@@ -20,7 +20,7 @@ const logoBuffer = fs.readFileSync(logoPath);
 // const signBuffer = fs.readFileSync(signPath);
 
 const now = new Date();
-const formattedDate = formatDateTime(now);
+// const formattedDate = formatDateTime(now);
 
 const styles = StyleSheet.create({
 	page: {
@@ -175,7 +175,7 @@ export const MaintainReport: React.FC<{ data: MaintenanceReportProps }> = ({
 						<Text style={styles.label}>Work Done:</Text>
 						<View style={styles.checkboxGroup}>
 							{data.workDone.map((item, i) => (
-								<View style={styles.item}>
+								<View style={styles.item} key={i.toString()}>
 									<Text key={i}>{item}</Text>
 								</View>
 							))}
@@ -219,7 +219,7 @@ export const MaintainReport: React.FC<{ data: MaintenanceReportProps }> = ({
 							<Text>Reset:</Text>
 							{data.resetBox && data.resetBox.length > 0 ? (
 								data.resetBox.map((item, i) => (
-									<View>
+									<View key={i}>
 										<Text
 											key={i}
 											style={[
@@ -262,7 +262,7 @@ export const MaintainReport: React.FC<{ data: MaintenanceReportProps }> = ({
 						<Text style={styles.label}>Services:</Text>
 						<View style={styles.checkboxGroup}>
 							{data.services.map((item, i) => (
-								<View style={styles.item}>
+								<View style={styles.item} key={i}>
 									<Text key={i}>{item}</Text>
 								</View>
 							))}
@@ -271,7 +271,7 @@ export const MaintainReport: React.FC<{ data: MaintenanceReportProps }> = ({
 							<Text>Replacement:</Text>
 							{data.replaceParts && data.replaceParts.length > 0 ? (
 								data.replaceParts.map((item, i) => (
-									<View>
+									<View key={i}>
 										<Text
 											key={i}
 											style={[
@@ -301,7 +301,7 @@ export const MaintainReport: React.FC<{ data: MaintenanceReportProps }> = ({
 							<Text>Repair:</Text>
 							{data.repairParts && data.repairParts.length > 0 ? (
 								data.repairParts.map((item, i) => (
-									<View>
+									<View key={i}>
 										<Text
 											key={i}
 											style={[

@@ -13,10 +13,8 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "@/components/ui/dialog";
-import dynamic from "next/dynamic";
 import { QrCode } from "lucide-react";
 import Select from "react-select";
-import makeAnimated from "react-select/animated";
 import { useEffect, useState } from "react";
 import { Replace, Wrench, Signature, Loader2 } from "lucide-react";
 
@@ -119,8 +117,6 @@ export default function MaintenancePage({
 	const reset = useWatch({ control, name: "resetSelected" }) ?? false;
 
 	const onSubmit = async (data: MaintainFormData) => {
-		console.log("OriginalMTId:", originMTId);
-		console.log("scheduleDetailsId:", schedDetailsId);
 		setIsSaving(true); // ⛔ block UI
 		if (!signature) {
 			showAppToast({
@@ -228,7 +224,7 @@ export default function MaintenancePage({
 		setToday(formatted);
 		setValue("serialNo", serialNo);
 		onHandleScan(serialNo);
-	}, []);
+	});
 
 	// 🔁 Update checkbox when status changes
 	useEffect(() => {
@@ -544,9 +540,9 @@ export default function MaintenancePage({
 													</Label>
 												</div>
 											</div>
-											{(errors as any).colorGroup?.message && (
+											{errors.colorGroup?.message && (
 												<p className="text-red-600 text-sm">
-													{(errors as any).colorGroup.message}
+													{errors.colorGroup.message}
 												</p>
 											)}
 											<div className="flex items-center space-x-2">
@@ -621,9 +617,9 @@ export default function MaintenancePage({
 												</div>
 											</div>
 										</div>
-										{(errors as any).resetGroup?.message && (
+										{errors.resetGroup?.message && (
 											<p className="text-red-600 text-sm">
-												{(errors as any).resetGroup.message}
+												{errors.resetGroup.message}
 											</p>
 										)}
 										<Label>Printer Status</Label>
@@ -740,7 +736,7 @@ export default function MaintenancePage({
 															closeMenuOnSelect={false}
 															isMulti
 															value={
-																field.value?.map((part: any) => ({
+																field.value?.map((part) => ({
 																	label: part.partName ?? "",
 																	value: part.partId ?? "",
 																})) || []
@@ -761,9 +757,9 @@ export default function MaintenancePage({
 													)}
 												/>
 											)}
-											{(errors as any).replaceParts?.message && (
+											{errors.replaceParts?.message && (
 												<p className="text-red-600 text-sm">
-													{(errors as any).replaceParts.message}
+													{errors.replaceParts.message}
 												</p>
 											)}
 											<div className="flex items-center space-x-2">
@@ -795,7 +791,7 @@ export default function MaintenancePage({
 															closeMenuOnSelect={false}
 															isMulti
 															value={
-																field.value?.map((part: any) => ({
+																field.value?.map((part) => ({
 																	label: part.partName ?? "",
 																	value: part.partId ?? "",
 																})) || []
@@ -816,9 +812,9 @@ export default function MaintenancePage({
 													)}
 												/>
 											)}
-											{(errors as any).repairParts?.message && (
+											{errors.repairParts?.message && (
 												<p className="text-red-600 text-sm">
-													{(errors as any).repairParts.message}
+													{errors.repairParts.message}
 												</p>
 											)}
 											<div className="flex items-center space-x-2">

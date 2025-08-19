@@ -6,7 +6,6 @@ import {
 	DialogContent,
 	DialogHeader,
 	DialogTitle,
-	DialogDescription,
 } from "@/components/ui/dialog"; // Ensure correct path for shadcn/ui Dialog
 import { cn } from "@/lib/utils"; // Assuming you have shadcn's cn utility for combining classNames
 

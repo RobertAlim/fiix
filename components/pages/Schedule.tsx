@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
 import { fetchData } from "@/lib/fetchData";
 import { useState, useMemo } from "react";
-import { format, set } from "date-fns";
+import { format } from "date-fns";
 import {
 	PrinterEdit,
 	Printer,
@@ -104,16 +104,17 @@ export interface Priority {
 	name: string;
 }
 
-interface PrinterData {
-	printerId: number;
-	department: string;
-	model: string;
-	serialNo: string;
-	issue: string;
-	lastMT: Date;
-	mtId: number;
-	schedDetailsId: number;
-}
+//THIS IS 4 DELETION//
+// interface PrinterData {
+// 	printerId: number;
+// 	department: string;
+// 	model: string;
+// 	serialNo: string;
+// 	issue: string;
+// 	lastMT: Date;
+// 	mtId: number;
+// 	schedDetailsId: number;
+// }
 
 // Define the type for the payload you'll send to the API
 interface ScheduleMaintenancePayload {
@@ -236,8 +237,8 @@ export default function SchedulePage() {
 	// 		schedDetailsId: 9007,
 	// 	},
 	// ];
-
-	let printers: Printer[] | undefined;
+	// THIS IS 4 DELETION
+	// let printers: Printer[] | undefined;
 
 	const [edits, setEdits] = useState<Record<string, PrinterEdit>>({});
 
@@ -299,10 +300,10 @@ export default function SchedulePage() {
 	const {
 		mutate, // The function to call to trigger the mutation
 		isPending: isLoadingMaintenanceMutation, // True while the mutation is in progress
-		isSuccess: isSavingSuccess, // True if the mutation was successful
-		isError: isMutationError, // True if the mutation failed
-		error: mutationError, // The error object if the mutation failed
-		reset, // Function to reset the mutation state
+		// isSuccess: isSavingSuccess, // True if the mutation was successful
+		// isError: isMutationError, // True if the mutation failed
+		// error: mutationError, // The error object if the mutation failed
+		// reset, // Function to reset the mutation state
 	} = useMutation({
 		mutationFn: createMaintenanceSchedule, // The function that performs the API call
 		onSuccess: (data) => {
@@ -407,9 +408,9 @@ export default function SchedulePage() {
 	// --- Dependent Data Fetching (Printer data based on selectedLocationId AND selectedClientId) ---
 	const {
 		data: printerData,
-		isPending: isLoadingPrinters,
-		isError: isErrorPrinters,
-		error: printersError,
+		// isPending: isLoadingPrinters,
+		// isError: isErrorPrinters,
+		// error: printersError,
 	} = useQuery<Printer[], Error>({
 		queryKey: ["printers", selectedClientId, selectedLocationId],
 		queryFn: async () => {
@@ -434,9 +435,9 @@ export default function SchedulePage() {
 	// --- Dependent Data Fetching (Printer data based on selectedLocationId AND selectedClientId) ---
 	const {
 		data: fetchedScheduleData,
-		isPending: isLoadingSchedules,
-		isError: isErrorSchedules,
-		error: schedulesError,
+		// isPending: isLoadingSchedules,
+		// isError: isErrorSchedules,
+		// error: schedulesError,
 		isSuccess: isSchedulesSuccess,
 	} = useQuery<Schedule[], Error>({
 		queryKey: ["schedules", selectedTechnicianId, scheduleDate],
@@ -544,11 +545,11 @@ export default function SchedulePage() {
 		useState<VisibilityState>({});
 	const [rowSelectionSchedules, setRowSelectionSchedules] =
 		useState<RowSelectionState>({});
-	const [paginationSchedules, setPaginationSchedules] =
-		useState<PaginationState>({
-			pageIndex: 0,
-			pageSize: 5,
-		});
+	// const [paginationSchedules, setPaginationSchedules] =
+	// 	useState<PaginationState>({
+	// 		pageIndex: 0,
+	// 		pageSize: 5,
+	// 	});
 
 	// // Define your initial row selection state
 	// const getInitialRowSelection = (data: Printer[]): RowSelectionState => {
@@ -615,27 +616,27 @@ export default function SchedulePage() {
 		}
 	}, [scheduleData, isSchedulesSuccess, isSetupModalOpen]); // Re-run when scheduleData changes
 
-	let areControlsEnabled = isEditing || isAdding!;
+	const areControlsEnabled = isEditing || isAdding!;
 
 	// --- Handlers for Printer Actions (from columns) ---
-	const handleMaintenanceHistory = React.useCallback(
-		(serialNo: string) => {
-			showAppToast({
-				message: `Viewing maintenance history for printer serial no.: ${serialNo}`,
-				description: "History Information",
-				position: "top-right",
-				color: "info",
-			});
-			// You could open another dialog or navigate to a history page here
-		},
-		[setPrinterDetailSerialNo, setIsPrinterDetailsDialogOpen]
-	);
+	// const handleMaintenanceHistory = React.useCallback(
+	// 	(serialNo: string) => {
+	// 		showAppToast({
+	// 			message: `Viewing maintenance history for printer serial no.: ${serialNo}`,
+	// 			description: "History Information",
+	// 			position: "top-right",
+	// 			color: "info",
+	// 		});
+	// 		// You could open another dialog or navigate to a history page here
+	// 	},
+	// 	[setPrinterDetailSerialNo, setIsPrinterDetailsDialogOpen]
+	// );
 
 	// NEW: Handler to open the Printer Details dialog
-	const handleShowPrinterDetails = React.useCallback(
-		(serialNo: string) => {},
-		[setPrinterDetailSerialNo, setIsPrinterDetailsDialogOpen]
-	);
+	// const handleShowPrinterDetails = React.useCallback(
+	// 	(serialNo: string) => {},
+	// 	[setPrinterDetailSerialNo, setIsPrinterDetailsDialogOpen]
+	// );
 
 	const handleEditSchedule = React.useCallback(
 		(schedId: number) => {
@@ -849,7 +850,6 @@ export default function SchedulePage() {
 					scheduleToShow.locationId,
 					schedId,
 				];
-				``;
 
 				try {
 					// --- NEW: Invalidate the old query cache to force a fresh fetch ---
@@ -1003,7 +1003,7 @@ export default function SchedulePage() {
 				// If the new value matches original, we can remove the edit entry to keep edits minimal
 				const original = immediatePrinters?.find((p) => p.id === Number(id));
 				if (original && original.isToggled === newIsToggled) {
-					const { [id]: _, ...rest } = prev;
+					const { ...rest } = prev;
 					return rest;
 				}
 				return {
