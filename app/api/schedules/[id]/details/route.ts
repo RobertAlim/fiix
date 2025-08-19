@@ -5,6 +5,7 @@ import { scheduleDetails as sd, printers, maintain } from "@/db/schema";
 import type { ScheduleDetailRow } from "@/types/tracker";
 
 export async function GET(
+	_req: Request,
 	{ params }: { params: { id: number } } // <-- inline the type
 ) {
 	const scheduleId = params.id;
