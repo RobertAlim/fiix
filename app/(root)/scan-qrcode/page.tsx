@@ -1,14 +1,12 @@
 "use client";
 
-import { useEffect, useState, Suspense, useCallback } from "react";
+import { useEffect, useState, Suspense, useCallback, useRef } from "react";
 import dynamic from "next/dynamic";
-import Image from "next/image";
 import QRCode from "qrcode";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import { capitalCase } from "change-case";
 import { Replace, Wrench } from "lucide-react";
-import { useRouter } from "next/navigation"; // Pages Router
-import { type IDetectedBarcode } from "@yudiel/react-qr-scanner";
+import type { IDetectedBarcode } from "@yudiel/react-qr-scanner";
 
 // Dynamically import Scanner to avoid SSR errors
 const Scanner = dynamic(
@@ -17,49 +15,48 @@ const Scanner = dynamic(
 );
 
 export default function ScanQRPage() {
-	<Suspense fallback={<div className="p-4">Loading dashboard…</div>}>
-		<ScanQRPageContent />
-	</Suspense>;
+	return (
+		<Suspense fallback={<div className="p-4">Loading scanner…</div>}>
+			<ScanQRPageContent />
+		</Suspense>
+	);
 }
 
 function ScanQRPageContent() {
 	const searchParams = useSearchParams();
 	const callingPage = searchParams.get("callingPage"); // e.g., "service-unit"
-	const [decoded, setDecoded] = useState<string | null>(null);
-	const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
-	const [selectedDeviceId, setSelectedDeviceId] = useState<string | undefined>(
-		undefined
-	);
-	const [textToEncode, setTextToEncode] = useState("");
-	const [qrCodeUrl, setQrCodeUrl] = useState<string | null>(null);
-	const IconComponent = callingPage === "replacement" ? Replace : Wrench;
-	const [ready, setReady] = useState(false); // mount scanner only after user action
 	const router = useRouter();
 
+	const [mounted, setMounted] = useState(false);
+	const [decoded, setDecoded] = useState<string | null>(null);
+	const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
+	const [selectedDeviceId, setSelectedDeviceId] = useState<
+		string | undefined
+	>();
+	const [textToEncode, setTextToEncode] = useState("");
+	const [qrCodeUrl, setQrCodeUrl] = useState<string | null>(null);
+	const [ready, setReady] = useState(false); // mount scanner only after user action
+	const scanningLocked = useRef(false); // avoid multiple pushes
+
+	const IconComponent = callingPage === "replacement" ? Replace : Wrench;
+
 	useEffect(() => {
+		setMounted(true);
 		if (callingPage) {
 			console.log("Called from page:", callingPage);
-			// You can now customize behavior depending on where it was triggered
 		}
 	}, [callingPage]);
 
-	// Fetch available video input devices (cameras)
-	// useEffect(() => {
-	// 	navigator.mediaDevices.enumerateDevices().then((allDevices) => {
-	// 		const videoInputs = allDevices.filter((d) => d.kind === "videoinput");
-	// 		setDevices(videoInputs);
-	// 		if (videoInputs.length > 0) {
-	// 			setSelectedDeviceId(videoInputs[0].deviceId);
-	// 		}
-	// 	});
-	// }, []);
-
 	const initCameras = useCallback(async () => {
 		try {
-			// 1) Ask for permission first (minimal constraints)
+			if (!isSecureContext || !navigator.mediaDevices?.getUserMedia) {
+				throw new Error("Camera requires HTTPS and a modern browser.");
+			}
+
+			// 1) Ask for permission first
 			await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
 
-			// 2) Now enumerate devices (works reliably after permission)
+			// 2) Now enumerate devices (reliable after permission on iOS)
 			const all = await navigator.mediaDevices.enumerateDevices();
 			const cams = all.filter((d) => d.kind === "videoinput");
 			setDevices(cams);
@@ -67,20 +64,20 @@ function ScanQRPageContent() {
 			setReady(true);
 		} catch (err) {
 			console.error("Camera init failed:", err);
-			// show a toast/alert to the user here
+			alert(
+				"Unable to access the camera. Please check browser permissions and try again."
+			);
 		}
 	}, []);
 
-	useEffect(() => {
-		// optional: if you want to auto-init on revisit when permission is already granted
-		// initCameras();
-	}, [initCameras]);
-
 	const handleOnScan = (detected: IDetectedBarcode[]) => {
+		if (scanningLocked.current) return;
 		if (detected.length > 0) {
-			setDecoded(detected[0].rawValue);
+			const value = detected[0].rawValue;
+			setDecoded(value);
+			scanningLocked.current = true;
 			router.push(
-				`/dashboard?activePage=${callingPage}&scanned=${detected[0].rawValue}`
+				`/dashboard?activePage=${callingPage ?? ""}&scanned=${value}`
 			);
 		}
 	};
@@ -88,7 +85,7 @@ function ScanQRPageContent() {
 	const generateQRCode = async () => {
 		try {
 			const url = await QRCode.toDataURL(textToEncode, {
-				errorCorrectionLevel: "H", // <- set to 'L', 'M', 'Q', or 'H'
+				errorCorrectionLevel: "H",
 				margin: 2,
 				scale: 8,
 			});
@@ -98,47 +95,55 @@ function ScanQRPageContent() {
 		}
 	};
 
+	if (!mounted) return null;
+
+	// Build constraints: use selected device if available, otherwise prefer back camera
+	const constraints: MediaTrackConstraints = selectedDeviceId
+		? { deviceId: { exact: selectedDeviceId } }
+		: { facingMode: { ideal: "environment" } };
+
 	return (
 		<div className="p-6 max-w-xl mx-auto space-y-6">
 			<div>
 				<h1 className="text-2xl font-bold">
-					QR Code Scanner for {capitalCase(callingPage!)}
+					QR Code Scanner for {capitalCase(callingPage ?? "Unknown")}
 				</h1>
 				<IconComponent className="w-10 h-10 text-green-400" />
 			</div>
 
 			{!ready && (
-				<button className="btn" onClick={initCameras}>
+				<button
+					className="rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
+					onClick={initCameras}
+				>
 					Start camera
 				</button>
 			)}
 
-			{/* Camera selection dropdown */}
-			<div className="space-y-1">
-				<label className="font-semibold">Select Camera:</label>
-				<select
-					className="w-full p-2 border border-gray-300 rounded"
-					value={selectedDeviceId}
-					onChange={(e) => setSelectedDeviceId(e.target.value)}
-				>
-					{devices.map((device, index) => (
-						<option key={device.deviceId} value={device.deviceId}>
-							{device.label || `Camera ${index + 1}`}
-						</option>
-					))}
-				</select>
-			</div>
+			{/* Camera selection dropdown (only if multiple cameras discovered) */}
+			{devices.length > 0 && (
+				<div className="space-y-1">
+					<label className="font-semibold">Select Camera:</label>
+					<select
+						className="w-full p-2 border border-gray-300 rounded"
+						value={selectedDeviceId}
+						onChange={(e) => setSelectedDeviceId(e.target.value)}
+					>
+						{devices.map((device, index) => (
+							<option key={device.deviceId} value={device.deviceId}>
+								{device.label || `Camera ${index + 1}`}
+							</option>
+						))}
+					</select>
+				</div>
+			)}
 
 			{/* QR Scanner */}
-			{ready && selectedDeviceId && (
+			{ready && (
 				<Scanner
-					onScan={(detected) => {
-						handleOnScan(detected);
-					}}
+					onScan={handleOnScan}
 					onError={(err) => console.error("Scanner Error:", err)}
-					constraints={{
-						deviceId: selectedDeviceId,
-					}}
+					constraints={constraints}
 					allowMultiple
 				/>
 			)}
@@ -171,7 +176,13 @@ function ScanQRPageContent() {
 
 				{qrCodeUrl && (
 					<div className="mt-4">
-						<Image src={qrCodeUrl} alt="Generated QR Code" />
+						{/* Use a plain img or set explicit width/height on next/image */}
+						<img
+							src={qrCodeUrl}
+							alt="Generated QR Code"
+							width={256}
+							height={256}
+						/>
 						<p className="text-sm text-gray-600 mt-1">🔗 {textToEncode}</p>
 					</div>
 				)}
