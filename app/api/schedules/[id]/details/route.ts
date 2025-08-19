@@ -6,9 +6,9 @@ import type { ScheduleDetailRow } from "@/types/tracker";
 
 export async function GET(
 	_req: Request,
-	{ params }: { params: { id: number } } // <-- inline the type
+	id: number // <-- inline the type
 ) {
-	const scheduleId = params.id;
+	const scheduleId = id;
 	if (Number.isNaN(scheduleId)) {
 		return new NextResponse("Invalid schedule id", { status: 400 });
 	}
