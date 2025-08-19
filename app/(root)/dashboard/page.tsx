@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, Suspense } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -35,6 +35,12 @@ const SchedulePage = dynamic(() => import("@/components/pages/Schedule"));
 const DashboardRealPage = dynamic(() => import("@/components/pages/Dashboard"));
 
 export default function DashboardPage() {
+	<Suspense fallback={<div className="p-4">Loading dashboard…</div>}>
+		<DashboardContent />
+	</Suspense>;
+}
+
+function DashboardContent() {
 	const searchParams = useSearchParams();
 	const queryPage = searchParams.get("activePage");
 	const { data } = useDBUser();
