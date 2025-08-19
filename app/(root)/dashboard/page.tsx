@@ -22,7 +22,6 @@ import {
 	CircleUserRound,
 	LogOut,
 } from "lucide-react";
-import { useSearchParams } from "next/navigation";
 import { useUserStore } from "@/state/userStore";
 import { useDBUser } from "@/hooks/use-db-user";
 import { useQueries } from "@tanstack/react-query";
@@ -35,14 +34,6 @@ const SchedulePage = dynamic(() => import("@/components/pages/Schedule"));
 const DashboardRealPage = dynamic(() => import("@/components/pages/Dashboard"));
 
 export default function DashboardPage() {
-	<Suspense fallback={<div className="p-4">Loading dashboard…</div>}>
-		<DashboardContent />
-	</Suspense>;
-}
-
-function DashboardContent() {
-	const searchParams = useSearchParams();
-	const queryPage = searchParams.get("activePage");
 	const { data } = useDBUser();
 	const { setUsers } = useUserStore();
 	const [activePage, setActivePage] = useState("dashboard");
@@ -80,11 +71,11 @@ function DashboardContent() {
 		}
 	}, [data, setUsers]);
 
-	useEffect(() => {
-		if (queryPage) {
-			setActivePage("maintenance");
-		}
-	}, [queryPage]);
+	// useEffect(() => {
+	// 	if (activePage) {
+	// 		setActivePage("maintenance");
+	// 	}
+	// }, [activePage]);
 
 	const handleCardClick = ({
 		serialNo,
@@ -277,3 +268,7 @@ function DashboardContent() {
 		</div>
 	);
 }
+
+// function DashboardContent() {
+
+// }
