@@ -5,10 +5,9 @@ import { scheduleDetails as sd, printers, maintain } from "@/db/schema";
 import type { ScheduleDetailRow } from "@/types/tracker";
 
 export async function GET(
-	_req: Request,
-	{ params }: { params: { id: string } } // <-- inline the type
+	{ params }: { params: { id: number } } // <-- inline the type
 ) {
-	const scheduleId = Number(params.id);
+	const scheduleId = params.id;
 	if (Number.isNaN(scheduleId)) {
 		return new NextResponse("Invalid schedule id", { status: 400 });
 	}
