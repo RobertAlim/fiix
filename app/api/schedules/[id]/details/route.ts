@@ -4,11 +4,10 @@ import { eq } from "drizzle-orm";
 import { scheduleDetails as sd, printers, maintain } from "@/db/schema";
 import type { ScheduleDetailRow } from "@/types/tracker";
 
-export async function GET(
-	_req: Request,
-	id: number // <-- inline the type
-) {
-	const scheduleId = id;
+type RouteCtx = { params: { id: number } };
+
+export async function GET(_req: Request, { params }: RouteCtx) {
+	const scheduleId = params.id;
 	if (Number.isNaN(scheduleId)) {
 		return new NextResponse("Invalid schedule id", { status: 400 });
 	}
