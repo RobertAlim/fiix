@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import dynamic from "next/dynamic";
 import Image from "next/image";
 import QRCode from "qrcode";
@@ -17,6 +17,12 @@ const Scanner = dynamic(
 );
 
 export default function ScanQRPage() {
+	<Suspense fallback={<div className="p-4">Loading dashboard…</div>}>
+		<ScanQRPageContent />
+	</Suspense>;
+}
+
+function ScanQRPageContent() {
 	const searchParams = useSearchParams();
 	const callingPage = searchParams.get("callingPage"); // e.g., "service-unit"
 	const [decoded, setDecoded] = useState<string | null>(null);
