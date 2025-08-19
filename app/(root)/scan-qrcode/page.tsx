@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, Suspense } from "react";
+import { useEffect, useState, Suspense, useCallback } from "react";
 import dynamic from "next/dynamic";
 import Image from "next/image";
 import QRCode from "qrcode";
@@ -33,6 +33,7 @@ function ScanQRPageContent() {
 	const [textToEncode, setTextToEncode] = useState("");
 	const [qrCodeUrl, setQrCodeUrl] = useState<string | null>(null);
 	const IconComponent = callingPage === "replacement" ? Replace : Wrench;
+	const [ready, setReady] = useState(false); // mount scanner only after user action
 	const router = useRouter();
 
 	useEffect(() => {
@@ -43,15 +44,37 @@ function ScanQRPageContent() {
 	}, [callingPage]);
 
 	// Fetch available video input devices (cameras)
-	useEffect(() => {
-		navigator.mediaDevices.enumerateDevices().then((allDevices) => {
-			const videoInputs = allDevices.filter((d) => d.kind === "videoinput");
-			setDevices(videoInputs);
-			if (videoInputs.length > 0) {
-				setSelectedDeviceId(videoInputs[0].deviceId);
-			}
-		});
+	// useEffect(() => {
+	// 	navigator.mediaDevices.enumerateDevices().then((allDevices) => {
+	// 		const videoInputs = allDevices.filter((d) => d.kind === "videoinput");
+	// 		setDevices(videoInputs);
+	// 		if (videoInputs.length > 0) {
+	// 			setSelectedDeviceId(videoInputs[0].deviceId);
+	// 		}
+	// 	});
+	// }, []);
+
+	const initCameras = useCallback(async () => {
+		try {
+			// 1) Ask for permission first (minimal constraints)
+			await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+
+			// 2) Now enumerate devices (works reliably after permission)
+			const all = await navigator.mediaDevices.enumerateDevices();
+			const cams = all.filter((d) => d.kind === "videoinput");
+			setDevices(cams);
+			setSelectedDeviceId(cams[0]?.deviceId);
+			setReady(true);
+		} catch (err) {
+			console.error("Camera init failed:", err);
+			// show a toast/alert to the user here
+		}
 	}, []);
+
+	useEffect(() => {
+		// optional: if you want to auto-init on revisit when permission is already granted
+		// initCameras();
+	}, [initCameras]);
 
 	const handleOnScan = (detected: IDetectedBarcode[]) => {
 		if (detected.length > 0) {
