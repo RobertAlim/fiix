@@ -39,7 +39,6 @@ import {
 	SortingState,
 	useReactTable,
 	VisibilityState,
-	PaginationState,
 	RowSelectionState,
 } from "@tanstack/react-table";
 import { Skeleton } from "@/components/ui/skeleton";

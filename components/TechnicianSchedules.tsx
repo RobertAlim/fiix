@@ -8,7 +8,6 @@ import {
 	useReactTable,
 	ExpandedState,
 	getExpandedRowModel,
-	RowData,
 } from "@tanstack/react-table";
 import {
 	Table,
@@ -29,11 +28,11 @@ import { useSchedules, Schedule } from "@/hooks/use-schedules"; // Adjust path
 import { format } from "date-fns";
 
 // Extend the ColumnMeta type to include className
-declare module "@tanstack/react-table" {
-	interface ColumnMeta<TData extends RowData, TValue> {
-		className?: string;
-	}
-}
+// declare module "@tanstack/react-table" {
+// 	interface ColumnMeta<TData extends RowData, TValue> {
+// 		className?: string;
+// 	}
+// }
 
 import {
 	Card,

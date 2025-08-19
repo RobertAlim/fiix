@@ -224,7 +224,7 @@ export default function MaintenancePage({
 		setToday(formatted);
 		setValue("serialNo", serialNo);
 		onHandleScan(serialNo);
-	});
+	}, [setToday, setValue, serialNo]);
 
 	// 🔁 Update checkbox when status changes
 	useEffect(() => {

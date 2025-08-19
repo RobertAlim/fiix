@@ -18,8 +18,6 @@ const logoBuffer = fs.readFileSync(logoPath);
 
 // const signPath = path.join(process.cwd(), "public/assets/MyOriginalSign.png");
 // const signBuffer = fs.readFileSync(signPath);
-
-const now = new Date();
 // const formattedDate = formatDateTime(now);
 
 const styles = StyleSheet.create({
