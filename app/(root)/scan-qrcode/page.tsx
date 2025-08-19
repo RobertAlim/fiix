@@ -107,6 +107,12 @@ function ScanQRPageContent() {
 				<IconComponent className="w-10 h-10 text-green-400" />
 			</div>
 
+			{!ready && (
+				<button className="btn" onClick={initCameras}>
+					Start camera
+				</button>
+			)}
+
 			{/* Camera selection dropdown */}
 			<div className="space-y-1">
 				<label className="font-semibold">Select Camera:</label>
@@ -124,7 +130,7 @@ function ScanQRPageContent() {
 			</div>
 
 			{/* QR Scanner */}
-			{selectedDeviceId && (
+			{ready && selectedDeviceId && (
 				<Scanner
 					onScan={(detected) => {
 						handleOnScan(detected);
