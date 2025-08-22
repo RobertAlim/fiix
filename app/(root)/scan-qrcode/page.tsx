@@ -7,6 +7,7 @@ import { capitalCase } from "change-case";
 import { Replace, Wrench } from "lucide-react";
 import type { IDetectedBarcode } from "@yudiel/react-qr-scanner";
 import { Scanner } from "@yudiel/react-qr-scanner";
+import { ensureError } from "@/lib/errors";
 
 export default function ScanQRPage() {
 	return (
@@ -64,10 +65,11 @@ function ScanQRPageContent() {
 			setDeviceId(cams); // you can also present a dropdown
 			setSelectedDeviceId(cams[0]?.deviceId);
 			setReady(true);
-		} catch (e: any) {
+		} catch (error: any) {
+			const err = ensureError(error);
 			// Names you might see: NotAllowedError, NotFoundError, NotReadableError, OverconstrainedError
-			console.error("Camera permission failed:", e);
-			alert(`Camera permission failed: ${e?.name ?? e}`);
+			console.error("Camera permission failed:", err);
+			alert(`Camera permission failed: ${err?.name ?? err}`);
 		}
 	}, []);
 
@@ -97,11 +99,6 @@ function ScanQRPageContent() {
 	};
 
 	if (!mounted) return null;
-
-	// Build constraints: use selected device if available, otherwise prefer back camera
-	const constraints: MediaTrackConstraints = selectedDeviceId
-		? { deviceId: { exact: selectedDeviceId } }
-		: { facingMode: { ideal: "environment" } };
 
 	return (
 		<div className="p-6 max-w-xl mx-auto space-y-6">
