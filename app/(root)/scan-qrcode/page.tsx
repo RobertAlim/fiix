@@ -65,7 +65,7 @@ function ScanQRPageContent() {
 			setDeviceId(cams); // you can also present a dropdown
 			setSelectedDeviceId(cams[0]?.deviceId);
 			setReady(true);
-		} catch (error: any) {
+		} catch (error: unknown) {
 			const err = ensureError(error);
 			// Names you might see: NotAllowedError, NotFoundError, NotReadableError, OverconstrainedError
 			console.error("Camera permission failed:", err);
