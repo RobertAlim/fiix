@@ -978,6 +978,8 @@ export default function MaintenancePage({
 														src={signature}
 														alt="Signature"
 														className="border rounded-md max-w-xs"
+														height={120}
+														width={250}
 													/>
 												</div>
 											)}

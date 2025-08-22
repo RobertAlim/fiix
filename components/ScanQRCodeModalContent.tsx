@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import dynamic from "next/dynamic";
 import { type IDetectedBarcode } from "@yudiel/react-qr-scanner";
 
@@ -17,21 +17,41 @@ type Props = {
 };
 
 export const ScanQRCodeModalContent = ({ onScan, onClose }: Props) => {
-	const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
-	const [selectedDeviceId, setSelectedDeviceId] = useState<string>();
-	// const [textToEncode, setTextToEncode] = useState("");
-	// const [qrCodeUrl, setQrCodeUrl] = useState<string | null>(null);
+	const [selectedDeviceId, setSelectedDeviceId] = useState<
+		string | undefined
+	>();
 
-	// Fetch available video input devices (cameras)
-	useEffect(() => {
-		navigator.mediaDevices.enumerateDevices().then((allDevices) => {
-			const videoInputs = allDevices.filter((d) => d.kind === "videoinput");
-			setDevices(videoInputs);
-			if (videoInputs.length > 0) {
-				setSelectedDeviceId(videoInputs[0].deviceId);
+	const requestCamera = useCallback(async () => {
+		try {
+			if (!isSecureContext || !navigator.mediaDevices?.getUserMedia) {
+				alert("Camera requires HTTPS and a modern browser.");
+				return;
 			}
-		});
+
+			// 1) Ask for permission (this is what shows the system prompt)
+			const stream = await navigator.mediaDevices.getUserMedia({
+				video: { facingMode: { ideal: "environment" } },
+				audio: false,
+			});
+
+			// (Optional) immediately stop the temp stream; the scanner will open its own
+			stream.getTracks().forEach((t) => t.stop());
+
+			// 2) Enumerate devices now that permission is granted
+			const all = await navigator.mediaDevices.enumerateDevices();
+			const cams = all.filter((d) => d.kind === "videoinput");
+			setSelectedDeviceId(cams[0]?.deviceId);
+		} catch (e: any) {
+			// Names you might see: NotAllowedError, NotFoundError, NotReadableError, OverconstrainedError
+			console.error("Camera permission failed:", e);
+			alert(`Camera permission failed: ${e?.name ?? e}`);
+		}
 	}, []);
+
+	// Optional: auto-init if permission already granted on revisit
+	useEffect(() => {
+		// navigator.permissions?.query({ name: "camera" as PermissionName }).then(...)
+	}, [requestCamera]);
 
 	const handleOnScan = (detected: IDetectedBarcode[]) => {
 		if (detected.length > 0) {
@@ -40,52 +60,27 @@ export const ScanQRCodeModalContent = ({ onScan, onClose }: Props) => {
 		}
 	};
 
-	// const generateQRCode = async () => {
-	// 	try {
-	// 		const url = await QRCode.toDataURL(textToEncode, {
-	// 			errorCorrectionLevel: "H",
-	// 			margin: 2,
-	// 			scale: 8,
-	// 		});
-	// 		setQrCodeUrl(url);
-	// 	} catch (err) {
-	// 		console.error("QR Generation Error:", err);
-	// 	}
-	// };
-
 	return (
 		<div className="relative w-full max-h-full overflow-hidden rounded-lg border">
-			{/* Camera selection */}
-			<div className="space-y-1">
-				<label className="font-semibold">Select Camera:</label>
-				<select
-					className="w-full p-2 border border-gray-300 rounded"
-					value={selectedDeviceId}
-					onChange={(e) => setSelectedDeviceId(e.target.value)}
-				>
-					{devices.map((device, index) => (
-						<option key={device.deviceId} value={device.deviceId}>
-							{device.label || `Camera ${index + 1}`}
-						</option>
-					))}
-				</select>
-			</div>
-
 			{/* QR Scanner */}
-			{selectedDeviceId && (
-				<div className="relative w-full max-h-[400px] overflow-hidden rounded-lg border">
-					<Scanner
-						onScan={handleOnScan}
-						onError={(err) => console.error("Scanner Error:", err)}
-						constraints={{
-							deviceId: selectedDeviceId,
-						}}
-						classNames={{
-							container: "relative z-10 w-full h-full object-cover",
-						}}
-					/>
-				</div>
-			)}
+			<div className="flex flex-col">
+				<Scanner
+					onScan={handleOnScan}
+					onError={(err) => console.error("Scanner Error:", err)}
+					constraints={
+						selectedDeviceId
+							? { deviceId: { exact: selectedDeviceId } }
+							: { facingMode: { ideal: "environment" } }
+					}
+				/>
+				{/* Close Button */}
+				<button
+					onClick={onClose}
+					className="mt-4 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded"
+				>
+					Close
+				</button>
+			</div>
 
 			{/* Generator */}
 			{/* <div className="space-y-4 border-t pt-4">
@@ -111,14 +106,6 @@ export const ScanQRCodeModalContent = ({ onScan, onClose }: Props) => {
 					</div>
 				)}
 			</div> */}
-
-			{/* Close Button */}
-			<button
-				onClick={onClose}
-				className="mt-4 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded"
-			>
-				Close
-			</button>
 		</div>
 	);
 };
