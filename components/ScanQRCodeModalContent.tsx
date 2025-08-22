@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import dynamic from "next/dynamic";
 import { type IDetectedBarcode } from "@yudiel/react-qr-scanner";
+import { ensureError } from "@/lib/errors";
 
 // Dynamically import Scanner to avoid SSR errors
 const Scanner = dynamic(
@@ -41,10 +42,11 @@ export const ScanQRCodeModalContent = ({ onScan, onClose }: Props) => {
 			const all = await navigator.mediaDevices.enumerateDevices();
 			const cams = all.filter((d) => d.kind === "videoinput");
 			setSelectedDeviceId(cams[0]?.deviceId);
-		} catch (e: any) {
+		} catch (error: unknown) {
+			const err = ensureError(error);
 			// Names you might see: NotAllowedError, NotFoundError, NotReadableError, OverconstrainedError
-			console.error("Camera permission failed:", e);
-			alert(`Camera permission failed: ${e?.name ?? e}`);
+			console.error("Camera permission failed:", err);
+			alert(`Camera permission failed: ${err?.name ?? err}`);
 		}
 	}, []);
 
