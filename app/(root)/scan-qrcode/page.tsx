@@ -69,7 +69,6 @@ function ScanQRPageContent() {
 			const err = ensureError(error);
 			// Names you might see: NotAllowedError, NotFoundError, NotReadableError, OverconstrainedError
 			console.error("Camera permission failed:", err);
-			alert(`Camera permission failed: ${err?.name ?? err}`);
 		}
 	}, []);
 
