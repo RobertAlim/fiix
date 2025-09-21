@@ -11,6 +11,8 @@ const SignatureCanvasWrapper = forwardRef<
 	return <SignatureCanvas ref={ref} {...props} />;
 });
 
+SignatureCanvasWrapper.displayName = "SignatureCanvasWrapper";
+
 // Dynamically import SignatureCanvas with ssr: false
 const DynamicSignatureCanvas = dynamic(
 	() => Promise.resolve(SignatureCanvasWrapper),
