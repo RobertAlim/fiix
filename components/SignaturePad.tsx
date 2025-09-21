@@ -15,7 +15,7 @@ SignatureCanvasWrapper.displayName = "SignatureCanvasWrapper";
 
 // Dynamically import SignatureCanvas with ssr: false
 const DynamicSignatureCanvas = dynamic(
-	() => Promise.resolve(SignatureCanvasWrapper),
+	() => import("./SignatureCanvasWrapper"), // assuming this file is named SignatureCanvasWrapper.tsx
 	{ ssr: false }
 );
 
