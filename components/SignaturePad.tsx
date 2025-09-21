@@ -1,12 +1,19 @@
 // components/SignaturePad.tsx
-import React, { useRef, useState } from "react";
+import React, { useRef, useState, forwardRef } from "react";
 import { Button } from "@/components/ui/button";
 import dynamic from "next/dynamic";
 import SignatureCanvas, { SignatureCanvasProps } from "react-signature-canvas";
 
+const SignatureCanvasWrapper = forwardRef<
+	SignatureCanvas,
+	SignatureCanvasProps
+>((props, ref) => {
+	return <SignatureCanvas ref={ref} {...props} />;
+});
+
 // Dynamically import SignatureCanvas with ssr: false
-const DynamicSignatureCanvas = dynamic<SignatureCanvasProps>(
-	() => import("react-signature-canvas"),
+const DynamicSignatureCanvas = dynamic(
+	() => Promise.resolve(SignatureCanvasWrapper),
 	{ ssr: false }
 );
 
@@ -39,7 +46,7 @@ export default function SignaturePad({
 	return (
 		<div className="p-4 border rounded-xl w-full max-w-md bg-white">
 			<p className="mb-2 font-medium">Sign below:</p>
-			<SignatureCanvas
+			<DynamicSignatureCanvas
 				penColor="black"
 				canvasProps={{
 					width: 400,
