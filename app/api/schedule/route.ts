@@ -79,6 +79,7 @@ export async function POST(req: NextRequest) {
 				})
 				.onConflictDoNothing({
 					target: [
+						schedules.technicianId,
 						schedules.clientId,
 						schedules.locationId,
 						schedules.scheduledAt,
