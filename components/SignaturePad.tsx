@@ -1,14 +1,21 @@
 // components/SignaturePad.tsx
 import React, { useRef, useState } from "react";
-import SignatureCanvas from "react-signature-canvas";
 import { Button } from "@/components/ui/button";
+import dynamic from "next/dynamic";
+import SignatureCanvas, { SignatureCanvasProps } from "react-signature-canvas";
+
+// Dynamically import SignatureCanvas with ssr: false
+const DynamicSignatureCanvas = dynamic<SignatureCanvasProps>(
+	() => import("react-signature-canvas"),
+	{ ssr: false }
+);
 
 export default function SignaturePad({
 	onSave,
 }: {
 	onSave: (signature: string) => void;
 }) {
-	const sigCanvasRef = useRef<SignatureCanvas>(null);
+	const sigCanvasRef = useRef<SignatureCanvas | null>(null);
 	const [isEmpty, setIsEmpty] = useState(true);
 
 	const handleClear = () => {
