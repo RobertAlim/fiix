@@ -50,7 +50,7 @@
 		"react-dom": "^19.0.0",
 		"react-hook-form": "^7.62.0",
 		"react-select": "^5.10.1",
-		"react-signature-canvas": "^1.1.0-alpha.2",
+		"react-signature-canvas": "^1.0.7",
 		"sonner": "^2.0.3",
 		"svix": "^1.65.0",
 		"tailwind-merge": "^3.3.0",
