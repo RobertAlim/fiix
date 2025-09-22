@@ -1,5 +1,5 @@
 // components/SignaturePad.tsx
-import React, { useRef, useState, useEffect } from "react";
+import React, { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import SignatureCanvas from "react-signature-canvas";
 import ClientOnly from "./ClientOnly"; // Import the new wrapper
