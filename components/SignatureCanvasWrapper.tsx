@@ -1,9 +1,11 @@
 // components/SignatureCanvasWrapper.tsx
 import React, { forwardRef } from "react";
-import SignatureCanvas, { SignatureCanvasProps } from "react-signature-canvas";
+import SignatureCanvas, {
+	ReactSignatureCanvasProps,
+} from "react-signature-canvas";
 
 // Define props for the wrapper to satisfy TypeScript and linting rules
-type SignatureWrapperProps = SignatureCanvasProps;
+type SignatureWrapperProps = ReactSignatureCanvasProps;
 
 const SignatureCanvasWrapper = forwardRef<
 	SignatureCanvas,
