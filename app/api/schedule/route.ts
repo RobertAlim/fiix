@@ -12,6 +12,7 @@ import {
 } from "@/db/schema"; // Adjust this path to your Drizzle schema
 import { format } from "date-fns";
 import { ensureError } from "@/lib/errors";
+import { convertToPhilippineTimezone } from "@/lib/dateConverter";
 
 // Define the expected structure of the incoming request body
 interface ScheduleMaintenancePayload {
@@ -64,7 +65,7 @@ export async function POST(req: NextRequest) {
 
 		if (actions === "Add Schedule") {
 			// --- 2. Insert the main maintenance schedule record ---
-			const dateToSave = format(new Date(scheduleDate), "MM/dd/yyyy");
+			const dateToSave = convertToPhilippineTimezone(scheduleDate);
 			const [newSchedule] = await db
 				.insert(schedules)
 				.values({
