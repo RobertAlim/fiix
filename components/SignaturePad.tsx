@@ -14,12 +14,6 @@ interface SignaturePadProps {
 export default function SignaturePad({ onSave }: SignaturePadProps) {
 	const sigCanvasRef = useRef<SignatureCanvas | null>(null);
 	const [isEmpty, setIsEmpty] = useState(true);
-	const [isClient, setIsClient] = useState(false);
-
-	// This useEffect will only run on the client side after the component has mounted
-	useEffect(() => {
-		setIsClient(true);
-	}, []);
 
 	const handleClear = (): void => {
 		sigCanvasRef.current?.clear();
