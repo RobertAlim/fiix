@@ -1,29 +1,17 @@
 // components/SignaturePad.tsx
-import React, { useRef, useState, useEffect, forwardRef } from "react";
+import React, { useRef, useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import dynamic from "next/dynamic";
-import SignatureCanvas, { SignatureCanvasProps } from "react-signature-canvas";
-
-const SignatureCanvasWrapper = forwardRef<
-	SignatureCanvas,
-	SignatureCanvasProps
->((props, ref) => {
-	return <SignatureCanvas ref={ref} {...props} />;
-});
+import SignatureCanvas from "react-signature-canvas";
+import ClientOnly from "./ClientOnly"; // Import the new wrapper
+import SignatureCanvasWrapper from "./SignatureCanvasWrapper";
 
 SignatureCanvasWrapper.displayName = "SignatureCanvasWrapper";
 
-// Dynamically import SignatureCanvas with ssr: false
-const DynamicSignatureCanvas = dynamic(
-	() => import("./SignatureCanvasWrapper"), // assuming this file is named SignatureCanvasWrapper.tsx
-	{ ssr: false }
-);
+interface SignaturePadProps {
+	onSave: (dataUrl: string) => void;
+}
 
-export default function SignaturePad({
-	onSave,
-}: {
-	onSave: (signature: string) => void;
-}) {
+export default function SignaturePad({ onSave }: SignaturePadProps) {
 	const sigCanvasRef = useRef<SignatureCanvas | null>(null);
 	const [isEmpty, setIsEmpty] = useState(true);
 	const [isClient, setIsClient] = useState(false);
@@ -33,12 +21,12 @@ export default function SignaturePad({
 		setIsClient(true);
 	}, []);
 
-	const handleClear = () => {
+	const handleClear = (): void => {
 		sigCanvasRef.current?.clear();
 		setIsEmpty(true);
 	};
 
-	const handleSave = () => {
+	const handleSave = (): void => {
 		if (sigCanvasRef.current?.isEmpty()) {
 			alert("Please provide a signature before saving.");
 			return;
@@ -55,8 +43,8 @@ export default function SignaturePad({
 		<div className="p-4 border rounded-xl w-full max-w-md bg-white">
 			<p className="mb-2 font-medium">Sign below:</p>
 
-			{isClient && (
-				<DynamicSignatureCanvas
+			<ClientOnly>
+				<SignatureCanvasWrapper
 					penColor="black"
 					canvasProps={{
 						width: 400,
@@ -68,7 +56,7 @@ export default function SignaturePad({
 					ref={sigCanvasRef}
 					onEnd={() => setIsEmpty(false)}
 				/>
-			)}
+			</ClientOnly>
 
 			<div className="mt-4 flex justify-between">
 				<Button variant={"destructive"} onClick={handleClear}>

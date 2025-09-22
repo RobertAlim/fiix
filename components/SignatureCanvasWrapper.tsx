@@ -1,17 +1,18 @@
-// SignatureCanvasWrapper.tsx
+// components/SignatureCanvasWrapper.tsx
 import React, { forwardRef } from "react";
 import SignatureCanvas, { SignatureCanvasProps } from "react-signature-canvas";
 
-// The forwardRef component that wraps react-signature-canvas.
-// This handles passing the ref correctly to the underlying component.
+// Define props for the wrapper to satisfy TypeScript and linting rules
+type SignatureWrapperProps = SignatureCanvasProps;
+
 const SignatureCanvasWrapper = forwardRef<
 	SignatureCanvas,
-	SignatureCanvasProps
+	SignatureWrapperProps
 >((props, ref) => {
 	return <SignatureCanvas ref={ref} {...props} />;
 });
 
-// A displayName is added for better debugging in tools like React DevTools.
+// A displayName is required for components wrapped in forwardRef for debugging
 SignatureCanvasWrapper.displayName = "SignatureCanvasWrapper";
 
 export default SignatureCanvasWrapper;
