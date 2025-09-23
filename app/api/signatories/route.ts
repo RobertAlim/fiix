@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db"; // Adjust this path to your Drizzle client setup
 import { signatories } from "@/db/schema"; // Adjust this path to your Drizzle schema
 import { ensureError } from "@/lib/errors";
+import { toProperCase } from "@/lib/stringUtils";
 
 export async function POST(req: NextRequest) {
 	try {
@@ -13,8 +14,8 @@ export async function POST(req: NextRequest) {
 		await db
 			.insert(signatories)
 			.values({
-				firstName: firstName,
-				lastName: lastName,
+				firstName: toProperCase(firstName),
+				lastName: toProperCase(lastName),
 				clientId: Number(clientId),
 			})
 			.onConflictDoNothing({
