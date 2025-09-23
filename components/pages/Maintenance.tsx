@@ -169,11 +169,7 @@ export default function MaintenancePage({
 		},
 	});
 
-	const {
-		data: clients,
-		isLoading,
-		isError,
-	} = useQuery<Client[]>({
+	const { data: clients } = useQuery<Client[]>({
 		queryKey: ["clients"],
 		queryFn: () => fetchData<Client[]>(`/api/clients`),
 	});
@@ -997,12 +993,14 @@ export default function MaintenancePage({
 									</div>
 									<div className="space-y-1">
 										<Label>Checked By</Label>
-										<div className="flex flex-wrap flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-											<Controller
-												name="signatoryId"
-												control={control}
-												render={({ field }) => (
-													<>
+										<div className="flex items-center gap-2">
+											<div className="flex-grow">
+												{" "}
+												{/* Added a new div for the ComboBox to grow */}
+												<Controller
+													name="signatoryId"
+													control={control}
+													render={({ field }) => (
 														<ComboBoxResponsive
 															data={signatory}
 															placeholder="Signatory"
@@ -1016,20 +1014,21 @@ export default function MaintenancePage({
 															}}
 															emptyMessage="No signatories found"
 														/>
-													</>
-												)}
-											/>
+													)}
+												/>
+											</div>
 											<Button
 												type="button"
 												variant={"secondary"}
 												onClick={() => {
 													setSignatoryOpen(true);
 												}}
-												className="ml-1 p-1 rounded-full"
+												className="p-1 rounded-full"
 											>
 												<PlusIcon className="w-5 h-5" />
 											</Button>
 										</div>
+										{/* Error messages */}
 										{errors.signatoryId && (
 											<p className="text-sm text-red-500">
 												{errors.signatoryId.message}
@@ -1211,8 +1210,12 @@ export default function MaintenancePage({
 						</div>
 					</div>
 					<DialogFooter>
-						<Button type="submit" onClick={handleSignatory}>
-							Save
+						<Button
+							type="submit"
+							onClick={handleSignatory}
+							disabled={isAddingSignatory}
+						>
+							{isAddingSignatory ? "Saving..." : "Save"}
 						</Button>
 					</DialogFooter>
 				</DialogContent>
