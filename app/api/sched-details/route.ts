@@ -7,7 +7,7 @@ import { eq } from "drizzle-orm";
 export async function POST(req: Request) {
 	try {
 		const body = await req.json();
-		const { schedDetailsId } = body;
+		const { schedDetailsId, mtId } = body;
 
 		if (!schedDetailsId) {
 			return new Response("Missing schedDetailsId", { status: 400 });
@@ -18,6 +18,7 @@ export async function POST(req: Request) {
 		await db
 			.update(scheduleDetails)
 			.set({
+				originMTId: mtId,
 				isMaintained: true,
 				maintainedDate: new Date(), // ← uncomment this if needed
 			})

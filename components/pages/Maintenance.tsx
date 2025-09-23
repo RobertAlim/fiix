@@ -233,7 +233,7 @@ export default function MaintenancePage({
 		// schedDetailsId
 		const schedRes = await fetch("/api/sched-details", {
 			method: "POST",
-			body: JSON.stringify({ schedDetailsId }),
+			body: JSON.stringify({ schedDetailsId, mtId }),
 		});
 
 		if (!schedRes.ok) {
