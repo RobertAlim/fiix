@@ -224,11 +224,11 @@ export default function MaintenancePage({
 			data.originMTId = originMTId;
 		}
 
-		// const res = await fetch("/api/maintain", {
-		// 	method: "POST",
-		// 	body: JSON.stringify(data),
-		// });
-		// const { id: mtId } = await res.json();
+		const res = await fetch("/api/maintain", {
+			method: "POST",
+			body: JSON.stringify(data),
+		});
+		const { id: mtId } = await res.json();
 
 		// schedDetailsId
 		const schedRes = await fetch("/api/sched-details", {
@@ -1047,8 +1047,9 @@ export default function MaintenancePage({
 											variant="default"
 											type="submit"
 											onClick={handleCustomSubmit}
+											disabled={isSaving}
 										>
-											Save Maintenance
+											{isSaving ? "Saving Maintenance..." : "Save Maintenance"}
 										</Button>
 										{/* <button
 										type="submit"

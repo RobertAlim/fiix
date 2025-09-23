@@ -247,7 +247,7 @@ export default function ReportPage() {
 		refetchOnWindowFocus: false, //if you don't want to refetch on tab focus
 		staleTime: 1000 * 60 * 5, // Data considered fresh for 5 minutes
 	});
-
+	console.log("Fetched maintenance data:", data);
 	const [globalFilter, setGlobalFilter] = React.useState("");
 	const [sorting, setSorting] = React.useState<SortingState>([]);
 	const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>(
