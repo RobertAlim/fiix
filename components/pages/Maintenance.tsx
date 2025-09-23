@@ -6,17 +6,20 @@ import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { ComboBoxResponsive } from "@/components/ui/combobox";
+import { ComboBoxResponsive, ComboboxItem } from "@/components/ui/combobox";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { fetchData } from "@/lib/fetchData";
 import {
 	Dialog,
 	DialogContent,
 	DialogHeader,
+	DialogFooter,
 	DialogTitle,
 } from "@/components/ui/dialog";
 import { QrCode } from "lucide-react";
 import Select from "react-select";
-import { useEffect, useState } from "react";
-import { Replace, Wrench, Signature, Loader2 } from "lucide-react";
+import { useEffect, useState, useMemo } from "react";
+import { Replace, Wrench, Signature, Loader2, PlusIcon } from "lucide-react";
 
 import SignaturePad from "@/components/SignaturePad";
 import { useUserStore } from "@/state/userStore";
@@ -40,11 +43,10 @@ type item = {
 	value: string;
 };
 
-// Dynamically import Scanner to avoid SSR errors
-// const Scanner = dynamic(
-// 	() => import("@yudiel/react-qr-scanner").then((mod) => mod.Scanner),
-// 	{ ssr: false }
-// );
+interface Client {
+	id: string;
+	name: string;
+}
 
 export default function MaintenancePage({
 	parts,
@@ -59,6 +61,7 @@ export default function MaintenancePage({
 	originMTId: number;
 	schedDetailsId: number;
 }) {
+	const queryClient = useQueryClient();
 	const [selectedStatusId, setSelectedStatusId] = useState<string | null>(null);
 	const [showRepair, setShowRepair] = useState(false);
 	const [showReplacement, setShowReplacement] = useState(false);
@@ -66,6 +69,10 @@ export default function MaintenancePage({
 	const [showReplace, setShowReplace] = useState(false);
 	const [isQRModalOpen, setQRModalOpen] = useState(false);
 	const [eSignOpen, setESignOpen] = useState(false);
+	const [selectedClient, setSelectedClient] = useState<string | null>(null);
+	const [signatoryOpen, setSignatoryOpen] = useState(false);
+	const [lastName, setLastName] = useState("");
+	const [firstName, setFirstName] = useState("");
 	const [scanned, setScanned] = useState("");
 	const [callingAction, setCallingAction] = useState("");
 	const [signature, setSignature] = useState<string | null>(null);
@@ -75,6 +82,55 @@ export default function MaintenancePage({
 	const [today, setToday] = useState("");
 	const [isSaving, setIsSaving] = useState(false);
 	const router = useRouter();
+
+	const { mutate: addSignatoryMutation, isPending: isAddingSignatory } =
+		useMutation({
+			mutationFn: async (data: {
+				clientId: string;
+				firstName: string;
+				lastName: string;
+			}) => {
+				const response = await fetch(`/api/signatories`, {
+					method: "POST",
+					headers: {
+						"Content-Type": "application/json",
+					},
+					body: JSON.stringify(data),
+				});
+
+				if (!response.ok) {
+					const errorData = await response.json();
+					showAppToast({
+						message:
+							"Failed to add signatory. Please try again later or contact support: " +
+							errorData.message,
+						description: "Signatory addition failed",
+						position: "top-right",
+						color: "error", // This will influence the default icon color and potential border
+					});
+				}
+				return response.json();
+			},
+			onSuccess: () => {
+				showAppToast({
+					message: "New signatory has been successfully added.",
+					description: "Successful addition",
+					position: "top-right",
+					color: "success", // This will influence the default icon color and potential border
+				});
+
+				queryClient.invalidateQueries({
+					queryKey: ["signatories"],
+				});
+				setSelectedClient("");
+				setLastName("");
+				setFirstName("");
+				setSignatoryOpen(false);
+			},
+			onError: (error) => {
+				console.error("Mutation failed:", error);
+			},
+		});
 
 	const {
 		register,
@@ -112,6 +168,22 @@ export default function MaintenancePage({
 			signPath: "",
 		},
 	});
+
+	const {
+		data: clients,
+		isLoading,
+		isError,
+	} = useQuery<Client[]>({
+		queryKey: ["clients"],
+		queryFn: () => fetchData<Client[]>(`/api/clients`),
+	});
+
+	const clientsComboboxData: ComboboxItem[] = useMemo(() => {
+		return (clients ?? []).map((tech) => ({
+			value: tech.id,
+			label: tech.name,
+		}));
+	}, [clients]); // Only recompute if allTechnicians array reference changes
 
 	const refillInk = useWatch({ control, name: "colorSelected" }) ?? false;
 	const reset = useWatch({ control, name: "resetSelected" }) ?? false;
@@ -301,6 +373,26 @@ export default function MaintenancePage({
 				});
 			}
 		}
+	};
+
+	const handleSignatory = () => {
+		// Basic validation to ensure all fields are filled
+		if (!selectedClient || !lastName || !firstName) {
+			alert("Please fill out all fields.");
+			return;
+		}
+
+		addSignatoryMutation({
+			clientId: selectedClient,
+			firstName,
+			lastName,
+		});
+
+		// Reset state and close the dialog
+		setSelectedClient("");
+		setLastName("");
+		setFirstName("");
+		setSignatoryOpen(false);
 	};
 
 	return (
@@ -927,6 +1019,16 @@ export default function MaintenancePage({
 													</>
 												)}
 											/>
+											<Button
+												type="button"
+												variant={"secondary"}
+												onClick={() => {
+													setSignatoryOpen(true);
+												}}
+												className="ml-1 p-1 rounded-full"
+											>
+												<PlusIcon className="w-5 h-5" />
+											</Button>
 										</div>
 										{errors.signatoryId && (
 											<p className="text-sm text-red-500">
@@ -1057,6 +1159,62 @@ export default function MaintenancePage({
 							<p>Loading Signature Pad...</p>
 						)}
 					</div>
+				</DialogContent>
+			</Dialog>
+			<Dialog open={signatoryOpen} onOpenChange={setSignatoryOpen}>
+				<DialogContent className="max-w-2xl max-h-[90vh] overflow-auto">
+					<DialogHeader>
+						<DialogTitle>
+							<div className="flex items-center justify-between p-4 bg-gray-100 border-b mt-2">
+								<h1 className="text-xl font-semibold">Add Signatories</h1>
+								<PlusIcon className="w-8 h-8 text-green-400" />
+							</div>
+						</DialogTitle>
+					</DialogHeader>
+					<div className="grid gap-4 py-4">
+						{/* ComboBox for Client Selection */}
+						<div className="space-y-2">
+							<Label htmlFor="client">Client:</Label>
+							<ComboBoxResponsive
+								data={clientsComboboxData}
+								placeholder="Client"
+								selectedValue={selectedClient}
+								onValueChange={setSelectedClient}
+								emptyMessage="No client found."
+							/>
+						</div>
+
+						{/* Last Name Input */}
+						<div className="space-y-2">
+							<Label htmlFor="lastName" className="text-right">
+								Last Name:
+							</Label>
+							<Input
+								id="lastName"
+								value={lastName}
+								onChange={(e) => setLastName(e.target.value)}
+								className="col-span-3"
+							/>
+						</div>
+
+						{/* First Name Input */}
+						<div className="space-y-2">
+							<Label htmlFor="firstName" className="text-right">
+								First Name:
+							</Label>
+							<Input
+								id="firstName"
+								value={firstName}
+								onChange={(e) => setFirstName(e.target.value)}
+								className="col-span-3"
+							/>
+						</div>
+					</div>
+					<DialogFooter>
+						<Button type="submit" onClick={handleSignatory}>
+							Save
+						</Button>
+					</DialogFooter>
 				</DialogContent>
 			</Dialog>
 			<Dialog open={isSaving}>
