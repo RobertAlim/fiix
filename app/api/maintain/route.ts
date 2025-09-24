@@ -35,7 +35,7 @@ export async function GET(req: Request) {
 			.innerJoin(printers, eq(printers.id, maintain.printerId))
 			.where(
 				and(
-					sql`DATE(${maintain.createdAt}) = '2025-09-24'`,
+					sql`DATE(${maintain.createdAt}) = ${today}`,
 					eq(printers.serialNo, serialNo)
 				)
 			);
