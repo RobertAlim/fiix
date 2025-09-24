@@ -66,6 +66,7 @@ export async function GET(request: NextRequest) {
 				cleanWasteTank: maintain.cleanWasteTank,
 				replaceUnit: maintain.replaceUnit,
 				replaceSerialNo: maintain.replaceSerialNo,
+				notes: maintain.notes,
 				status: status.name,
 				technician: sql<string>`${users.firstName} || ' ' || ${users.lastName}`,
 				signatory: sql<string>`${signatories.firstName} || ' ' || ${signatories.lastName}`,
@@ -170,6 +171,7 @@ export async function GET(request: NextRequest) {
 			repairParts: repairParts.map((r) => r.partName),
 			replaceUnit: !mt.replaceUnit,
 			replaceSerialNo: mt.replaceSerialNo || "", // Optional, can be empty if not provided
+			notes: mt.notes || "",
 			status: mt.status,
 			technician: mt.technician,
 			signatory: mt.signatory,

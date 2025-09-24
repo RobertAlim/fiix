@@ -291,6 +291,7 @@ export default function MaintenancePage({
 		const formatted = format(new Date(), "yyyy-MM-dd"); // "YYYY-MM-DD"
 		setToday(formatted);
 		setValue("serialNo", serialNo);
+		console.log("This is the serialNo passed:", serialNo);
 		onHandleScan(serialNo);
 	}, [setToday, setValue, serialNo]);
 

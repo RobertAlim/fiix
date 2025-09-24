@@ -12,7 +12,7 @@ import {
 	departments,
 	signatories,
 } from "@/db/schema";
-import { eq, sql } from "drizzle-orm";
+import { eq, sql, and } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { maintainFormSchema } from "@/validation/maintainSchema";
 
@@ -25,14 +25,20 @@ export async function GET(req: Request) {
 	}
 
 	const today = new Date().toISOString().split("T")[0]; // e.g., '2025-07-21'
-	const checkDupSerialNo = await db
-		.select({
-			serialNo: printers.serialNo,
-			printerId: maintain.printerId,
-		})
-		.from(maintain)
-		.innerJoin(printers, eq(printers.serialNo, serialNo))
-		.where(sql`DATE(${maintain.createdAt}) = ${today}`);
+	const checkDupSerialNo = // Drizzle ORM query
+		await db
+			.select({
+				serialNo: printers.serialNo,
+				printerId: maintain.printerId,
+			})
+			.from(maintain)
+			.innerJoin(printers, eq(printers.id, maintain.printerId))
+			.where(
+				and(
+					sql`DATE(${maintain.createdAt}) = '2025-09-24'`,
+					eq(printers.serialNo, serialNo)
+				)
+			);
 
 	if (checkDupSerialNo.length > 0) {
 		return NextResponse.json({ error: "Duplicate" }, { status: 404 });

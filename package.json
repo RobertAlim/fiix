@@ -13,6 +13,7 @@
 	},
 	"dependencies": {
 		"@aws-sdk/client-s3": "^3.832.0",
+		"@aws-sdk/s3-request-presigner": "^3.895.0",
 		"@clerk/nextjs": "^6.19.2",
 		"@cloudflare/workers-types": "^4.20250701.0",
 		"@hookform/resolvers": "^5.2.1",

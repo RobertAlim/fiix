@@ -115,6 +115,7 @@ export interface MaintenanceReportProps {
 	repairParts: string[];
 	replaceUnit: boolean;
 	replaceSerialNo?: string; // Optional if not always provided
+	notes?: string;
 	status: string;
 	// notes?: string;
 	technician: string;
@@ -337,6 +338,14 @@ export const MaintainReport: React.FC<{ data: MaintenanceReportProps }> = ({
 									>
 										{data.replaceSerialNo}
 									</Text>
+								</>
+							)}
+						</View>
+						<View style={styles.checkboxGroup}>
+							{data.notes && (
+								<>
+									<Text>Notes:</Text>
+									<Text style={[styles.badge]}>{data.notes}</Text>
 								</>
 							)}
 						</View>
