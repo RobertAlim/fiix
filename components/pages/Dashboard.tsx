@@ -5,6 +5,7 @@ import React from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { useUserStore } from "@/state/userStore";
 import { SchedulesDataTable } from "@/components/TechnicianSchedules";
+import { CameraCapture } from "../CameraCapture";
 
 // Define the props interface for DashboardRealPage
 interface DashboardRealPageProps {
@@ -40,6 +41,9 @@ export default function DashboardPage({ onCardClick }: DashboardRealPageProps) {
 			<Card className="rounded-2xl bg-white dark:bg-black">
 				<CardContent className="p-6 space-y-4">
 					<div className="grid grid-cols-1 gap-4">
+						{/* <div>
+							<CameraCapture />
+						</div> */}
 						{users.role === "Technician" && (
 							<div>
 								<div>

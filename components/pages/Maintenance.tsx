@@ -219,6 +219,7 @@ export default function MaintenancePage({
 
 		data.signPath = imageUrl;
 		data.userId = users.id; // Ensure userId is set correctly
+		data.printerId = getValues("printerId");
 
 		if (originMTId > 0) {
 			data.originMTId = originMTId;
@@ -291,7 +292,6 @@ export default function MaintenancePage({
 		const formatted = format(new Date(), "yyyy-MM-dd"); // "YYYY-MM-DD"
 		setToday(formatted);
 		setValue("serialNo", serialNo);
-		console.log("This is the serialNo passed:", serialNo);
 		onHandleScan(serialNo);
 	}, [setToday, setValue, serialNo]);
 
@@ -358,6 +358,7 @@ export default function MaintenancePage({
 				});
 				setValue("serialNo", maintenanceData.serialNo);
 				setValue("replaceSerialNo", maintenanceData.replaceSerialNo || "");
+				setValue("printerId", maintenanceData.id);
 				// Do something with `data` (e.g. update Zustand, UI, etc.)
 
 				setSignatory(signatories);
@@ -1018,6 +1019,7 @@ export default function MaintenancePage({
 													)}
 												/>
 											</div>
+
 											<Button
 												type="button"
 												variant={"secondary"}
