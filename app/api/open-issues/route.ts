@@ -9,7 +9,7 @@ import {
 	locations,
 	departments,
 } from "@/db/schema";
-import { eq, sql, desc, inArray } from "drizzle-orm";
+import { eq, sql, desc } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
 export async function GET() {
