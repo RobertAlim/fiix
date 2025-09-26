@@ -5,7 +5,7 @@ import React from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { useUserStore } from "@/state/userStore";
 import { SchedulesDataTable } from "@/components/TechnicianSchedules";
-import { CameraCapture } from "../CameraCapture";
+// import { CameraCapture } from "../CameraCapture";
 
 // Define the props interface for DashboardRealPage
 interface DashboardRealPageProps {
