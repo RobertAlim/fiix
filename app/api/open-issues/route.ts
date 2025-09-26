@@ -30,15 +30,15 @@ export async function GET() {
 			createdAt: maintain.createdAt, // Crucial: must be selected and ordered for distinctOn to work correctly
 			// notes: maintain.notes, // Uncomment if you have a 'notes' column in maintain table
 		})
-		.from(maintain)
-		.innerJoin(printers, eq(printers.id, maintain.printerId))
+		.from(printers)
 		.innerJoin(models, eq(printers.modelId, models.id))
 		.innerJoin(clients, eq(printers.clientId, clients.id))
 		.innerJoin(locations, eq(printers.locationId, locations.id))
 		.innerJoin(departments, eq(printers.departmentId, departments.id))
+		.leftJoin(maintain, eq(printers.id, maintain.printerId))
 		.innerJoin(status, eq(status.id, maintain.statusId))
 		.innerJoin(users, eq(users.id, maintain.userId))
-		.where(inArray(status.name, ["Replacement (Parts)", "Replacement (Unit)"]))
+		// .where(inArray(status.name, ["Replacement (Parts)", "Replacement (Unit)"]))
 		.orderBy(
 			printers.serialNo, // First, order by the column you want to be distinct (groups)
 			desc(maintain.createdAt) // Then, for each group, order by createdAt descending (latest first)

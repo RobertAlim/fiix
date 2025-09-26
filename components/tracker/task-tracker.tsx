@@ -24,7 +24,7 @@ import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import type { ScheduleTrackerRow, ScheduleDetailRow } from "@/types/tracker";
-import { formatDateManila } from "@/lib/formatDate";
+import { formatDateManila, formatTimeToAmPm } from "@/lib/formatDate";
 import { Loader2 } from "lucide-react";
 
 async function fetchJSON<T>(url: string): Promise<T> {
@@ -251,7 +251,7 @@ export default function TaskTracker() {
 											<TableCell>{d.isMaintained ? "Yes" : "No"}</TableCell>
 											<TableCell>{d.mtId ?? "—"}</TableCell>
 											<TableCell>
-												{formatDateManila(d.maintainedDate)}
+												{formatTimeToAmPm(d.maintainedDate!)}
 											</TableCell>
 										</TableRow>
 									);

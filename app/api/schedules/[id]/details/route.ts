@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db";
-import { eq } from "drizzle-orm";
+import { eq, desc } from "drizzle-orm";
 import { scheduleDetails as sd, printers, maintain } from "@/db/schema";
 import type { ScheduleDetailRow } from "@/types/tracker";
 
@@ -30,7 +30,7 @@ export async function GET(
 		.innerJoin(printers, eq(printers.id, sd.printerId))
 		.leftJoin(maintain, eq(maintain.id, sd.originMTId))
 		.where(eq(sd.scheduleId, scheduleId))
-		.orderBy(printers.serialNo);
+		.orderBy(desc(maintain.createdAt));
 
 	const data: ScheduleDetailRow[] = rows.map((r) => ({
 		id: r.id,
