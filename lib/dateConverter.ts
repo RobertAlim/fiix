@@ -10,7 +10,7 @@ import { formatInTimeZone } from "date-fns-tz";
  */
 export const convertToPhilippineTimezone = (
 	date: Date | string,
-	formatString: string = "MM/dd/yyyy"
+	formatString: string = "MM/dd/yyyy hh:mm a"
 ): string => {
 	// Specify the timezone for the Philippines (Asia/Manila)
 	const philippineTimezone = "Asia/Manila";

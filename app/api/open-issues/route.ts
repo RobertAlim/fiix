@@ -9,7 +9,7 @@ import {
 	locations,
 	departments,
 } from "@/db/schema";
-import { eq, sql, desc } from "drizzle-orm";
+import { eq, sql, desc, inArray } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
 export async function GET() {
@@ -38,7 +38,13 @@ export async function GET() {
 		.leftJoin(maintain, eq(printers.id, maintain.printerId))
 		.innerJoin(status, eq(status.id, maintain.statusId))
 		.innerJoin(users, eq(users.id, maintain.userId))
-		// .where(inArray(status.name, ["Replacement (Parts)", "Replacement (Unit)"]))
+		.where(
+			inArray(status.name, [
+				"Replacement (Parts)",
+				"Replacement (Unit)",
+				"Pulled Out",
+			])
+		)
 		.orderBy(
 			printers.serialNo, // First, order by the column you want to be distinct (groups)
 			desc(maintain.createdAt) // Then, for each group, order by createdAt descending (latest first)

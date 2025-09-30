@@ -26,6 +26,7 @@ import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
 // import { Readable } from "stream"; // Import Node.js Readable stream
 import { renderToStream } from "@react-pdf/renderer";
 import { Readable } from "node:stream"; // Node stream type + converter
+import { formatUtc } from "@/lib/formatDate";
 
 export const runtime = "nodejs"; // react-pdf needs Node (pdfkit internals)
 export const dynamic = "force-dynamic"; // optional: disable static optimization
@@ -149,7 +150,7 @@ export async function GET(request: NextRequest) {
 			department: mt.department,
 			model: mt.model,
 			serialNo: mt.serialNo,
-			date: mt.date, // e.g., "2025-06-30"
+			date: formatUtc(mt.date.toString()), // e.g., "2025-06-30"
 			workDone: [
 				mt.headClean && "Head Clean",
 				mt.inkFlush && "Ink Flushing",

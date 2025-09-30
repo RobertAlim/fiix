@@ -19,7 +19,14 @@ import {
 import { QrCode } from "lucide-react";
 import Select from "react-select";
 import { useEffect, useState, useMemo } from "react";
-import { Replace, Wrench, Signature, Loader2, PlusIcon } from "lucide-react";
+import {
+	Replace,
+	Wrench,
+	Signature,
+	Loader2,
+	PlusIcon,
+	CheckIcon,
+} from "lucide-react";
 
 import SignaturePad from "@/components/SignaturePad";
 import { useUserStore } from "@/state/userStore";
@@ -37,6 +44,7 @@ import {
 } from "@/validation/maintainSchema";
 import { useRouter } from "next/navigation"; // if not alread
 import Image from "next/image";
+import { CameraCapture } from "../CameraCapture";
 
 type item = {
 	label: string;
@@ -69,6 +77,7 @@ export default function MaintenancePage({
 	const [showReplace, setShowReplace] = useState(false);
 	const [isQRModalOpen, setQRModalOpen] = useState(false);
 	const [eSignOpen, setESignOpen] = useState(false);
+	const [nozzleCheckOpen, setNozzleCheckOpen] = useState(false);
 	const [selectedClient, setSelectedClient] = useState<string | null>(null);
 	const [signatoryOpen, setSignatoryOpen] = useState(false);
 	const [lastName, setLastName] = useState("");
@@ -188,8 +197,8 @@ export default function MaintenancePage({
 		setIsSaving(true); // ⛔ block UI
 		if (!signature) {
 			showAppToast({
-				message: "Signature is required",
-				description: "Missing signature",
+				message: "Signature and Nozzle Check is required",
+				description: "Missing signature or nozzle check image",
 				duration: 5000,
 				position: "bottom-right",
 				color: "warning", // This will influence the default icon color and potential border
@@ -197,27 +206,88 @@ export default function MaintenancePage({
 			return;
 		}
 
-		// Get file extension from original name
-		const uuidFileName = `${uuidv4()}.png`;
+		// START saving the signature
+		const uuidFileNameSign = `${uuidv4()}.png`;
+		const contentType = "application/octet-stream"; // image/jpeg
 
-		const file = base64ToFile(signature, uuidFileName);
+		// 1. Request the presigned URL from the API route (server call)
+		const getUrlResponseSign = await fetch("/api/get-upload-url", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ key: uuidFileNameSign, contentType }),
+		});
+
+		if (!getUrlResponseSign.ok) {
+			throw new Error("Failed to get upload URL.");
+		}
+
+		const signFile = base64ToFile(signature, uuidFileNameSign);
 
 		const formData = new FormData();
-		formData.append("file", file);
+		formData.append("file", signFile);
 
-		const imageRes = await fetch("/api/signupload", {
-			method: "POST",
+		const { url } = await getUrlResponseSign.json();
+		console.log("URL SIGN: ", url);
+		// 2. Upload the image directly to Cloudflare R2
+		const uploadResponseSign = await fetch(url, {
+			method: "PUT",
+			headers: { "Content-Type": contentType },
 			body: formData,
 		});
 
-		if (!imageRes.ok) {
-			console.error("Image upload failed");
-			return;
+		if (!uploadResponseSign.ok) {
+			throw new Error(
+				`Failed to upload image to R2: ${uploadResponseSign.status}`
+			);
 		}
+		// END saving the signature
+		// const uuidFileName = `${uuidv4()}.png`;
 
-		const { imageUrl } = await imageRes.json();
+		// const signFile = base64ToFile(signature, uuidFileName);
 
-		data.signPath = imageUrl;
+		// const formData = new FormData();
+		// formData.append("file", signFile);
+
+		// const imageRes = await fetch("/api/signupload", {
+		// 	method: "POST",
+		// 	body: formData,
+		// });
+
+		// if (!imageRes.ok) {
+		// 	console.error("Image upload failed");
+		// 	return;
+		// }
+
+		// const { imageUrl } = await imageRes.json();
+
+		// Start saving the nozzle check photo
+		// const nozzleFileName = `${uuidv4()}.png`;
+
+		// // 1. Request the presigned URL from the API route (server call)
+		// const getUrlResponse = await fetch("/api/get-upload-url", {
+		// 	method: "POST",
+		// 	headers: { "Content-Type": "application/json" },
+		// 	body: JSON.stringify({ key: nozzleFileName, contentType }),
+		// });
+
+		// if (!getUrlResponse.ok) {
+		// 	throw new Error("Failed to get upload URL.");
+		// }
+
+		// const { url } = await getUrlResponse.json();
+
+		// // 2. Upload the image directly to Cloudflare R2
+		// const uploadResponse = await fetch(url, {
+		// 	method: "PUT",
+		// 	headers: { "Content-Type": contentType },
+		// 	body: capturedBlob,
+		// });
+
+		// if (!uploadResponse.ok) {
+		// 	throw new Error(`Failed to upload image to R2: ${uploadResponse.status}`);
+		// }
+
+		data.signPath = uuidFileNameSign;
 		data.userId = users.id; // Ensure userId is set correctly
 		data.printerId = getValues("printerId");
 
@@ -391,6 +461,70 @@ export default function MaintenancePage({
 		setLastName("");
 		setFirstName("");
 		setSignatoryOpen(false);
+	};
+
+	const [capturedBlob, setCapturedBlob] = useState<Blob | null>(null);
+	const [uploadStatus, setUploadStatus] = useState<string | null>(null);
+	const [isLoading, setIsLoading] = useState(false);
+
+	// The upload logic from the old CameraCapture component
+	const uploadPhoto = async (blob: Blob) => {
+		setIsLoading(true);
+		setUploadStatus("Starting upload process...");
+
+		try {
+			const fileName = `photos/${Date.now()}.jpg`;
+			const contentType = "image/jpeg";
+
+			// 1. Request the presigned URL from the API route (server call)
+			const getUrlResponse = await fetch("/api/get-upload-url", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ key: fileName, contentType }),
+			});
+
+			if (!getUrlResponse.ok) {
+				throw new Error("Failed to get upload URL.");
+			}
+
+			const { url } = await getUrlResponse.json();
+
+			// 2. Upload the image directly to Cloudflare R2
+			const uploadResponse = await fetch(url, {
+				method: "PUT",
+				headers: { "Content-Type": contentType },
+				body: blob,
+			});
+
+			if (!uploadResponse.ok) {
+				throw new Error(
+					`Failed to upload image to R2: ${uploadResponse.status}`
+				);
+			}
+
+			setUploadStatus("Upload successful! File saved to R2.");
+			// Keep the Blob for a moment to show success, but you could clear it here.
+		} catch (error) {
+			console.error("Upload error:", error);
+			setUploadStatus(
+				`Upload failed: ${
+					error instanceof Error ? error.message : "An unknown error occurred."
+				}`
+			);
+		} finally {
+			setIsLoading(false);
+		}
+	};
+
+	const handleCapture = (blob: Blob) => {
+		setCapturedBlob(blob);
+		// Automatically start the upload once the photo is captured
+		// uploadPhoto(blob);
+	};
+
+	const handleRetake = () => {
+		setCapturedBlob(null);
+		setUploadStatus(null);
 	};
 
 	return (
@@ -1045,28 +1179,23 @@ export default function MaintenancePage({
 									</div>
 								</div>
 								<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-									<div className="space-y-1 order-2 md:order-1" id="SaveButton">
+									<div className="space-y-1 order-2 md:order-1">
 										<Button
-											variant="default"
-											type="submit"
-											onClick={handleCustomSubmit}
-											disabled={isSaving}
+											type="button"
+											variant={"secondary"}
+											onClick={() => {
+												setNozzleCheckOpen(true);
+											}}
+											className="ml-1 p-1 rounded-full"
 										>
-											{isSaving ? "Saving Maintenance..." : "Save Maintenance"}
+											<CheckIcon className="w-5 h-5" />
 										</Button>
-										{/* <button
-										type="submit"
-										onClick={handleCustomSubmit}
-										className="bg-blue-500 text-white px-4 py-2 rounded"
-									>
-										Submit
-									</button> */}
 									</div>
 									<div
 										className="space-y-1 order-1 md:order-2"
 										id="SignaturePad"
 									>
-										<div className="flex items-center space-x-2">
+										<div className="flex items-start space-x-2">
 											<Button
 												type="button"
 												variant={"secondary"}
@@ -1100,6 +1229,18 @@ export default function MaintenancePage({
 												)}
 											/>
 										</div>
+									</div>
+								</div>
+								<div className="grid grid-cols-1 md:gridcols-2 gap-4">
+									<div className="space-y-1 order-2 md:order-1" id="SaveButton">
+										<Button
+											variant="default"
+											type="submit"
+											onClick={handleCustomSubmit}
+											disabled={isSaving}
+										>
+											{isSaving ? "Saving Maintenance..." : "Save Maintenance"}
+										</Button>
 									</div>
 								</div>
 							</CardContent>
@@ -1161,6 +1302,26 @@ export default function MaintenancePage({
 						) : (
 							<p>Loading Signature Pad...</p>
 						)}
+					</div>
+				</DialogContent>
+			</Dialog>
+			<Dialog open={nozzleCheckOpen} onOpenChange={setNozzleCheckOpen}>
+				<DialogContent className="max-w-2xl max-h-[90vh] overflow-auto">
+					<DialogHeader>
+						<DialogTitle>
+							<div className="flex items-center justify-between p-4 bg-gray-100 border-b mt-2">
+								<h1 className="text-xl font-semibold">Upload Nozzle Check</h1>
+								<CheckIcon className="w-8 h-8 text-green-400" />
+							</div>
+						</DialogTitle>
+					</DialogHeader>
+					<div>
+						<CameraCapture
+							onCapture={handleCapture}
+							capturedBlob={capturedBlob}
+							isProcessing={isLoading}
+							onClose={() => setNozzleCheckOpen(false)}
+						/>
 					</div>
 				</DialogContent>
 			</Dialog>

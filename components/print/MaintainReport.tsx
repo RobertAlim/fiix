@@ -106,7 +106,7 @@ export interface MaintenanceReportProps {
 	department: string;
 	model: string;
 	serialNo: string;
-	date: number | Date;
+	date: string;
 	workDone: string[];
 	refillInk: string[];
 	resetBox: string[];
@@ -129,6 +129,7 @@ export const MaintainReport: React.FC<{ data: MaintenanceReportProps }> = ({
 	<Document>
 		<Page size="LETTER" style={styles.page}>
 			<Image
+				id="logo"
 				style={styles.logo}
 				src={logoBuffer} // Adjust the path to your logo image
 			/>
@@ -162,7 +163,7 @@ export const MaintainReport: React.FC<{ data: MaintenanceReportProps }> = ({
 					</View>
 					<View style={styles.column}>
 						<Text style={styles.label}>Date / Time:</Text>
-						<Text>{formatDateTime(new Date(data.date))}</Text>
+						<Text>{data.date}</Text>
 					</View>
 				</View>
 			</View>
@@ -368,7 +369,11 @@ export const MaintainReport: React.FC<{ data: MaintenanceReportProps }> = ({
 						</View>
 
 						<View style={{ flex: 1 }}>
-							<Image src={data.signPath} style={{ width: "100%" }} />
+							<Image
+								id="signLogo"
+								src={data.signPath}
+								style={{ width: "100%" }}
+							/>
 						</View>
 					</View>
 				</View>
