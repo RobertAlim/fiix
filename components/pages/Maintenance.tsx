@@ -45,6 +45,7 @@ import {
 import { useRouter } from "next/navigation"; // if not alread
 import Image from "next/image";
 import { CameraCapture } from "../CameraCapture";
+import { ensureError } from "@/lib/errors";
 
 type item = {
 	label: string;
@@ -73,7 +74,6 @@ export default function MaintenancePage({
 	const [selectedStatusId, setSelectedStatusId] = useState<string | null>(null);
 	const [showRepair, setShowRepair] = useState(false);
 	const [showReplacement, setShowReplacement] = useState(false);
-	// const [selectedStatus, setSelectedStatus] = useState<item | null>(null);
 	const [showReplace, setShowReplace] = useState(false);
 	const [isQRModalOpen, setQRModalOpen] = useState(false);
 	const [eSignOpen, setESignOpen] = useState(false);
@@ -90,6 +90,8 @@ export default function MaintenancePage({
 	const { users } = useUserStore();
 	const [today, setToday] = useState("");
 	const [isSaving, setIsSaving] = useState(false);
+	const [capturedBlob, setCapturedBlob] = useState<Blob | null>(null);
+	const [objectURL, setObjectURL] = useState<string | null>(null);
 	const router = useRouter();
 
 	const { mutate: addSignatoryMutation, isPending: isAddingSignatory } =
@@ -175,6 +177,7 @@ export default function MaintenancePage({
 			userId: 32,
 			signatoryId: 0,
 			signPath: "",
+			nozzlePath: "",
 		},
 	});
 
@@ -195,7 +198,7 @@ export default function MaintenancePage({
 
 	const onSubmit = async (data: MaintainFormData) => {
 		setIsSaving(true); // ⛔ block UI
-		if (!signature) {
+		if (!signature || !objectURL) {
 			showAppToast({
 				message: "Signature and Nozzle Check is required",
 				description: "Missing signature or nozzle check image",
@@ -206,88 +209,82 @@ export default function MaintenancePage({
 			return;
 		}
 
-		// START saving the signature
-		const uuidFileNameSign = `${uuidv4()}.png`;
-		const contentType = "application/octet-stream"; // image/jpeg
+		const uuidSignFileName = `${uuidv4()}.png`;
+		const contentType = "image/png";
 
-		// 1. Request the presigned URL from the API route (server call)
-		const getUrlResponseSign = await fetch("/api/get-upload-url", {
+		const getUrlRespSign = await fetch("/api/get-upload-url", {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({ key: uuidFileNameSign, contentType }),
+			body: JSON.stringify({
+				key: uuidSignFileName,
+				contentType: contentType,
+				bucketName: "fiixdrive",
+			}),
 		});
 
-		if (!getUrlResponseSign.ok) {
+		if (!getUrlRespSign.ok) {
 			throw new Error("Failed to get upload URL.");
 		}
 
-		const signFile = base64ToFile(signature, uuidFileNameSign);
+		const signBlob = base64ToFile(signature, uuidSignFileName);
+		let { url } = await getUrlRespSign.json();
 
-		const formData = new FormData();
-		formData.append("file", signFile);
-
-		const { url } = await getUrlResponseSign.json();
-		console.log("URL SIGN: ", url);
-		// 2. Upload the image directly to Cloudflare R2
 		const uploadResponseSign = await fetch(url, {
 			method: "PUT",
 			headers: { "Content-Type": contentType },
-			body: formData,
+			body: signBlob,
 		});
 
 		if (!uploadResponseSign.ok) {
+			// Provides better debug info on failure
+			const errorText = await uploadResponseSign.text();
 			throw new Error(
-				`Failed to upload image to R2: ${uploadResponseSign.status}`
+				`Failed to upload image to R2: ${uploadResponseSign.status}. Details: ${errorText}`
 			);
 		}
 		// END saving the signature
-		// const uuidFileName = `${uuidv4()}.png`;
 
-		// const signFile = base64ToFile(signature, uuidFileName);
+		// START saving the nozzle check photo
+		const uuidNozzleFileName = `${uuidv4()}.png`;
 
-		// const formData = new FormData();
-		// formData.append("file", signFile);
+		try {
+			const getUrlRespNozzle = await fetch("/api/get-upload-url", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					key: uuidNozzleFileName,
+					contentType: contentType,
+					bucketName: "fiixnozzle",
+				}),
+			});
 
-		// const imageRes = await fetch("/api/signupload", {
-		// 	method: "POST",
-		// 	body: formData,
-		// });
+			if (!getUrlRespNozzle.ok) {
+				throw new Error("Failed to get upload URL.");
+			}
 
-		// if (!imageRes.ok) {
-		// 	console.error("Image upload failed");
-		// 	return;
-		// }
+			const { url } = await getUrlRespNozzle.json();
 
-		// const { imageUrl } = await imageRes.json();
+			// 2. Upload the image directly to Cloudflare R2
+			const uploadRespNozzle = await fetch(url, {
+				method: "PUT",
+				headers: { "Content-Type": contentType },
+				body: capturedBlob,
+			});
 
-		// Start saving the nozzle check photo
-		// const nozzleFileName = `${uuidv4()}.png`;
+			if (!uploadRespNozzle.ok) {
+				const errorText = await uploadRespNozzle.text();
+				throw new Error(
+					`Failed to upload image to R2: ${uploadRespNozzle.status}. Details: ${errorText}`
+				);
+			}
+		} catch (error) {
+			const err = ensureError(error);
+			console.error("Upload error:", err);
+		}
+		// END saving the nozzle check photo
 
-		// // 1. Request the presigned URL from the API route (server call)
-		// const getUrlResponse = await fetch("/api/get-upload-url", {
-		// 	method: "POST",
-		// 	headers: { "Content-Type": "application/json" },
-		// 	body: JSON.stringify({ key: nozzleFileName, contentType }),
-		// });
-
-		// if (!getUrlResponse.ok) {
-		// 	throw new Error("Failed to get upload URL.");
-		// }
-
-		// const { url } = await getUrlResponse.json();
-
-		// // 2. Upload the image directly to Cloudflare R2
-		// const uploadResponse = await fetch(url, {
-		// 	method: "PUT",
-		// 	headers: { "Content-Type": contentType },
-		// 	body: capturedBlob,
-		// });
-
-		// if (!uploadResponse.ok) {
-		// 	throw new Error(`Failed to upload image to R2: ${uploadResponse.status}`);
-		// }
-
-		data.signPath = uuidFileNameSign;
+		data.nozzlePath = uuidNozzleFileName;
+		data.signPath = uuidSignFileName;
 		data.userId = users.id; // Ensure userId is set correctly
 		data.printerId = getValues("printerId");
 
@@ -346,7 +343,6 @@ export default function MaintenancePage({
 		// If client is valid, trigger normal validation and submission
 		await handleSubmit(onSubmit, (errors) => {
 			console.log("❌ FORM ERRORS", errors);
-			console.log("setScanned Data: ", scanned);
 		})(/* no event object needed here */);
 	};
 
@@ -376,6 +372,16 @@ export default function MaintenancePage({
 			setValue("replaceUnit", false);
 		}
 	}, [selectedStatusId, setValue]);
+
+	// Add cleanup in a useEffect hook for unmount safety
+	useEffect(() => {
+		return () => {
+			if (objectURL) {
+				URL.revokeObjectURL(objectURL);
+			}
+			setValue("nozzlePath", objectURL || "");
+		};
+	}, [objectURL, setValue]);
 
 	const onHandleScan = async (scannedSerialNo: string) => {
 		if (callingAction === "Replacement") {
@@ -463,68 +469,18 @@ export default function MaintenancePage({
 		setSignatoryOpen(false);
 	};
 
-	const [capturedBlob, setCapturedBlob] = useState<Blob | null>(null);
-	const [uploadStatus, setUploadStatus] = useState<string | null>(null);
-	const [isLoading, setIsLoading] = useState(false);
-
-	// The upload logic from the old CameraCapture component
-	const uploadPhoto = async (blob: Blob) => {
-		setIsLoading(true);
-		setUploadStatus("Starting upload process...");
-
-		try {
-			const fileName = `photos/${Date.now()}.jpg`;
-			const contentType = "image/jpeg";
-
-			// 1. Request the presigned URL from the API route (server call)
-			const getUrlResponse = await fetch("/api/get-upload-url", {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ key: fileName, contentType }),
-			});
-
-			if (!getUrlResponse.ok) {
-				throw new Error("Failed to get upload URL.");
-			}
-
-			const { url } = await getUrlResponse.json();
-
-			// 2. Upload the image directly to Cloudflare R2
-			const uploadResponse = await fetch(url, {
-				method: "PUT",
-				headers: { "Content-Type": contentType },
-				body: blob,
-			});
-
-			if (!uploadResponse.ok) {
-				throw new Error(
-					`Failed to upload image to R2: ${uploadResponse.status}`
-				);
-			}
-
-			setUploadStatus("Upload successful! File saved to R2.");
-			// Keep the Blob for a moment to show success, but you could clear it here.
-		} catch (error) {
-			console.error("Upload error:", error);
-			setUploadStatus(
-				`Upload failed: ${
-					error instanceof Error ? error.message : "An unknown error occurred."
-				}`
-			);
-		} finally {
-			setIsLoading(false);
-		}
-	};
-
 	const handleCapture = (blob: Blob) => {
 		setCapturedBlob(blob);
-		// Automatically start the upload once the photo is captured
-		// uploadPhoto(blob);
+
+		// Create the temporary URL immediately after capture
+		const url = URL.createObjectURL(blob);
+		setObjectURL(url);
 	};
 
+	// This is the function passed to onRetake
 	const handleRetake = () => {
-		setCapturedBlob(null);
-		setUploadStatus(null);
+		setCapturedBlob(null); // Resets the state, triggering CameraCapture to restart the stream
+		setObjectURL(null);
 	};
 
 	return (
@@ -1179,17 +1135,44 @@ export default function MaintenancePage({
 									</div>
 								</div>
 								<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-									<div className="space-y-1 order-2 md:order-1">
-										<Button
-											type="button"
-											variant={"secondary"}
-											onClick={() => {
-												setNozzleCheckOpen(true);
-											}}
-											className="ml-1 p-1 rounded-full"
-										>
-											<CheckIcon className="w-5 h-5" />
-										</Button>
+									<div
+										className="space-y-1 order-2 md:order-1"
+										id="NozzleCheck"
+									>
+										<div className="flex items-start space-x-2">
+											<Button
+												type="button"
+												variant={"secondary"}
+												onClick={() => {
+													setNozzleCheckOpen(true);
+												}}
+												className="ml-1 p-1 rounded-full"
+											>
+												<CheckIcon className="w-5 h-5" />
+											</Button>
+											{capturedBlob && objectURL && (
+												<div className="flex flex-col items-start">
+													<Image
+														src={objectURL}
+														alt="Nozzle Check"
+														className="border rounded-md max-w-xs"
+														height={120}
+														width={250}
+													/>
+												</div>
+											)}
+											<Controller
+												name="nozzlePath"
+												control={control}
+												render={({ field }) => (
+													<input
+														type="hidden"
+														value={objectURL || ""}
+														onChange={field.onChange}
+													/>
+												)}
+											/>
+										</div>
 									</div>
 									<div
 										className="space-y-1 order-1 md:order-2"
@@ -1318,8 +1301,8 @@ export default function MaintenancePage({
 					<div>
 						<CameraCapture
 							onCapture={handleCapture}
+							onRetake={handleRetake}
 							capturedBlob={capturedBlob}
-							isProcessing={isLoading}
 							onClose={() => setNozzleCheckOpen(false)}
 						/>
 					</div>

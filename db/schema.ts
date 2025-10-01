@@ -90,6 +90,7 @@ export const maintain = pgTable("maintain", {
 	userId: integer("userId").notNull(),
 	signatoryId: integer("signatoryId").notNull(),
 	signPath: text("signPath").notNull(),
+	nozzlePath: text("nozzlePath"),
 	createdAt: timestamp("createdAt")
 		.notNull()
 		.default(sql`CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Manila'`),

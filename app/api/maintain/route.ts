@@ -123,6 +123,7 @@ export async function POST(req: Request) {
 				userId: data.userId,
 				signatoryId: data.signatoryId,
 				signPath: data.signPath,
+				nozzlePath: data.nozzlePath,
 				originMTId: data.originMTId,
 			})
 			.returning({ id: maintain.id });

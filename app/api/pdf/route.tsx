@@ -23,6 +23,7 @@ import {
 } from "@/db/schema";
 import { eq, sql } from "drizzle-orm";
 import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 // import { Readable } from "stream"; // Import Node.js Readable stream
 import { renderToStream } from "@react-pdf/renderer";
 import { Readable } from "node:stream"; // Node stream type + converter
@@ -39,15 +40,6 @@ const r2 = new S3Client({
 		secretAccessKey: process.env.secretAccessKey ?? "",
 	},
 });
-
-async function streamToBuffer(stream: Readable): Promise<Buffer> {
-	return new Promise((resolve, reject) => {
-		const chunks: Buffer[] = [];
-		stream.on("data", (chunk: Buffer) => chunks.push(chunk));
-		stream.on("error", reject);
-		stream.on("end", () => resolve(Buffer.concat(chunks)));
-	});
-}
 
 export async function GET(request: NextRequest) {
 	try {
@@ -72,6 +64,7 @@ export async function GET(request: NextRequest) {
 				technician: sql<string>`${users.firstName} || ' ' || ${users.lastName}`,
 				signatory: sql<string>`${signatories.firstName} || ' ' || ${signatories.lastName}`,
 				signPath: maintain.signPath,
+				nozzlePath: maintain.nozzlePath,
 			})
 			.from(maintain)
 			.innerJoin(printers, eq(printers.id, maintain.printerId))
@@ -102,25 +95,32 @@ export async function GET(request: NextRequest) {
 					Key: mt.signPath,
 				});
 
-				const response = await r2.send(command);
-
-				// Check if response.Body is a Node.js Readable stream
-				if (response.Body instanceof Readable) {
-					const imageBuffer = await streamToBuffer(response.Body);
-					const base64Image = imageBuffer.toString("base64");
-					const contentType = response.ContentType || "image/png"; // Default to png if content type not provided
-					const signatureImageUrl = `data:${contentType};base64,${base64Image}`;
-					mt.signPath = signatureImageUrl; // Update mt.signPath with the base64 image string
-				} else {
-					console.warn(
-						`Signature image "${mt.signPath}" not found or not a readable stream from R2.`
-					);
-				}
+				const signUrl = await getSignedUrl(r2, command, { expiresIn: 60 });
+				mt.signPath = signUrl;
 			} catch (error) {
 				console.error(
 					`Error fetching signature image "${mt.signPath}":`,
 					error
 				);
+			}
+		}
+
+		// To get the nozzle check image in cloudflare R2 storage
+		if (mt.nozzlePath) {
+			try {
+				const command = new GetObjectCommand({
+					Bucket: "fiixnozzle",
+					Key: mt.nozzlePath,
+				});
+
+				const nozzleUrl = await getSignedUrl(r2, command, { expiresIn: 60 });
+				mt.nozzlePath = nozzleUrl;
+			} catch (error) {
+				console.error(
+					`Error generating signed URL for nozzle "${mt.nozzlePath}":`,
+					error
+				);
+				mt.nozzlePath = "";
 			}
 		}
 
@@ -177,6 +177,7 @@ export async function GET(request: NextRequest) {
 			technician: mt.technician,
 			signatory: mt.signatory,
 			signPath: mt.signPath, // this is base64 image string
+			nozzlePath: mt.nozzlePath || "", // this is base64 image string
 		};
 
 		const nodeStream = await renderToStream(<MaintainReport data={data} />);

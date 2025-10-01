@@ -15,11 +15,6 @@ import {
 // Load image from disk as a Buffer
 const logoPath = path.join(process.cwd(), "public/assets/FRUITBEAN.png");
 const logoBuffer = fs.readFileSync(logoPath);
-
-// const signPath = path.join(process.cwd(), "public/assets/MyOriginalSign.png");
-// const signBuffer = fs.readFileSync(signPath);
-// const formattedDate = formatDateTime(now);
-
 const styles = StyleSheet.create({
 	page: {
 		paddingTop: 5,
@@ -117,10 +112,10 @@ export interface MaintenanceReportProps {
 	replaceSerialNo?: string; // Optional if not always provided
 	notes?: string;
 	status: string;
-	// notes?: string;
 	technician: string;
 	signatory: string;
 	signPath: string; // Adjust if it's a base64 string or Buffer
+	nozzlePath: string;
 }
 
 export const MaintainReport: React.FC<{ data: MaintenanceReportProps }> = ({
@@ -369,34 +364,45 @@ export const MaintainReport: React.FC<{ data: MaintenanceReportProps }> = ({
 						</View>
 
 						<View style={{ flex: 1 }}>
-							<Image
-								id="signLogo"
-								src={data.signPath}
-								style={{ width: "100%" }}
-							/>
+							{data.signPath ? (
+								<Image
+									id="signLogo"
+									src={data.signPath}
+									style={{ width: "100%" }}
+								/>
+							) : (
+								<Text>No Signature Available.</Text>
+							)}
 						</View>
+					</View>
+				</View>
+			</View>
+			<View style={{ marginTop: 10 }}>
+				<View style={{ flexDirection: "row", justifyContent: "flex-start" }}>
+					<View
+						style={{
+							flex: 1,
+							height: 300, // Explicit fixed height in PDF points (e.g., 300 points)
+						}}
+					>
+						{data.nozzlePath ? (
+							<Image
+								id="nozzleCheck"
+								src={data.nozzlePath}
+								style={{
+									width: "100%",
+									height: "100%",
+									objectFit: "contain", // Safely scales the image within the container
+								}}
+							/>
+						) : (
+							<Text style={{ textAlign: "center", marginTop: 140 }}>
+								No Nozzle Check Image Available.
+							</Text>
+						)}
 					</View>
 				</View>
 			</View>
 		</Page>
 	</Document>
 );
-
-function formatDateTime(date: Date): string {
-	const pad = (n: number) => n.toString().padStart(2, "0");
-
-	const month = pad(date.getMonth() + 1); // Months are 0-based
-	const day = pad(date.getDate());
-	const year = date.getFullYear();
-
-	let hours = date.getHours();
-	const minutes = pad(date.getMinutes());
-	const seconds = pad(date.getSeconds());
-
-	const ampm = hours >= 12 ? "PM" : "AM";
-	hours = hours % 12;
-	hours = hours ? hours : 12; // the hour '0' should be '12'
-	const formattedHours = pad(hours);
-
-	return `${month}/${day}/${year} ${formattedHours}:${minutes}:${seconds} ${ampm}`;
-}
