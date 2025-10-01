@@ -38,7 +38,7 @@ export function CameraCapture({
 			try {
 				// Request camera access only if we aren't displaying a captured photo
 				mediaStream = await navigator.mediaDevices.getUserMedia({
-					video: true,
+					video: { facingMode: { ideal: "environment" } },
 				});
 				setStream(mediaStream);
 
