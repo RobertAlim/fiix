@@ -227,7 +227,7 @@ export default function MaintenancePage({
 		}
 
 		const signBlob = base64ToFile(signature, uuidSignFileName);
-		let { url } = await getUrlRespSign.json();
+		const { url } = await getUrlRespSign.json();
 
 		const uploadResponseSign = await fetch(url, {
 			method: "PUT",

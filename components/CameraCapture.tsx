@@ -1,7 +1,7 @@
 // components/CameraCapture.tsx
 "use client";
 
-import React, { useRef, useState, useEffect, useCallback } from "react";
+import React, { useRef, useState, useEffect } from "react";
 
 // Define the shape of the component's props
 interface CameraCaptureProps {
