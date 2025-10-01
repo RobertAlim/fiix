@@ -1,0 +1,1 @@
+ALTER TABLE "maintain" ADD COLUMN "nozzlePath" text;
