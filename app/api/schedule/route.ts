@@ -268,6 +268,7 @@ export async function GET(req: Request) {
 								columns: {
 									id: true,
 									notes: true,
+									signPath: true,
 								},
 							},
 						},

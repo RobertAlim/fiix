@@ -15,6 +15,8 @@ import {
 import { eq, sql, and } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { maintainFormSchema } from "@/validation/maintainSchema";
+import { z } from "zod"; // Assuming Zod for validation
+import { NextRequest } from "next/server"; // Use NextRequest for easier URL/Body parsing
 
 export async function GET(req: Request) {
 	const { searchParams } = new URL(req.url);
@@ -171,5 +173,69 @@ export async function POST(req: Request) {
 	} catch (err) {
 		console.error("Error saving maintenance record:", err);
 		return new Response("Internal Server Error", { status: 500 });
+	}
+}
+
+// --- 1. TypeScript/Zod Schema for PATCH Request ---
+// Define a schema for the minimum data required for the update
+// We'll assume the ID of the record to update is also sent in the body.
+const updateSignPathSchema = z.object({
+	id: z.number().int().positive(), // The ID of the maintenance record to update
+	signPath: z.string().min(1, "Sign path cannot be empty"),
+});
+
+type UpdateSignPathBody = z.infer<typeof updateSignPathSchema>;
+
+// --------------------------------------------------------------------------------
+
+/**
+ * Handles PATCH requests to update a specific maintenance record's signPath.
+ * A PATCH request is semantically correct for partial updates.
+ */
+export async function PATCH(req: NextRequest) {
+	try {
+		// 2. Parse the request body
+		const body: unknown = await req.json();
+
+		// 3. Validate the request body
+		const parsed = updateSignPathSchema.safeParse(body);
+		if (!parsed.success) {
+			// 400 Bad Request if validation fails
+			return new Response(JSON.stringify(parsed.error.format()), {
+				status: 400,
+			});
+		}
+
+		const { id, signPath } = parsed.data as UpdateSignPathBody;
+
+		// 4. Execute the database update
+		const [updatedRecord] = await db
+			.update(maintain)
+			.set({
+				// Only set the column you want to update
+				signPath: signPath,
+				// You might also want to update an 'updatedAt' column here
+				// updatedAt: new Date(),
+			})
+			.where(eq(maintain.id, parsed.data.id)) // IMPORTANT: Target the specific record by ID
+			.returning({ id: maintain.id }); // Return the ID of the updated record
+
+		// 5. Check if a record was actually updated
+		if (!updatedRecord) {
+			// 404 Not Found if the ID didn't match any record
+			return new Response("Maintenance record not found.", { status: 404 });
+		}
+
+		// 6. Return a successful response (200 OK)
+		return Response.json({
+			message: "Sign path updated successfully.",
+			id: updatedRecord.id,
+		});
+	} catch (err) {
+		console.error("Error updating sign path:", err);
+		// 500 Internal Server Error for unexpected database or server errors
+		return new Response("Internal Server Error during sign path update", {
+			status: 500,
+		});
 	}
 }

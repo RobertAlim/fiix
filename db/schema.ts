@@ -89,7 +89,7 @@ export const maintain = pgTable("maintain", {
 	notes: text("notes"),
 	userId: integer("userId").notNull(),
 	signatoryId: integer("signatoryId").notNull(),
-	signPath: text("signPath").notNull(),
+	signPath: text("signPath"),
 	nozzlePath: text("nozzlePath"),
 	createdAt: timestamp("createdAt")
 		.notNull()

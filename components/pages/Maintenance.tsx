@@ -46,6 +46,7 @@ import { useRouter } from "next/navigation"; // if not alread
 import Image from "next/image";
 import { CameraCapture } from "../CameraCapture";
 import { ensureError } from "@/lib/errors";
+import { base64ToFile } from "@/lib/fileConverter";
 
 type item = {
 	label: string;
@@ -198,14 +199,15 @@ export default function MaintenancePage({
 
 	const onSubmit = async (data: MaintainFormData) => {
 		setIsSaving(true); // ⛔ block UI
-		if (!signature || !objectURL) {
+		if (!objectURL) {
 			showAppToast({
-				message: "Signature and Nozzle Check is required",
-				description: "Missing signature or nozzle check image",
+				message: "Nozzle Check is required",
+				description: "Missing nozzle check image",
 				duration: 5000,
 				position: "bottom-right",
 				color: "warning", // This will influence the default icon color and potential border
 			});
+			setIsSaving(false);
 			return;
 		}
 
@@ -226,21 +228,24 @@ export default function MaintenancePage({
 			throw new Error("Failed to get upload URL.");
 		}
 
-		const signBlob = base64ToFile(signature, uuidSignFileName);
-		const { url } = await getUrlRespSign.json();
+		if (signature) {
+			// If there is a signature, proceed to upload in cloudflare R2
+			const signBlob = base64ToFile(signature!, uuidSignFileName);
+			const { url } = await getUrlRespSign.json();
 
-		const uploadResponseSign = await fetch(url, {
-			method: "PUT",
-			headers: { "Content-Type": contentType },
-			body: signBlob,
-		});
+			const uploadResponseSign = await fetch(url, {
+				method: "PUT",
+				headers: { "Content-Type": contentType },
+				body: signBlob,
+			});
 
-		if (!uploadResponseSign.ok) {
-			// Provides better debug info on failure
-			const errorText = await uploadResponseSign.text();
-			throw new Error(
-				`Failed to upload image to R2: ${uploadResponseSign.status}. Details: ${errorText}`
-			);
+			if (!uploadResponseSign.ok) {
+				// Provides better debug info on failure
+				const errorText = await uploadResponseSign.text();
+				throw new Error(
+					`Failed to upload image to R2: ${uploadResponseSign.status}. Details: ${errorText}`
+				);
+			}
 		}
 		// END saving the signature
 
@@ -284,7 +289,7 @@ export default function MaintenancePage({
 		// END saving the nozzle check photo
 
 		data.nozzlePath = uuidNozzleFileName;
-		data.signPath = uuidSignFileName;
+		data.signPath = signature ? uuidSignFileName : "Unsigned";
 		data.userId = users.id; // Ensure userId is set correctly
 		data.printerId = getValues("printerId");
 
@@ -1299,12 +1304,16 @@ export default function MaintenancePage({
 						</DialogTitle>
 					</DialogHeader>
 					<div>
-						<CameraCapture
-							onCapture={handleCapture}
-							onRetake={handleRetake}
-							capturedBlob={capturedBlob}
-							onClose={() => setNozzleCheckOpen(false)}
-						/>
+						{typeof window !== "undefined" ? (
+							<CameraCapture
+								onCapture={handleCapture}
+								onRetake={handleRetake}
+								capturedBlob={capturedBlob}
+								onClose={() => setNozzleCheckOpen(false)}
+							/>
+						) : (
+							<p>Loading camera capture...</p>
+						)}
 					</div>
 				</DialogContent>
 			</Dialog>
@@ -1381,19 +1390,4 @@ export default function MaintenancePage({
 			</Dialog>
 		</div>
 	);
-}
-
-function base64ToFile(base64: string, filename: string): File {
-	const arr = base64.split(",");
-	const mimeMatch = arr[0].match(/:(.*?);/);
-	const mime = mimeMatch ? mimeMatch[1] : "";
-	const bstr = atob(arr[1]);
-	let n = bstr.length;
-	const u8arr = new Uint8Array(n);
-
-	while (n--) {
-		u8arr[n] = bstr.charCodeAt(n);
-	}
-
-	return new File([u8arr], filename, { type: mime });
 }

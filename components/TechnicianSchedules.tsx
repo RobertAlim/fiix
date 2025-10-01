@@ -17,7 +17,7 @@ import {
 	TableHeader,
 	TableRow,
 } from "@/components/ui/table";
-import { ChevronDown, ChevronRight, ThumbsUp } from "lucide-react";
+import { ChevronDown, ChevronRight, ThumbsUp, Signature } from "lucide-react";
 import {
 	Collapsible,
 	CollapsibleContent,
@@ -51,6 +51,8 @@ interface SchedulesDataTableProps {
 		serialNo: string;
 		originMTId: number;
 		schedDetailsId: number;
+		maintainSignPath: string | null | undefined;
+		mtId: number | undefined; // Added mtId to the onCardClick args
 	}) => void;
 }
 
@@ -131,6 +133,14 @@ export function SchedulesDataTable({
 			accessorKey: "notes",
 			header: "Notes",
 			cell: ({ row }) => row.getValue("notes"),
+			meta: {
+				className: "hidden lg:table-cell",
+			},
+		},
+		{
+			accessorKey: "signPath",
+			header: "Signature",
+			cell: ({ row }) => row.getValue("signPath"),
 			meta: {
 				className: "hidden lg:table-cell",
 			},
@@ -246,24 +256,32 @@ export function SchedulesDataTable({
 																		<Card
 																			key={detail.id}
 																			className={`relative shadow-md ${
-																				!detail.isMaintained // Kung maintained, normal interactive styles
+																				!detail.isMaintained ||
+																				(detail.maintainRecord &&
+																					detail.maintainRecord.signPath ===
+																						"Unsigned") // Kung maintained, normal interactive styles
 																					? "cursor-pointer transition-colors duration-200 hover:bg-blue-100 dark:hover:bg-blue-900/50"
 																					: "cursor-not-allowed opacity-70" // Kung disabled, palitan ang cursor, lower opacity, at gawing grayscale
 																			}`}
 																			onClick={
-																				!detail.isMaintained
+																				!detail.isMaintained ||
+																				(detail.maintainRecord &&
+																					detail.maintainRecord.signPath ===
+																						"Unsigned") // Only allow click if not maintained and signPath is not "Unsigned"
 																					? () =>
 																							onCardClick({
 																								serialNo:
 																									detail.printer?.serialNo,
 																								originMTId: detail.originMTId,
 																								schedDetailsId: detail.id,
+																								maintainSignPath:
+																									detail.maintainRecord
+																										?.signPath,
+																								mtId: detail.maintainRecord?.id, // Pass the maintain record ID
 																							})
 																					: undefined // Kung false ang isMaintained, gawing undefined ang onClick para hindi clickable
 																			}
 																		>
-																			{/* ThumbsUp icon positioned absolutely */}
-
 																			<CardHeader>
 																				<CardTitle className="flex justify-between items-center text-base">
 																					<span>
@@ -318,11 +336,30 @@ export function SchedulesDataTable({
 																						<span>Detail ID: {detail.id}</span>
 																						<div>
 																							{detail.isMaintained && ( // Only show if maintained
-																								<div className="flex text-green-500 gap-2 items-center">
-																									<ThumbsUp className="h-5 w-5" />
-																									{format(
-																										detail.maintainedDate,
-																										"MM/dd h:mm aa"
+																								<div
+																									className={`flex ${
+																										detail.maintainRecord
+																											.signPath === "Unsigned"
+																											? "text-red-500"
+																											: "text-green-500"
+																									} gap-2 items-center`}
+																								>
+																									{detail.maintainRecord
+																										.signPath === "Unsigned" ? (
+																										// --- TRUE (signPath is "Unsigned") ---
+																										<>
+																											<Signature className="h-5 w-5" />
+																											{" Unsigned"}
+																										</>
+																									) : (
+																										// --- FALSE (signPath is NOT "Unsigned") ---
+																										<>
+																											<ThumbsUp className="h-5 w-5" />{" "}
+																											{format(
+																												detail.maintainedDate,
+																												"MM/dd h:mm aa"
+																											)}
+																										</>
 																									)}
 																								</div>
 																							)}

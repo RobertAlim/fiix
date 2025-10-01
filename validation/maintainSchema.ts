@@ -60,7 +60,7 @@ export const maintainFormSchema = z
 
 		userId: z.number(),
 		signatoryId: z.number().min(1, { message: "Signatory is required" }),
-		signPath: z.string().min(1, { message: "Signature is required" }),
+		signPath: z.string().optional(),
 		nozzlePath: z.string().optional(),
 		originMTId: z.number().optional(),
 		colorGroup: z.unknown().optional(),

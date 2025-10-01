@@ -36,6 +36,7 @@ export interface Maintain {
 	statusId: number;
 	status: Status; // Nested status object
 	createdAt: string; // To get the latest
+	signPath: string;
 	// ... include other fields from your maintain table
 }
 
@@ -68,6 +69,7 @@ export interface Schedule {
 	locationId: number;
 	priority: number;
 	notes: string | null;
+	signPath: string;
 	maintainAll: boolean;
 	scheduledAt: string;
 	createdAt: string;

@@ -40,6 +40,8 @@ export default function DashboardPage() {
 	const [selectedserialNo, setSelectedSerialNo] = useState<string>("");
 	const [selectedOriginMTId, setSelectedOriginMTId] = useState<number>(0);
 	const [selectedSchedDetailsId, setSelectedSchedDetailsId] = useState(0);
+	const [signPath, setSignPath] = useState("");
+	const [mtId, setMtId] = useState<number>(0);
 
 	const queries = useQueries({
 		queries: [
@@ -81,21 +83,40 @@ export default function DashboardPage() {
 		serialNo,
 		originMTId,
 		schedDetailsId,
+		maintainSignPath,
+		mtId,
 	}: {
 		serialNo: string;
 		originMTId: number;
 		schedDetailsId: number;
+		maintainSignPath: string | null | undefined;
+		mtId: number | undefined;
 	}) => {
-		setActivePage("maintenance");
-		setSelectedSerialNo(serialNo);
-		setSelectedOriginMTId(originMTId);
-		setSelectedSchedDetailsId(schedDetailsId);
+		if (maintainSignPath && maintainSignPath === "Unsigned") {
+			console.log("Clicked Card with Serial No: Dashboard");
+			setActivePage("dashboard");
+			setSignPath(maintainSignPath);
+			setMtId(mtId ?? 0);
+		} else {
+			console.log("Clicked Card with Serial No: Maintenance");
+			setActivePage("maintenance");
+			setSelectedSerialNo(serialNo);
+			setSelectedOriginMTId(originMTId);
+			setSelectedSchedDetailsId(schedDetailsId);
+			setSignPath("");
+		}
 	};
 
 	const renderContent = () => {
 		switch (activePage) {
 			case "dashboard":
-				return <DashboardRealPage onCardClick={handleCardClick} />;
+				return (
+					<DashboardRealPage
+						onCardClick={handleCardClick}
+						signPath={signPath}
+						mtId={mtId}
+					/>
+				);
 			case "maintenance":
 				return (
 					<MaintenancePage

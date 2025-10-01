@@ -10,7 +10,7 @@ export async function GET() {
 			name: locations.name,
 		})
 		.from(locations)
-		.orderBy(locations.name);
+		.orderBy(locations.id);
 
 	if (!data) {
 		return NextResponse.json(
