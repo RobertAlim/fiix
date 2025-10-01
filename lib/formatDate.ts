@@ -41,7 +41,7 @@ export function formatUtc(utcDateTimeString: string): string {
 	const day: number = date.getUTCDate();
 
 	// Time components (UTC)
-	let hours24: number = date.getUTCHours();
+	const hours24: number = date.getUTCHours();
 	const minutes: number = date.getUTCMinutes();
 
 	// 3. Convert to 12-hour format and determine AM/PM
