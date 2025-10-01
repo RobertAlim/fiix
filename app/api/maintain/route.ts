@@ -217,7 +217,7 @@ export async function PATCH(req: NextRequest) {
 				// You might also want to update an 'updatedAt' column here
 				// updatedAt: new Date(),
 			})
-			.where(eq(maintain.id, parsed.data.id)) // IMPORTANT: Target the specific record by ID
+			.where(eq(maintain.id, id)) // IMPORTANT: Target the specific record by ID
 			.returning({ id: maintain.id }); // Return the ID of the updated record
 
 		// 5. Check if a record was actually updated
