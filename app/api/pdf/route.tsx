@@ -176,7 +176,7 @@ export async function GET(request: NextRequest) {
 			status: mt.status,
 			technician: mt.technician,
 			signatory: mt.signatory,
-			signPath: mt.signPath, // this is base64 image string
+			signPath: mt.signPath || "", // this is base64 image string
 			nozzlePath: mt.nozzlePath || "", // this is base64 image string
 		};
 
