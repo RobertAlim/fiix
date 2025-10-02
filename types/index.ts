@@ -47,6 +47,7 @@ export interface MaintenanceOpenIssues {
 	status: string;
 	technician: string;
 	date: string;
+	createdAt: string; // Keep createdAt for ordering purposes
 	notes?: string; // Assuming 'notes' can also be part of maintain table or derived
 }
 

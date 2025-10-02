@@ -50,25 +50,7 @@ export default function DashboardPage({
 		}
 	}, [setESignOpen, signPath]);
 
-	// console.log("Rendering DashboardPage");
-	// onCardClick: ({
-	// 	maintainSignPath,
-	// }: {
-	// 	serialNo: string;
-	// 	originMTId: number;
-	// 	schedDetailsId: number;
-	// 	maintainSignPath: string | null | undefined;
-	// }) => {
-	// 	if (maintainSignPath && maintainSignPath === "Unsigned") {
-	// 		setESignOpen(true);
-	// 	}
-	// };
-
 	const { users } = useUserStore();
-
-	// State to control which page is currently displayed
-	// const [activePage, setActivePage] = useState("dashboard");
-	// New state to hold the originMTId from the clicked card
 
 	const formattedDate = new Intl.DateTimeFormat("en-US").format(new Date());
 	const formattedFullDate = formatFullDate(new Date());
@@ -134,16 +116,13 @@ export default function DashboardPage({
 			signPath: uuidSignFileName,
 		};
 
-		console.log("Attempting to PATCH signature for MtID:", mtId);
-
 		try {
 			const res = await fetch("/api/maintain", {
 				method: "PATCH",
 				headers: {
-					// IMPORTANT: Specify that you are sending JSON
 					"Content-Type": "application/json",
 				},
-				body: JSON.stringify(patchBody), // Use the structured data
+				body: JSON.stringify(patchBody),
 			});
 
 			if (!res.ok) {
@@ -152,32 +131,16 @@ export default function DashboardPage({
 					.json()
 					.catch(() => ({ message: res.statusText }));
 				console.error(`API Error (${res.status}):`, errorData);
-				// Optionally show a user error notification with errorData.message
 				return;
 			}
-
-			// 2. Process success response
-			const { id: updatedId } = await res.json();
-			console.log(`Signature update successful for ID: ${updatedId}`);
 
 			// 3. Close the dialog and perform any other success actions
 			setESignOpen(false);
 			onSignSuccess(); // e.g., refresh data, show success toast
 		} catch (error) {
-			// Handle network errors (e.g., server unreachable)
 			console.error("Network or Fetch Error:", error);
-			// Show a generic network error notification
 		}
 	};
-
-	// This function will be called by the Card component
-	// const handleCardClick = (
-	// 	serialNo: string,
-	// 	originMTId: number,
-	// 	schedDetailsId: number
-	// ) => {
-	// 	setActivePage("maintenance");
-	// };
 
 	return (
 		<div className="moving-gradient-border">

@@ -544,53 +544,7 @@ export default function SchedulePage() {
 		useState<VisibilityState>({});
 	const [rowSelectionSchedules, setRowSelectionSchedules] =
 		useState<RowSelectionState>({});
-	// const [paginationSchedules, setPaginationSchedules] =
-	// 	useState<PaginationState>({
-	// 		pageIndex: 0,
-	// 		pageSize: 5,
-	// 	});
-
-	// // Define your initial row selection state
-	// const getInitialRowSelection = (data: Printer[]): RowSelectionState => {
-	// 	const initialState: RowSelectionState = {};
-	// 	if (Array.isArray(data)) {
-	// 		data?.forEach((printer) => {
-	// 			if (
-	// 				printer.schedDetailsId !== null &&
-	// 				printer.schedDetailsId !== undefined
-	// 			) {
-	// 				initialState[printer.id.toString()] = true;
-	// 			}
-	// 		});
-	// 	}
-	// 	return initialState;
-	// };
-
-	// const [rowSelectionPrinters, setRowSelectionPrinters] =
-	// 	useState<RowSelectionState>(() =>
-	// 		getInitialRowSelection(printerData || [])
-	// 	);
-
-	// React.useEffect(() => {
-	// 	// This useEffect ensures that if printerData changes after initial render,
-	// 	// the row selection state is re-evaluated.
-	// 	setRowSelectionPrinters(getInitialRowSelection(printerData || []));
-	// }, [printerData]); // Re-run when printerData changes
 	const scheduleData = fetchedScheduleData || []; // Fallback to empty array if undefined
-
-	// useEffect(() => {
-	// 	// Only once on mount
-	// 	if (immediatePrinters) {
-	// 		const initialEdits: Record<string, Partial<Printer>> = {};
-	// 		for (const p of immediatePrinters) {
-	// 			if (p.schedDetailsId !== null && p.isMaintained === false) {
-	// 				initialEdits[p.id.toString()] = { isToggled: true };
-	// 			}
-	// 		}
-	// 		setEdits((prev) => ({ ...prev, ...initialEdits }));
-	// 	}
-	// }, [immediatePrinters]);
-	// Determine if other controls should be enabled
 
 	React.useEffect(() => {
 		async function fetchTime() {
@@ -616,26 +570,6 @@ export default function SchedulePage() {
 	}, [scheduleData, isSchedulesSuccess, isSetupModalOpen]); // Re-run when scheduleData changes
 
 	const areControlsEnabled = isEditing || isAdding!;
-
-	// --- Handlers for Printer Actions (from columns) ---
-	// const handleMaintenanceHistory = React.useCallback(
-	// 	(serialNo: string) => {
-	// 		showAppToast({
-	// 			message: `Viewing maintenance history for printer serial no.: ${serialNo}`,
-	// 			description: "History Information",
-	// 			position: "top-right",
-	// 			color: "info",
-	// 		});
-	// 		// You could open another dialog or navigate to a history page here
-	// 	},
-	// 	[setPrinterDetailSerialNo, setIsPrinterDetailsDialogOpen]
-	// );
-
-	// NEW: Handler to open the Printer Details dialog
-	// const handleShowPrinterDetails = React.useCallback(
-	// 	(serialNo: string) => {},
-	// 	[setPrinterDetailSerialNo, setIsPrinterDetailsDialogOpen]
-	// );
 
 	const handleEditSchedule = React.useCallback(
 		(schedId: number) => {
@@ -679,21 +613,6 @@ export default function SchedulePage() {
 
 	// --- Refined useEffect for Location ID synchronization ---
 	useEffect(() => {
-		// This effect runs when isEditing, selectedClientId, filteredLocations, schedules, or scheduleId changes.
-		// It's designed to set the location ID *after* the client is selected
-		// and the dependent 'filteredLocations' array has been computed based on that client.
-
-		// console.log("Location Sync useEffect: triggered.");
-		// console.log("isEditing:", isEditing);
-		// console.log("selectedClientId:", selectedClientId);
-		// console.log("filteredLocations (in useEffect):", filteredLocations);
-		// console.log("scheduleId (in useEffect):", scheduleId);
-		// console.log("allLocations loading:", isLoadingAllLocations);
-
-		// Condition 1: We are in "editing" mode
-		// Condition 2: A client has been selected (which triggers location filtering/loading)
-		// Condition 3: We have the actual scheduleId to look up the target location
-		// Condition 4: filteredLocations is NOT empty (meaning data has been processed/loaded for this client)
 		if (
 			isEditing &&
 			selectedClientId &&
@@ -976,25 +895,6 @@ export default function SchedulePage() {
 		[handleEditSchedule, handleDeleteSchedule, handleShowDetails] // Dependencies
 	);
 
-	// useEffect(() => {
-	// 	if (!immediatePrinters) return;
-
-	// 	const initialEditEntries: Record<string, Partial<Printer>> = {};
-
-	// 	immediatePrinters.forEach((printer) => {
-	// 		if (printer.isMaintained === false && printer.schedDetailsId !== null) {
-	// 			initialEditEntries[printer.id.toString()] = {
-	// 				isToggled: true, // or whatever initial override you want
-	// 			};
-	// 		}
-	// 	});
-
-	// 	setEdits((prev) => ({
-	// 		...initialEditEntries, // load only once
-	// 		...prev, // preserve anything already set (probably empty on first run)
-	// 	}));
-	// }, [immediatePrinters]);
-
 	const handlePrinterToggle = useCallback(
 		(id: string, newIsToggled: boolean) => {
 			setEdits((prev) => {
@@ -1034,32 +934,6 @@ export default function SchedulePage() {
 			})
 			.filter(Boolean) as Printer[];
 	}, [edits, immediatePrinters]);
-
-	// --- Memoize Printer Columns ---
-	// Pass the new handler to the columns
-	// const colsPrinter: ColumnDef<Printer>[] = useMemo(
-	// 	() =>
-	// 		getPrinterColumns({
-	// 			onShowDetailsClick: handleShowPrinterDetails, // Pass the new handler
-	// 		}),
-	// 	[handleShowPrinterDetails] // Dependencies
-	// );
-
-	// const tablePrinters = useReactTable({
-	// 	data: printerData || [],
-	// 	columns: colsPrinter,
-	// 	onSortingChange: setSortingPrinters,
-	// 	onColumnFiltersChange: setColumnFiltersPrinters,
-	// 	getCoreRowModel: getCoreRowModel(),
-	// 	getPaginationRowModel: getPaginationRowModel(),
-	// 	getSortedRowModel: getSortedRowModel(),
-	// 	getFilteredRowModel: getFilteredRowModel(),
-	// 	onColumnVisibilityChange: setColumnVisibilityPrinters,
-	// 	// onRowSelectionChange: setRowSelectionPrinters,
-	// 	onPaginationChange: setPaginationPrinters,
-	// 	state: tablePrintersState,
-	// 	onGlobalFilterChange: setGlobalFilterPrinters,
-	// });
 
 	const tableSchedules = useReactTable({
 		data: scheduleData,
@@ -1164,9 +1038,6 @@ export default function SchedulePage() {
 			</div>
 		);
 	}
-
-	// const totalRecordsCount = tablePrinters.getFilteredRowModel().rows.length;
-	// const formattedTotalRecords = totalRecordsCount.toLocaleString();
 
 	const handleSchedule = async (event: React.MouseEvent<HTMLButtonElement>) => {
 		const buttonText = event.currentTarget.textContent || "";
@@ -1406,9 +1277,30 @@ export default function SchedulePage() {
 										<div className="grid gap-6">
 											{" "}
 											{/* Changed to flex-col and added overflow-y-auto */}
-											{allOpenIssues!.map((issue) => (
-												<OpenIssueComponent key={issue.id} {...issue} />
-											))}
+											{
+												// 1. Ensure array exists and is not empty before attempting to sort
+												allOpenIssues && allOpenIssues?.length > 0 ? (
+													// 2. Create a shallow copy of the array before sorting.
+													// This is crucial in React to avoid side effects (mutating state/props directly).
+													[...allOpenIssues]
+														// 3. Apply the sorting logic (Descending: latest createdAt first)
+														.sort((a, b) => {
+															// Convert the string to a Date object first, then get the timestamp
+															const dateA = new Date(a.createdAt).getTime();
+															const dateB = new Date(b.createdAt).getTime();
+
+															// Descending sort (latest first): b - a
+															return dateA - dateB;
+														})
+														// 4. Map over the sorted array
+														.map((issue) => (
+															<OpenIssueComponent key={issue.id} {...issue} />
+														))
+												) : (
+													// Handle the case where the array is null, undefined, or empty
+													<div>No open issues found.</div>
+												)
+											}
 										</div>
 									</div>
 									<SheetFooter>

@@ -43,10 +43,12 @@ export async function GET() {
 				"Replacement (Parts)",
 				"Replacement (Unit)",
 				"Pulled Out",
+				"For Replacement Printer Part",
+				"For Replacement of Printer",
 			])
 		)
 		.orderBy(
-			printers.serialNo, // First, order by the column you want to be distinct (groups)
+			printers.serialNo,
 			desc(maintain.createdAt) // Then, for each group, order by createdAt descending (latest first)
 		);
 

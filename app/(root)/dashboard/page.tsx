@@ -73,12 +73,6 @@ export default function DashboardPage() {
 		}
 	}, [data, setUsers]);
 
-	// useEffect(() => {
-	// 	if (activePage) {
-	// 		setActivePage("maintenance");
-	// 	}
-	// }, [activePage]);
-
 	const handleCardClick = ({
 		serialNo,
 		originMTId,
@@ -93,12 +87,10 @@ export default function DashboardPage() {
 		mtId: number | undefined;
 	}) => {
 		if (maintainSignPath && maintainSignPath === "Unsigned") {
-			console.log("Clicked Card with Serial No: Dashboard");
 			setActivePage("dashboard");
 			setSignPath(maintainSignPath);
 			setMtId(mtId ?? 0);
 		} else {
-			console.log("Clicked Card with Serial No: Maintenance");
 			setActivePage("maintenance");
 			setSelectedSerialNo(serialNo);
 			setSelectedOriginMTId(originMTId);

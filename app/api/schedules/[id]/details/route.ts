@@ -25,6 +25,7 @@ export async function GET(
 			maintainedDate: sd.maintainedDate,
 			mtId: sd.originMTId, // <-- adjust here if your col is `mtId`
 			statusId: maintain.statusId,
+			signPath: maintain.signPath,
 		})
 		.from(sd)
 		.innerJoin(printers, eq(printers.id, sd.printerId))
@@ -40,6 +41,7 @@ export async function GET(
 		maintainedDate: (r.maintainedDate as unknown as string) ?? null,
 		mtId: (r.mtId as unknown as number) ?? null,
 		statusId: (r.statusId as unknown as number) ?? null,
+		signPath: r.signPath as string | null,
 	}));
 
 	return NextResponse.json({ data });

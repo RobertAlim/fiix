@@ -82,6 +82,11 @@ export default function TaskTracker() {
 		}
 	}, [schedules, selectedId]);
 
+	const handleRowClick = (mtId: number) => {
+		const url = `/api/pdf?mtId=${mtId}`;
+		window.open(url, "_blank");
+	};
+
 	return (
 		<div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
 			{/* Left: Schedules */}
@@ -224,14 +229,33 @@ export default function TaskTracker() {
 										<Badge className="bg-emerald-600 hover:bg-emerald-600">
 											Done
 										</Badge>
-									) : d.mtId ? (
-										<Badge variant="secondary">In Progress</Badge>
+									) : d.signPath === "Unsigned" ? (
+										<Badge variant="secondary">Unsigned</Badge>
 									) : (
 										<Badge variant="outline">Pending</Badge>
 									);
 
 									return (
-										<TableRow key={d.id}>
+										<TableRow
+											key={d.id}
+											onClick={() =>
+												d.isMaintained && d.mtId
+													? handleRowClick(d.mtId!)
+													: undefined
+											}
+											className={cn(
+												// 👇 Only apply 'cursor-pointer' if the condition is TRUE
+												d.isMaintained &&
+													d.mtId &&
+													"cursor-pointer transition-colors hover:bg-muted/50",
+
+												// 👇 Optional: Add a style for non-clickable rows for visual feedback
+												!(d.isMaintained && d.mtId) && "opacity-70",
+
+												// 👇 Keep existing selection highlight logic
+												selectedId === d.id && "bg-muted/60"
+											)}
+										>
 											<TableCell>
 												<div className="flex flex-col">
 													<span className="font-medium">{d.serialNo}</span>
@@ -251,7 +275,7 @@ export default function TaskTracker() {
 											<TableCell>{d.isMaintained ? "Yes" : "No"}</TableCell>
 											<TableCell>{d.mtId ?? "—"}</TableCell>
 											<TableCell>
-												{formatTimeToAmPm(d.maintainedDate!)}
+												{formatTimeToAmPm(d.maintainedDate!) ?? "—"}
 											</TableCell>
 										</TableRow>
 									);

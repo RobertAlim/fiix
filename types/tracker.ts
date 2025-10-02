@@ -20,4 +20,5 @@ export type ScheduleDetailRow = {
 	maintainedDate: string | null; // ISO timestamp
 	mtId: number | null; // maintain.id (if created)
 	statusId: number | null; // maintain.statusId (if linked)
+	signPath: string | null; // maintain.signPath (if linked)
 };

@@ -364,14 +364,16 @@ export const MaintainReport: React.FC<{ data: MaintenanceReportProps }> = ({
 						</View>
 
 						<View style={{ flex: 1 }}>
-							{data.signPath ? (
+							{data.signPath && data.signPath !== "Unsigned" ? (
 								<Image
 									id="signLogo"
 									src={data.signPath}
 									style={{ width: "100%" }}
 								/>
 							) : (
-								<Text>No Signature Available.</Text>
+								<Text style={{ textAlign: "center" }}>
+									No Signature Available.
+								</Text>
 							)}
 						</View>
 					</View>
