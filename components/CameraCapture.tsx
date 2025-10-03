@@ -103,22 +103,60 @@ export function CameraCapture({
 			return;
 		}
 
+		const video = videoRef.current;
+		const canvas = canvasRef.current;
 		const context = canvasRef.current.getContext("2d");
 		if (!context) return;
 
-		// Capture logic
-		canvasRef.current.width = videoRef.current.videoWidth;
-		canvasRef.current.height = videoRef.current.videoHeight;
+		const videoWidth = video.videoWidth; // e.g., 1280
+		const videoHeight = video.videoHeight; // e.g., 720
+
+		// Get the display size from the DOM to match the visual aspect ratio
+		// This assumes your CSS container (w-full max-w-md relative aspect-video)
+		// is applied to the video element's effective size.
+		const displayWidth = video.clientWidth;
+		const displayHeight = video.clientHeight;
+
+		const videoRatio = videoWidth / videoHeight;
+		const displayRatio = displayWidth / displayHeight; // Should be 16/9 = 1.777...
+
+		let sourceX = 0;
+		let sourceY = 0;
+		let sourceWidth = videoWidth;
+		let sourceHeight = videoHeight;
+
+		// Set the canvas size to match the visual aspect ratio of the displayed frame,
+		// while keeping the captured resolution as high as possible.
+		// We'll use the videoHeight as the base for a high-res capture.
+		canvas.height = videoHeight;
+		canvas.width = Math.round(videoHeight * displayRatio); // e.g., 720 * 1.777... = 1280
+
+		// Determine if we need to crop the video source horizontally or vertically
+		if (videoRatio > displayRatio) {
+			// Video is wider than the container (Horizontal crop needed)
+			sourceWidth = videoHeight * displayRatio;
+			sourceX = (videoWidth - sourceWidth) / 2;
+		} else if (videoRatio < displayRatio) {
+			// Video is taller than the container (Vertical crop needed)
+			sourceHeight = videoWidth / displayRatio;
+			sourceY = (videoHeight - sourceHeight) / 2;
+		}
+
+		// Capture logic: Draw the calculated source area onto the full canvas area
 		context.drawImage(
-			videoRef.current,
-			0,
-			0,
-			canvasRef.current.width,
-			canvasRef.current.height
+			video,
+			sourceX, // Source X (Crop offset)
+			sourceY, // Source Y (Crop offset)
+			sourceWidth, // Source Width (The cropped width)
+			sourceHeight, // Source Height (The cropped height)
+			0, // Destination X (Draw from top-left of canvas)
+			0, // Destination Y
+			canvas.width, // Destination Width (Full canvas width)
+			canvas.height // Destination Height (Full canvas height)
 		);
 
 		// Convert and send the Blob to the parent
-		canvasRef.current.toBlob(
+		canvas.toBlob(
 			(blob) => {
 				if (blob) {
 					onCapture(blob); // <-- KEY CHANGE: Send Blob via prop

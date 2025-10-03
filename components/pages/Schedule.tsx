@@ -103,18 +103,6 @@ export interface Priority {
 	name: string;
 }
 
-//THIS IS 4 DELETION//
-// interface PrinterData {
-// 	printerId: number;
-// 	department: string;
-// 	model: string;
-// 	serialNo: string;
-// 	issue: string;
-// 	lastMT: Date;
-// 	mtId: number;
-// 	schedDetailsId: number;
-// }
-
 // Define the type for the payload you'll send to the API
 interface ScheduleMaintenancePayload {
 	technicianId: string;
