@@ -47,53 +47,54 @@ export function CameraCapture({
 		setIsCaptureReady(false);
 	}, [stream]);
 
-	const startCamera = useCallback(async () => {
-		// Only start camera if no photo is captured AND we're not showing a gallery image
-		if (photoBlob || isGalleryImage) return;
+	// const startCamera = useCallback(async () => {
+	// 	// Only start camera if no photo is captured AND we're not showing a gallery image
+	// 	if (photoBlob || isGalleryImage) return;
 
-		stopCamera();
+	// 	stopCamera();
 
-		try {
-			const mediaStream = await navigator.mediaDevices.getUserMedia({
-				video: {
-					facingMode: facingMode,
-				},
-			});
-			setStream(mediaStream);
-			setStatusMessage(
-				`Starting ${facingMode === "user" ? "Front" : "Back"} camera...`
-			);
+	// 	try {
+	// 		const mediaStream = await navigator.mediaDevices.getUserMedia({
+	// 			video: {
+	// 				facingMode: facingMode,
+	// 			},
+	// 		});
+	// 		setStream(mediaStream);
+	// 		setStatusMessage(
+	// 			`Starting ${facingMode === "user" ? "Front" : "Back"} camera...`
+	// 		);
 
-			if (videoRef.current) {
-				videoRef.current.srcObject = mediaStream;
+	// 		if (videoRef.current) {
+	// 			videoRef.current.srcObject = mediaStream;
 
-				videoRef.current.onloadedmetadata = () => {
-					if (videoRef.current && canvasRef.current) {
-						canvasRef.current.width = videoRef.current.videoWidth;
-						canvasRef.current.height = videoRef.current.videoHeight;
+	// 			videoRef.current.onloadedmetadata = () => {
+	// 				if (videoRef.current && canvasRef.current) {
+	// 					canvasRef.current.width = videoRef.current.videoWidth;
+	// 					canvasRef.current.height = videoRef.current.videoHeight;
 
-						setIsCaptureReady(true);
-						setStatusMessage(
-							`${facingMode === "user" ? "Front" : "Back"} camera feed ready.`
-						);
-					}
-				};
-			}
-		} catch (err) {
-			console.error("Error accessing camera:", err);
-			if (facingMode === "environment") {
-				setStatusMessage("Back camera failed. Trying front camera...");
-				setFacingMode("user");
-				return;
-			}
-			setStatusMessage(
-				"Failed to access camera. Check permissions and try again."
-			);
-			setIsCaptureReady(false);
-		}
-	}, [photoBlob, facingMode, stopCamera, isGalleryImage]); // Depend on isGalleryImage
+	// 					setIsCaptureReady(true);
+	// 					setStatusMessage(
+	// 						`${facingMode === "user" ? "Front" : "Back"} camera feed ready.`
+	// 					);
+	// 				}
+	// 			};
+	// 		}
+	// 	} catch (err) {
+	// 		console.error("Error accessing camera:", err);
+	// 		if (facingMode === "environment") {
+	// 			setStatusMessage("Back camera failed. Trying front camera...");
+	// 			setFacingMode("user");
+	// 			return;
+	// 		}
+	// 		setStatusMessage(
+	// 			"Failed to access camera. Check permissions and try again."
+	// 		);
+	// 		setIsCaptureReady(false);
+	// 	}
+	// }, [photoBlob, facingMode, stopCamera, isGalleryImage]); // Depend on isGalleryImage
 
 	// 1. Initialize Camera and Check Ref Readiness
+
 	useEffect(() => {
 		let mediaStream: MediaStream | null = null;
 		let timeoutId: NodeJS.Timeout;
