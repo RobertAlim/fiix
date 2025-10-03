@@ -16,7 +16,6 @@ import {
 	DialogFooter,
 	DialogTitle,
 } from "@/components/ui/dialog";
-import { QrCode } from "lucide-react";
 import Select from "react-select";
 import { useEffect, useState, useMemo } from "react";
 import {
@@ -26,6 +25,7 @@ import {
 	Loader2,
 	PlusIcon,
 	CheckIcon,
+	QrCode,
 } from "lucide-react";
 
 import SignaturePad from "@/components/SignaturePad";

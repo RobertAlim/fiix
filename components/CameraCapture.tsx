@@ -1,7 +1,9 @@
 // components/CameraCapture.tsx
 "use client";
 
-import React, { useRef, useState, useEffect } from "react";
+import React, { useRef, useState, useEffect, useCallback } from "react";
+import { Button } from "@/components/ui/button";
+import { SwitchCamera } from "lucide-react";
 
 // Define the shape of the component's props
 interface CameraCaptureProps {
@@ -14,6 +16,8 @@ interface CameraCaptureProps {
 	onClose: () => void;
 }
 
+type FacingMode = "user" | "environment";
+
 export function CameraCapture({
 	onCapture,
 	onRetake,
@@ -22,12 +26,72 @@ export function CameraCapture({
 }: CameraCaptureProps) {
 	const videoRef = useRef<HTMLVideoElement>(null);
 	const canvasRef = useRef<HTMLCanvasElement>(null);
+	const fileInputRef = useRef<HTMLInputElement>(null); // 👈 NEW: Ref for file input
+
 	const [stream, setStream] = useState<MediaStream | null>(null);
 	const [statusMessage, setStatusMessage] = useState("");
 	const [isCaptureReady, setIsCaptureReady] = useState(false);
+	const [facingMode, setFacingMode] = useState<FacingMode>("environment");
+
+	// NEW STATE: To know if we are showing a gallery image instead of camera feed
+	const [isGalleryImage, setIsGalleryImage] = useState(false);
 
 	// Use capturedBlob from props to determine if we are in capture mode or display mode
 	const photoBlob = capturedBlob;
+
+	const stopCamera = useCallback(() => {
+		if (stream) {
+			stream.getTracks().forEach((track) => track.stop());
+			setStream(null);
+		}
+		setIsCaptureReady(false);
+	}, [stream]);
+
+	const startCamera = useCallback(async () => {
+		// Only start camera if no photo is captured AND we're not showing a gallery image
+		if (photoBlob || isGalleryImage) return;
+
+		stopCamera();
+
+		try {
+			const mediaStream = await navigator.mediaDevices.getUserMedia({
+				video: {
+					facingMode: facingMode,
+				},
+			});
+			setStream(mediaStream);
+			setStatusMessage(
+				`Starting ${facingMode === "user" ? "Front" : "Back"} camera...`
+			);
+
+			if (videoRef.current) {
+				videoRef.current.srcObject = mediaStream;
+
+				videoRef.current.onloadedmetadata = () => {
+					if (videoRef.current && canvasRef.current) {
+						canvasRef.current.width = videoRef.current.videoWidth;
+						canvasRef.current.height = videoRef.current.videoHeight;
+
+						setIsCaptureReady(true);
+						setStatusMessage(
+							`${facingMode === "user" ? "Front" : "Back"} camera feed ready.`
+						);
+					}
+				};
+			}
+		} catch (err) {
+			console.error("Error accessing camera:", err);
+			if (facingMode === "environment") {
+				setStatusMessage("Back camera failed. Trying front camera...");
+				setFacingMode("user");
+				return;
+			}
+			setStatusMessage(
+				"Failed to access camera. Check permissions and try again."
+			);
+			setIsCaptureReady(false);
+		}
+	}, [photoBlob, facingMode, stopCamera, isGalleryImage]); // Depend on isGalleryImage
 
 	// 1. Initialize Camera and Check Ref Readiness
 	useEffect(() => {
@@ -170,8 +234,97 @@ export function CameraCapture({
 		);
 	};
 
+	const toggleCamera = () => {
+		setFacingMode((prevMode) =>
+			prevMode === "environment" ? "user" : "environment"
+		);
+	};
+
+	// 🚩 NEW: Handler for manual file selection
+	const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+		const file = event.target.files?.[0];
+		if (file && file.type.startsWith("image/")) {
+			stopCamera(); // Stop camera if it's running
+			setIsCaptureReady(false); // No live camera feed
+			setIsGalleryImage(true); // Indicate we are showing a gallery image
+
+			const reader = new FileReader();
+			reader.onload = (e) => {
+				const img = new Image();
+				img.onload = () => {
+					if (canvasRef.current) {
+						const canvas = canvasRef.current;
+						const context = canvas.getContext("2d");
+						if (!context) return;
+
+						// Set canvas dimensions to match the image aspect ratio within the display container's aspect
+						// We target a resolution to keep the file size reasonable while preserving aspect ratio
+						const MAX_PREVIEW_WIDTH = 1280;
+						const MAX_PREVIEW_HEIGHT = 720; // Example target resolution
+
+						let width = img.width;
+						let height = img.height;
+
+						if (width > height) {
+							if (width > MAX_PREVIEW_WIDTH) {
+								height *= MAX_PREVIEW_WIDTH / width;
+								width = MAX_PREVIEW_WIDTH;
+							}
+						} else {
+							if (height > MAX_PREVIEW_HEIGHT) {
+								width *= MAX_PREVIEW_HEIGHT / height;
+								height = MAX_PREVIEW_HEIGHT;
+							}
+						}
+
+						canvas.width = width;
+						canvas.height = height;
+
+						context.clearRect(0, 0, canvas.width, canvas.height); // Clear previous drawings
+						context.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+						// Convert the drawn image on canvas to a Blob and send to parent
+						canvas.toBlob(
+							(blob) => {
+								if (blob) {
+									onCapture(blob);
+									setStatusMessage(
+										"Image loaded from gallery. Ready for saving."
+									);
+								} else {
+									setStatusMessage("Failed to process gallery image.");
+								}
+							},
+							"image/jpeg",
+							0.95
+						);
+					}
+				};
+				if (e.target?.result) {
+					img.src = e.target.result as string;
+				}
+			};
+			reader.readAsDataURL(file); // Read the selected file as a Data URL
+		} else {
+			setStatusMessage("Please select a valid image file.");
+			if (fileInputRef.current) {
+				fileInputRef.current.value = ""; // Clear the input
+			}
+		}
+	};
+
 	return (
-		<div className="flex flex-col items-center p-4">
+		<div className="flex flex-col items-end p-4">
+			<Button
+				type="button"
+				variant={"secondary"}
+				onClick={() => {
+					toggleCamera();
+				}}
+				className="ml-1 p-1 rounded-full mb-2"
+			>
+				<SwitchCamera className="w-5 h-5" />
+			</Button>
 			<div
 				className={`border border-gray-400 rounded-lg overflow-hidden w-full max-w-md relative aspect-video ${
 					photoBlob ? "hidden" : ""
@@ -199,14 +352,34 @@ export function CameraCapture({
 			</div>
 			<div className="mt-4 flex gap-4">
 				{!photoBlob ? (
-					<button
-						onClick={capturePhoto}
-						disabled={!isCaptureReady}
-						className="px-4 py-2 bg-blue-500 text-white rounded transition disabled:bg-gray-400 disabled:cursor-not-allowed hover:bg-blue-600"
-					>
-						{isCaptureReady ? "Capture Photo" : "Loading Camera..."}
-					</button>
+					<>
+						<button
+							onClick={capturePhoto}
+							disabled={!isCaptureReady}
+							className="px-4 py-2 bg-blue-500 text-white rounded transition disabled:bg-gray-400 disabled:cursor-not-allowed hover:bg-blue-600"
+						>
+							{isCaptureReady ? "Capture Photo" : "Loading Camera..."}
+						</button>
+						{/* 🚩 NEW: Manual Upload Button */}
+						<input
+							type="file"
+							accept="image/*" // Allow all image types
+							ref={fileInputRef}
+							onChange={handleFileChange}
+							style={{ display: "none" }} // Hide the actual input
+							// disabled={isProcessing}
+						/>
+						<button
+							onClick={() => fileInputRef.current?.click()} // Trigger hidden input click
+							// disabled={isProcessing}
+							className="px-4 py-2 bg-purple-500 text-white rounded transition disabled:bg-gray-400 disabled:cursor-not-allowed hover:bg-purple-600"
+						>
+							Upload from Gallery
+						</button>
+					</>
 				) : (
+					// This assumes your CSS container (w-full max-w-md relative aspect-video)
+
 					// State: Photo Captured/Preview Visible
 					<>
 						{/* 2. RETAKE BUTTON */}
