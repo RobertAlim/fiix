@@ -19,7 +19,11 @@ export async function POST(req: NextRequest) {
 				clientId: Number(clientId),
 			})
 			.onConflictDoNothing({
-				target: [signatories.firstName, signatories.lastName],
+				target: [
+					signatories.firstName,
+					signatories.lastName,
+					signatories.clientId,
+				],
 			})
 			.returning({ id: signatories.id }); // Get the ID of the newly inserted schedule
 

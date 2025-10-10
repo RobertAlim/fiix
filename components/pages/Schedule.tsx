@@ -151,82 +151,18 @@ const createMaintenanceSchedule = async (
 };
 
 export default function SchedulePage() {
-	// let printerData: Printer[] | undefined;
-	// const printers: PrinterData[] = [
-	// 	{
-	// 		printerId: 101,
-	// 		department: "HR",
-	// 		model: "Epson C5790",
-	// 		serialNo: "EPN-C5790-HR-001",
-	// 		issue: "No Issue",
-	// 		lastMT: new Date("2024-07-20"), // Current date around July 30, 2025 (adjusted for user query time)
-	// 		mtId: 5001,
-	// 		schedDetailsId: 9001,
-	// 	},
-	// 	{
-	// 		printerId: 102,
-	// 		department: "IT",
-	// 		model: "HP LaserJet M404n",
-	// 		serialNo: "HPJ-M404N-IT-002",
-	// 		issue: "Low on Black Ink",
-	// 		lastMT: new Date("2025-06-10"),
-	// 		mtId: 5002,
-	// 		schedDetailsId: 9002,
-	// 	},
-	// 	{
-	// 		printerId: 103,
-	// 		department: "Finance",
-	// 		model: "Brother HL-L2350DW",
-	// 		serialNo: "BRL-2350D-FN-003",
-	// 		issue: "Paper Jam",
-	// 		lastMT: new Date("2025-07-28"),
-	// 		mtId: 5003,
-	// 		schedDetailsId: 9003,
-	// 	},
-	// 	{
-	// 		printerId: 104,
-	// 		department: "Marketing",
-	// 		model: "Canon Pixma TS6320",
-	// 		serialNo: "CPX-6320-MK-004",
-	// 		issue: "Offline",
-	// 		lastMT: new Date("2025-07-01"),
-	// 		mtId: 5004,
-	// 		schedDetailsId: 9004,
-	// 	},
-	// 	{
-	// 		printerId: 105,
-	// 		department: "Sales",
-	// 		model: "Lexmark B2236dw",
-	// 		serialNo: "LXM-B2236-SL-005",
-	// 		issue: "No Issue",
-	// 		lastMT: new Date("2025-07-25"),
-	// 		mtId: 5005,
-	// 		schedDetailsId: 9005,
-	// 	},
-	// 	{
-	// 		printerId: 106,
-	// 		department: "Operations",
-	// 		model: "Epson C5790",
-	// 		serialNo: "EPN-C5790-OP-006",
-	// 		issue: "Fading Prints",
-	// 		lastMT: new Date("2025-05-15"),
-	// 		mtId: 5006,
-	// 		schedDetailsId: 9006,
-	// 	},
-	// 	{
-	// 		printerId: 107,
-	// 		department: "HR",
-	// 		model: "HP LaserJet M404n",
-	// 		serialNo: "HPJ-M404N-HR-007",
-	// 		issue: "Maintenance Required",
-	// 		lastMT: new Date("2025-04-01"),
-	// 		mtId: 5007,
-	// 		schedDetailsId: 9007,
-	// 	},
-	// ];
-	// THIS IS 4 DELETION
-	// let printers: Printer[] | undefined;
-
+	// 1. Define the status list for filtering
+	const TARGET_STATUSES: ReadonlySet<string> = useMemo(
+		() =>
+			new Set([
+				"Replacement (Parts)",
+				"Replacement (Unit)",
+				"Pulled Out",
+				"For Replacement Printer Part",
+				"For Replacement of Printer",
+			]),
+		[]
+	);
 	const [edits, setEdits] = useState<Record<string, PrinterEdit>>({});
 
 	// State for selected Client ID
@@ -386,7 +322,7 @@ export default function SchedulePage() {
 		},
 
 		{
-			data: allOpenIssues,
+			data: allOpenIssues = [],
 			isLoading: isLoadingOpenIssues,
 			isError: isErrorOpenIssues,
 		},
@@ -664,6 +600,11 @@ export default function SchedulePage() {
 			setSelectedLocationId("0");
 		}
 	}, [selectedClientId, isEditing]); // Triggers when selectedClientId changes (and not in edit mode)
+
+	// 3. Filter the data using useMemo (map the allOpenIssues data)
+	const allFilteredIOpenIssues: MaintenanceOpenIssues[] = React.useMemo(() => {
+		return allOpenIssues!.filter((issue) => TARGET_STATUSES.has(issue.status));
+	}, [allOpenIssues]);
 
 	const handleDeleteSchedule = React.useCallback(
 		async (schedId: number) => {
@@ -1267,10 +1208,11 @@ export default function SchedulePage() {
 											{/* Changed to flex-col and added overflow-y-auto */}
 											{
 												// 1. Ensure array exists and is not empty before attempting to sort
-												allOpenIssues && allOpenIssues?.length > 0 ? (
+												allFilteredIOpenIssues &&
+												allFilteredIOpenIssues?.length > 0 ? (
 													// 2. Create a shallow copy of the array before sorting.
 													// This is crucial in React to avoid side effects (mutating state/props directly).
-													[...allOpenIssues]
+													[...allFilteredIOpenIssues]
 														// 3. Apply the sorting logic (Descending: latest createdAt first)
 														.sort((a, b) => {
 															// Convert the string to a Date object first, then get the timestamp

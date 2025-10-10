@@ -316,6 +316,8 @@ export default function MaintenancePage({
 
 		// const { success } = await schedRes.json();
 
+		router.push("/dashboard");
+
 		setIsSaving(false);
 
 		showAppToast({
@@ -325,7 +327,6 @@ export default function MaintenancePage({
 			position: "top-center",
 			color: "success",
 		});
-		router.push("/dashboard");
 	};
 
 	const handleCustomSubmit = async (e: React.MouseEvent<HTMLButtonElement>) => {

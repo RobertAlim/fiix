@@ -38,15 +38,15 @@ export async function GET() {
 		.leftJoin(maintain, eq(printers.id, maintain.printerId))
 		.innerJoin(status, eq(status.id, maintain.statusId))
 		.innerJoin(users, eq(users.id, maintain.userId))
-		.where(
-			inArray(status.name, [
-				"Replacement (Parts)",
-				"Replacement (Unit)",
-				"Pulled Out",
-				"For Replacement Printer Part",
-				"For Replacement of Printer",
-			])
-		)
+		// .where(
+		// 	inArray(status.name, [
+		// 		"Replacement (Parts)",
+		// 		"Replacement (Unit)",
+		// 		"Pulled Out",
+		// 		"For Replacement Printer Part",
+		// 		"For Replacement of Printer",
+		// 	])
+		// )
 		.orderBy(
 			printers.serialNo,
 			desc(maintain.createdAt) // Then, for each group, order by createdAt descending (latest first)

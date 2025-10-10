@@ -16,6 +16,10 @@ interface CameraCaptureProps {
 	onClose: () => void;
 }
 
+const MAX_IMAGE_WIDTH = 1920; // Maximum width for optimized image
+const MAX_IMAGE_HEIGHT = 1920; // Maximum height for optimized image
+const JPEG_QUALITY = 0.8; // JPEG quality (0.0 to 1.0)
+
 type FacingMode = "user" | "environment";
 
 export function CameraCapture({
@@ -32,6 +36,7 @@ export function CameraCapture({
 	const [statusMessage, setStatusMessage] = useState("");
 	const [isCaptureReady, setIsCaptureReady] = useState(false);
 	const [facingMode, setFacingMode] = useState<FacingMode>("environment");
+	const [isOptimizing, setIsOptimizing] = useState(false);
 
 	// NEW STATE: To know if we are showing a gallery image instead of camera feed
 	const [isGalleryImage, setIsGalleryImage] = useState(false);
@@ -97,45 +102,6 @@ export function CameraCapture({
 
 	useEffect(() => {
 		startCamera();
-		// async function startCamera() {
-		// 	try {
-		// 		// Request camera access only if we aren't displaying a captured photo
-		// 		mediaStream = await navigator.mediaDevices.getUserMedia({
-		// 			video: { facingMode: { ideal: "environment" } },
-		// 		});
-		// 		setStream(mediaStream);
-
-		// 		if (videoRef.current) {
-		// 			videoRef.current.srcObject = mediaStream;
-
-		// 			if (videoRef.current) {
-		// 				videoRef.current.srcObject = mediaStream;
-
-		// 				videoRef.current.onloadeddata = () => {
-		// 					// Give React time to stabilize refs
-		// 					timeoutId = setTimeout(() => {
-		// 						if (videoRef.current && canvasRef.current) {
-		// 							setIsCaptureReady(true);
-		// 							setStatusMessage("Camera feed ready.");
-		// 						} else {
-		// 							setStatusMessage(
-		// 								"Error: Could not find video/canvas elements in DOM."
-		// 							);
-		// 						}
-		// 					}, 100);
-		// 				};
-		// 			}
-		// 		}
-
-		// 		if (!photoBlob) {
-		// 			setIsCaptureReady(true); // If we have a photo, we are ready to retake
-		// 			setStatusMessage("Photo captured. You can retake or proceed.");
-		// 		}
-		// 	} catch (err) {
-		// 		console.error("Error accessing camera:", err);
-		// 		setStatusMessage("Failed to access camera. Please check permissions.");
-		// 	}
-		// }
 
 		// Only try to start the camera if we don't have a captured photo
 		if (!photoBlob) {
@@ -155,7 +121,66 @@ export function CameraCapture({
 		};
 	}, [photoBlob]); // Re-run effect when photoBlob changes (e.g., when resetting from parent)
 
-	const capturePhoto = () => {
+	// 🚩 NEW: Image Optimization Function
+	const processAndOptimizeImage = useCallback(async (originalBlob: Blob) => {
+		setIsOptimizing(true);
+		setStatusMessage("Optimizing image size...");
+		return new Promise<Blob | null>((resolve) => {
+			const img = new Image();
+			img.src = URL.createObjectURL(originalBlob);
+
+			img.onload = () => {
+				if (!canvasRef.current) {
+					resolve(null);
+					return;
+				}
+				const canvas = canvasRef.current;
+				const context = canvas.getContext("2d");
+				if (!context) {
+					resolve(null);
+					return;
+				}
+
+				let width = img.width;
+				let height = img.height;
+
+				// Step 1: Resize if too large
+				if (width > MAX_IMAGE_WIDTH || height > MAX_IMAGE_HEIGHT) {
+					const ratio = Math.min(
+						MAX_IMAGE_WIDTH / width,
+						MAX_IMAGE_HEIGHT / height
+					);
+					width *= ratio;
+					height *= ratio;
+				}
+
+				canvas.width = width;
+				canvas.height = height;
+
+				context.clearRect(0, 0, canvas.width, canvas.height);
+				context.drawImage(img, 0, 0, width, height);
+
+				// Step 2: Compress (to JPEG with specified quality)
+				canvas.toBlob(
+					(optimizedBlob) => {
+						setIsOptimizing(false);
+						URL.revokeObjectURL(img.src); // Clean up
+						resolve(optimizedBlob);
+					},
+					"image/jpeg", // Output format
+					JPEG_QUALITY // Compression quality
+				);
+			};
+			img.onerror = () => {
+				setIsOptimizing(false);
+				URL.revokeObjectURL(img.src);
+				setStatusMessage("Error loading image for optimization.");
+				resolve(null);
+			};
+		});
+	}, []); // No dependencies needed for this utility function
+
+	const capturePhoto = async () => {
 		if (!isCaptureReady || !videoRef.current || !canvasRef.current) {
 			setStatusMessage("Capture not ready. Please wait.");
 			return;
@@ -217,19 +242,25 @@ export function CameraCapture({
 			canvas.height // Destination Height (Full canvas height)
 		);
 
-		// Convert and send the Blob to the parent
+		// Get the raw captured blob first
 		canvas.toBlob(
-			(blob) => {
-				if (blob) {
-					onCapture(blob); // <-- KEY CHANGE: Send Blob via prop
-					setStatusMessage("Photo captured! Ready for processing.");
+			async (rawBlob) => {
+				// 👈 Changed to async
+				if (rawBlob) {
+					const optimizedBlob = await processAndOptimizeImage(rawBlob); // 🚩 OPTIMIZE HERE
+					if (optimizedBlob) {
+						onCapture(optimizedBlob);
+						setStatusMessage("Photo captured and optimized! Ready for saving.");
+					} else {
+						setStatusMessage("Failed to optimize captured image.");
+					}
 				} else {
 					setStatusMessage("Failed to convert canvas to image.");
 				}
 			},
 			"image/jpeg",
-			0.95
-		);
+			1.0
+		); // Capture at highest quality first, then optimize
 	};
 
 	const toggleCamera = () => {
@@ -247,9 +278,9 @@ export function CameraCapture({
 			setIsGalleryImage(true); // Indicate we are showing a gallery image
 
 			const reader = new FileReader();
-			reader.onload = (e) => {
+			reader.onload = async (e) => {
 				const img = new Image();
-				img.onload = () => {
+				img.onload = async () => {
 					if (canvasRef.current) {
 						const canvas = canvasRef.current;
 						const context = canvas.getContext("2d");
@@ -281,21 +312,29 @@ export function CameraCapture({
 						context.clearRect(0, 0, canvas.width, canvas.height); // Clear previous drawings
 						context.drawImage(img, 0, 0, canvas.width, canvas.height);
 
-						// Convert the drawn image on canvas to a Blob and send to parent
+						// Get the raw captured blob first
 						canvas.toBlob(
-							(blob) => {
-								if (blob) {
-									onCapture(blob);
-									setStatusMessage(
-										"Image loaded from gallery. Ready for saving."
-									);
+							async (rawBlob) => {
+								// 👈 Changed to async
+								if (rawBlob) {
+									const optimizedBlob = await processAndOptimizeImage(rawBlob); // 🚩 OPTIMIZE HERE
+									if (optimizedBlob) {
+										onCapture(optimizedBlob);
+										setStatusMessage(
+											"Image loaded and optimized from gallery. Ready for saving."
+										);
+									} else {
+										setStatusMessage("Failed to optimize gallery image.");
+									}
 								} else {
-									setStatusMessage("Failed to process gallery image.");
+									setStatusMessage(
+										"Error loading image from gallery for processing."
+									);
 								}
 							},
 							"image/jpeg",
-							0.95
-						);
+							1.0
+						); // Capture at highest quality first, then optimize
 					}
 				};
 				if (e.target?.result) {
@@ -316,6 +355,7 @@ export function CameraCapture({
 			<Button
 				type="button"
 				variant={"secondary"}
+				disabled={!isCaptureReady || isGalleryImage || isOptimizing}
 				onClick={() => {
 					toggleCamera();
 				}}
@@ -331,7 +371,9 @@ export function CameraCapture({
 				{/* VIDEO element for live feed (hidden when photo is captured) */}
 				<video
 					ref={videoRef}
-					className={`w-full h-full object-cover absolute top-0 left-0`}
+					className={`w-full h-full object-cover absolute top-0 left-0 ${
+						photoBlob || isGalleryImage ? "hidden" : ""
+					}`}
 					autoPlay
 					playsInline
 					muted
@@ -339,7 +381,7 @@ export function CameraCapture({
 			</div>
 			<div
 				className={`border border-gray-400 rounded-lg overflow-hidden w-full max-w-md relative aspect-video ${
-					!photoBlob ? "hidden" : ""
+					!photoBlob && !isGalleryImage ? "hidden" : ""
 				}`}
 			>
 				{/* CANVAS element for captured image preview (hidden when live feed is showing) */}
@@ -353,10 +395,14 @@ export function CameraCapture({
 					<>
 						<button
 							onClick={capturePhoto}
-							disabled={!isCaptureReady}
+							disabled={!isCaptureReady || isGalleryImage || isOptimizing}
 							className="px-4 py-2 bg-blue-500 text-white rounded transition disabled:bg-gray-400 disabled:cursor-not-allowed hover:bg-blue-600"
 						>
-							{isCaptureReady ? "Capture Photo" : "Loading Camera..."}
+							{isOptimizing
+								? "Optimizing..."
+								: isCaptureReady
+								? "Capture Photo"
+								: "Loading Camera..."}
 						</button>
 						{/* 🚩 NEW: Manual Upload Button */}
 						<input
@@ -365,11 +411,11 @@ export function CameraCapture({
 							ref={fileInputRef}
 							onChange={handleFileChange}
 							style={{ display: "none" }} // Hide the actual input
-							// disabled={isProcessing}
+							disabled={isOptimizing}
 						/>
 						<button
 							onClick={() => fileInputRef.current?.click()} // Trigger hidden input click
-							// disabled={isProcessing}
+							disabled={isOptimizing}
 							className="px-4 py-2 bg-purple-500 text-white rounded transition disabled:bg-gray-400 disabled:cursor-not-allowed hover:bg-purple-600"
 						>
 							Upload from Gallery
@@ -384,7 +430,7 @@ export function CameraCapture({
 						<button
 							// 🚩 RETAKE IMPLEMENTATION: Clears the captured image state
 							onClick={onRetake}
-							// disabled={!isCaptureReady || isProcessing}
+							disabled={isOptimizing}
 							className="px-4 py-2 bg-yellow-600 text-white rounded transition disabled:bg-gray-400 disabled:cursor-not-allowed hover:bg-yellow-700"
 						>
 							Retake Photo
@@ -394,15 +440,21 @@ export function CameraCapture({
 
 				<button
 					onClick={onClose}
+					disabled={isOptimizing}
 					className="px-4 py-2 rounded bg-red-600 hover:bg-red-700 text-white"
 				>
-					Close
+					{isOptimizing ? "Optimizing..." : "Confirm & Close"}
 				</button>
 			</div>
 			{statusMessage && (
 				<p
 					className={`mt-4 text-center ${
-						statusMessage.includes("ready") ? "text-green-600" : "text-red-600"
+						statusMessage.includes("ready") ||
+						statusMessage.includes("captured") ||
+						statusMessage.includes("loaded") ||
+						statusMessage.includes("optimized")
+							? "text-green-600"
+							: "text-red-600"
 					}`}
 				>
 					{statusMessage}
