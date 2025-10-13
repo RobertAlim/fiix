@@ -218,7 +218,7 @@ export default function SchedulePage() {
 		// reset, // Function to reset the mutation state
 	} = useMutation({
 		mutationFn: createMaintenanceSchedule, // The function that performs the API call
-		onSuccess: (data) => {
+		onSuccess: () => {
 			showAppToast({
 				// Using the ternary operator for the conditional message
 				message:
