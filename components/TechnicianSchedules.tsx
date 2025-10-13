@@ -27,13 +27,6 @@ import { Button } from "@/components/ui/button";
 import { useSchedules, Schedule } from "@/hooks/use-schedules"; // Adjust path
 import { format } from "date-fns";
 
-// Extend the ColumnMeta type to include className
-// declare module "@tanstack/react-table" {
-// 	interface ColumnMeta<TData extends RowData, TValue> {
-// 		className?: string;
-// 	}
-// }
-
 import {
 	Card,
 	CardContent,
@@ -76,9 +69,6 @@ export function SchedulesDataTable({
 			id: "expander", // Unique ID for the expander column
 			header: () => null, // No header for this column
 			cell: ({ row }) => {
-				// This button directly controls the row's expanded state via TanStack Table.
-				// It does NOT use Shadcn's CollapsibleTrigger for this setup,
-				// because the Collapsible root is in a different TR/TD.
 				return (
 					<Button
 						variant="ghost"

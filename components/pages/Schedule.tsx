@@ -1,5 +1,5 @@
 //Schedule.tsx
-import React, { useEffect, useCallback } from "react"; // Keep React imported
+import React, { useEffect } from "react"; // Keep React imported
 import { Card, CardContent } from "@/components/ui/card";
 import { ComboBoxResponsive, ComboboxItem } from "@/components/ui/combobox";
 import { Button } from "@/components/ui/button";
@@ -151,18 +151,6 @@ const createMaintenanceSchedule = async (
 };
 
 export default function SchedulePage() {
-	// 1. Define the status list for filtering
-	const TARGET_STATUSES: ReadonlySet<string> = useMemo(
-		() =>
-			new Set([
-				"Replacement (Parts)",
-				"Replacement (Unit)",
-				"Pulled Out",
-				"For Replacement Printer Part",
-				"For Replacement of Printer",
-			]),
-		[]
-	);
 	const [edits, setEdits] = useState<Record<string, PrinterEdit>>({});
 
 	// State for selected Client ID
@@ -204,6 +192,7 @@ export default function SchedulePage() {
 	const [immediatePrinters, setImmediatePrinters] = useState<
 		Printer[] | undefined
 	>(undefined);
+	const [action, setAction] = useState("");
 
 	// selectedTechnicianId !== null && scheduleDate !== undefined;
 
@@ -231,8 +220,17 @@ export default function SchedulePage() {
 		mutationFn: createMaintenanceSchedule, // The function that performs the API call
 		onSuccess: (data) => {
 			showAppToast({
-				message: data.message || "Schedule successfully created!",
-				description: "Success",
+				// Using the ternary operator for the conditional message
+				message:
+					action === "FromDataGrid"
+						? "Schedule successfully created!"
+						: "Schedule has been rescheduled successfully",
+
+				// You can also adjust the description based on the action if needed
+				description:
+					action === "FromDataGrid"
+						? "A new schedule has been added to the system."
+						: "The selected schedule date has been updated.",
 				position: "top-right",
 				color: "success",
 			});
@@ -394,6 +392,19 @@ export default function SchedulePage() {
 		isErrorPriorities ||
 		isErrorOpenIssues;
 
+	// 1. Define the status list for filtering
+	const TARGET_STATUSES: ReadonlySet<string> = useMemo(
+		() =>
+			new Set([
+				"Replacement (Parts)",
+				"Replacement (Unit)",
+				"Pulled Out",
+				"For Replacement Printer Part",
+				"For Replacement of Printer",
+			]),
+		[]
+	);
+
 	// --- Data Transformation for ComboBoxResponsive (using useMemo for stability) ---
 
 	const clientComboboxData: ComboboxItem[] = useMemo(() => {
@@ -535,6 +546,11 @@ export default function SchedulePage() {
 		[setPrinterDetailSerialNo, setIsPrinterDetailsDialogOpen]
 	);
 
+	// 3. Filter the data using useMemo (map the allOpenIssues data)
+	const allFilteredIOpenIssues: MaintenanceOpenIssues[] = React.useMemo(() => {
+		return allOpenIssues!.filter((issue) => TARGET_STATUSES.has(issue.status));
+	}, [allOpenIssues]);
+
 	// --- Refined useEffect for Location ID synchronization ---
 	useEffect(() => {
 		if (
@@ -600,11 +616,6 @@ export default function SchedulePage() {
 			setSelectedLocationId("0");
 		}
 	}, [selectedClientId, isEditing]); // Triggers when selectedClientId changes (and not in edit mode)
-
-	// 3. Filter the data using useMemo (map the allOpenIssues data)
-	const allFilteredIOpenIssues: MaintenanceOpenIssues[] = React.useMemo(() => {
-		return allOpenIssues!.filter((issue) => TARGET_STATUSES.has(issue.status));
-	}, [allOpenIssues]);
 
 	const handleDeleteSchedule = React.useCallback(
 		async (schedId: number) => {
@@ -774,6 +785,15 @@ export default function SchedulePage() {
 		] // Add setImmediatePrinters to the dependency array
 	);
 
+	const handleReschedule = React.useCallback(
+		(schedId: number) => {
+			setScheduleId(schedId);
+			setIsSetupModalOpen(true);
+			setAction("ClickFromGrid");
+		},
+		[setPrinterDetailSerialNo]
+	);
+
 	// IMPORTANT: Memoize the state object for useReactTable
 	// const tablePrintersState = React.useMemo(
 	// 	() => ({
@@ -820,11 +840,21 @@ export default function SchedulePage() {
 				onEditClick: handleEditSchedule, // Pass the new handler
 				onDeleteClick: handleDeleteSchedule, // Pass the new handler
 				onShowDetailsClick: handleShowDetails,
+				onShowReschedClick: handleReschedule,
 			}),
 		[handleEditSchedule, handleDeleteSchedule, handleShowDetails] // Dependencies
 	);
 
-	const handlePrinterToggle = useCallback(
+	const handleOpenChange = React.useCallback((isOpen: boolean): void => {
+		// 1. Update the primary Dialog state - THIS IS CRUCIAL
+		setIsSetupModalOpen(isOpen);
+
+		if (isOpen) {
+			setAction("ClickFromDialog");
+		}
+	}, []);
+
+	const handlePrinterToggle = React.useCallback(
 		(id: string, newIsToggled: boolean) => {
 			setEdits((prev) => {
 				const existing = prev[id] || {};
@@ -1037,17 +1067,84 @@ export default function SchedulePage() {
 	const handleConfirmSelections = () => {
 		// You can add validation here if needed before closing
 		if (tempTechnicianId && tempScheduleDate) {
-			setIsEditing(false); // Enable editing mode
-			setIsAdding(true); // Disable adding mode
-			setSelectedTechnicianId(tempTechnicianId);
-			setScheduleDate(tempScheduleDate);
-			setSelectedClientId("0"); // Reset client selection
-			setSelectedLocationId("0");
-			setNotes(""); // Reset notes
-			setIsSetupModalOpen(false); // Close the modal
-			setIsShowDetails(false); // Reset show details state
+			if (action === "ClickFromGrid") {
+				const selectedSchedule: Schedule | undefined =
+					fetchedScheduleData!.find(
+						(schedule) => String(schedule.id) === String(scheduleId)
+					);
+
+				console.log(
+					selectedSchedule?.scheduleAt,
+					format(tempScheduleDate, "MM/dd/yyyy")
+				);
+				// TypeScript safe way to check and use the selected schedule
+				if (selectedSchedule) {
+					if (
+						selectedSchedule.scheduleAt.toString() ===
+						format(tempScheduleDate, "MM/dd/yyyy")
+					) {
+						showAppToast({
+							message: `Redeployment date cannot be the same as the original schedule date.`,
+							description: "Validation",
+							position: "top-right",
+							color: "warning",
+						});
+
+						return;
+					}
+
+					const scheduleData = {
+						technicianId: tempTechnicianId || "0",
+						clientId: String(selectedSchedule.clientId) || "0",
+						locationId: String(selectedSchedule.locationId) || "0",
+						priority: String(selectedSchedule.priorityId) || "0",
+						notes: selectedSchedule.notes || "",
+						maintainAll: true, //tablePrinters.getIsAllRowsSelected(),
+						scheduleDate: tempScheduleDate,
+						scheduleId: scheduleId,
+						added: [],
+						removed: [],
+						actions: "Add Schedule",
+					};
+
+					mutate(scheduleData);
+
+					setIsEditing(false); // Enable editing mode
+					setIsAdding(true); // Disable adding mode
+					setSelectedTechnicianId(tempTechnicianId);
+					setScheduleDate(tempScheduleDate);
+					setSelectedClientId("0"); // Reset client selection
+					setSelectedLocationId("0");
+					setNotes(""); // Reset notes
+					setIsSetupModalOpen(false); // Close the modal
+					setIsShowDetails(false); // Reset show details state
+				} else {
+					showAppToast({
+						message: `Schedule with ID ${scheduleId} not found.`,
+						description: "Validation",
+						position: "top-right",
+						color: "warning",
+					});
+				}
+			} else {
+				// action === "ClickFromDialog"
+				setIsEditing(false); // Enable editing mode
+				setIsAdding(true); // Disable adding mode
+				setSelectedTechnicianId(tempTechnicianId);
+				setScheduleDate(tempScheduleDate);
+				setSelectedClientId("0"); // Reset client selection
+				setSelectedLocationId("0");
+				setNotes(""); // Reset notes
+				setIsSetupModalOpen(false); // Close the modal
+				setIsShowDetails(false); // Reset show details state
+			}
 		} else {
-			alert("Please select both a technician and a date."); // Simple validation
+			showAppToast({
+				message: "Please select both a technician and a date.",
+				description: "Validation",
+				position: "top-right",
+				color: "warning",
+			});
 		}
 	};
 
@@ -1058,10 +1155,7 @@ export default function SchedulePage() {
 					<div className="grid lg:grid-cols-3 grid-cols-1 gap-4">
 						<div className="col-span-1 space-y-2">
 							{/* ** Combined Technician & Date Selection Modal ** */}
-							<Dialog
-								open={isSetupModalOpen}
-								onOpenChange={setIsSetupModalOpen}
-							>
+							<Dialog open={isSetupModalOpen} onOpenChange={handleOpenChange}>
 								<DialogTrigger asChild>
 									{/* The button that opens the modal */}
 									<Button className="mb-4">
@@ -1109,7 +1203,9 @@ export default function SchedulePage() {
 												tempScheduleDate === undefined
 											}
 										>
-											Confirm Selections
+											{action === "ClickFromDialog"
+												? "Confirm Selections"
+												: "Reschedule"}
 										</Button>
 									</DialogFooter>
 								</DialogContent>

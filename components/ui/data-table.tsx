@@ -62,6 +62,7 @@ export const Datatable = //React.memo(
 								<TableRow
 									key={row.id}
 									data-state={row.getIsSelected() && "selected"}
+									className="odd:bg-gray-50 even:bg-white hover:bg-gray-100 dark:odd:bg-gray-900 dark:even:bg-gray-950 dark:hover:bg-gray-800"
 								>
 									{row.getVisibleCells().map((cell) => (
 										<TableCell

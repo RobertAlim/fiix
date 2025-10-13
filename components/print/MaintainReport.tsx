@@ -368,7 +368,11 @@ export const MaintainReport: React.FC<{ data: MaintenanceReportProps }> = ({
 								<Image
 									id="signLogo"
 									src={data.signPath}
-									style={{ width: "100%" }}
+									style={{
+										width: "100%",
+										height: 50,
+										objectFit: "contain",
+									}}
 								/>
 							) : (
 								<Text style={{ textAlign: "center" }}>

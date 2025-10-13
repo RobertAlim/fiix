@@ -32,13 +32,15 @@ interface ScheduleColumnsProps {
 	onEditClick: (schedId: number) => void;
 	onDeleteClick: (schedId: number) => void;
 	onShowDetailsClick: (schedId: number) => void; // Optional prop for showing details
+	onShowReschedClick: (schedId: number) => void; // New prop for rescheduling
 }
 
 // Export a function that returns the columns array
 export const getScheduleColumns = (
 	props: ScheduleColumnsProps
 ): ColumnDef<Schedule>[] => {
-	const { onEditClick, onDeleteClick, onShowDetailsClick } = props; // Destructure the new prop
+	const { onEditClick, onDeleteClick, onShowDetailsClick, onShowReschedClick } =
+		props; // Destructure the new prop
 	return [
 		{
 			id: "select",
@@ -229,6 +231,11 @@ export const getScheduleColumns = (
 								onClick={() => onShowDetailsClick(Number(schedule.id))}
 							>
 								Show Details
+							</DropdownMenuItem>
+							<DropdownMenuItem
+								onClick={() => onShowReschedClick(Number(schedule.id))}
+							>
+								Reschedule
 							</DropdownMenuItem>
 						</DropdownMenuContent>
 					</DropdownMenu>
