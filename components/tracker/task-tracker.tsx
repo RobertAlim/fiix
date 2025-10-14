@@ -8,6 +8,7 @@ import {
 	CardTitle,
 	CardDescription,
 	CardContent,
+	CardFooter,
 } from "@/components/ui/card";
 import {
 	Table,
@@ -36,6 +37,8 @@ async function fetchJSON<T>(url: string): Promise<T> {
 export default function TaskTracker() {
 	const [query, setQuery] = React.useState("");
 	const [selectedId, setSelectedId] = React.useState<number | null>(null);
+	const [currentPage, setCurrentPage] = React.useState(1);
+	const itemsPerPage = 10;
 
 	const {
 		data: schedules,
@@ -75,6 +78,19 @@ export default function TaskTracker() {
 			].some((v) => v?.toLowerCase().includes(q))
 		);
 	}, [schedules, query]);
+
+	const totalPages = Math.ceil(filtered.length / itemsPerPage);
+
+	const currentTableData = React.useMemo(() => {
+		const firstPageIndex = (currentPage - 1) * itemsPerPage;
+		const lastPageIndex = firstPageIndex + itemsPerPage;
+		return filtered.slice(firstPageIndex, lastPageIndex);
+	}, [currentPage, filtered, itemsPerPage]);
+
+	// Reset to page 1 whenever the user searches
+	React.useEffect(() => {
+		setCurrentPage(1);
+	}, [query]);
 
 	React.useEffect(() => {
 		if (selectedId == null && (schedules?.data?.length ?? 0) > 0) {
@@ -119,7 +135,7 @@ export default function TaskTracker() {
 							</TableRow>
 						</TableHeader>
 						<TableBody>
-							{filtered.map((row) => (
+							{currentTableData.map((row) => (
 								<TableRow
 									key={row.id}
 									onClick={() => setSelectedId(row.id)}
@@ -176,6 +192,34 @@ export default function TaskTracker() {
 						</TableBody>
 					</Table>
 				</CardContent>
+				<CardFooter className="flex items-center justify-end space-x-4 py-4">
+					<div className="flex-1 text-sm text-muted-foreground">
+						{filtered.length} total schedule(s).
+					</div>
+					<div className="flex items-center space-x-2">
+						<span className="text-sm text-muted-foreground">
+							Page {totalPages > 0 ? currentPage : 0} of {totalPages}
+						</span>
+						<Button
+							variant="outline"
+							size="sm"
+							onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+							disabled={currentPage === 1}
+						>
+							Previous
+						</Button>
+						<Button
+							variant="outline"
+							size="sm"
+							onClick={() =>
+								setCurrentPage((prev) => Math.min(prev + 1, totalPages))
+							}
+							disabled={currentPage === totalPages || totalPages === 0}
+						>
+							Next
+						</Button>
+					</div>
+				</CardFooter>
 			</Card>
 
 			{/* Right: Details */}
