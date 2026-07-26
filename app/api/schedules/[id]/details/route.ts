@@ -7,14 +7,14 @@ import { requireRole } from "@/lib/require-role";
 
 export async function GET(
 	_req: Request,
-	{ params }: { params: Promise<{ id: number }> }
+	{ params }: { params: Promise<{ id: string }> }
 ) {
 	const authResult = await requireRole(["Admin", "Scheduler"]);
 	if (authResult.error) return authResult.error;
 
 	const { id } = await params;
-	const scheduleId = id;
-	if (Number.isFinite(scheduleId)) {
+	const scheduleId = Number(id);
+	if (!Number.isFinite(scheduleId)) {
 		return new NextResponse("Invalid schedule id", { status: 400 });
 	}
 
