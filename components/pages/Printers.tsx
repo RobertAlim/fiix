@@ -3,6 +3,7 @@
 import React from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { MasterDataManager } from "@/components/MasterDataManager";
+import { ImportCsvModalButton } from "@/components/ImportCsvModalButton";
 import { Printer } from "lucide-react";
 import { format } from "date-fns";
 
@@ -10,9 +11,25 @@ export default function PrintersPage() {
 	return (
 		<Card className="rounded-2xl border shadow-sm">
 			<CardHeader>
-				<CardTitle className="flex items-center gap-2 text-base font-semibold">
-					<Printer className="h-5 w-5 text-primary" />
-					Printers
+				<CardTitle className="flex items-center justify-between gap-2 text-base font-semibold">
+					<span className="flex items-center gap-2">
+						<Printer className="h-5 w-5 text-primary" />
+						Printers
+					</span>
+					<ImportCsvModalButton
+						tableName="Printers"
+						description="Each row creates a printer (if its serial number is new) and its active deployment. A printer that already has an active deployment is skipped, not duplicated — safe to re-run on a file that includes printers you've already imported."
+						endpoint="/api/admin/import/deployments"
+						expectedColumns={[
+							"serialNo",
+							"model",
+							"client",
+							"location",
+							"department",
+							"deployedClient",
+							"deploymentDate",
+						]}
+					/>
 				</CardTitle>
 				<p className="text-sm text-muted-foreground">
 					Create and manage deployed printer units. &quot;Original Client&quot;
