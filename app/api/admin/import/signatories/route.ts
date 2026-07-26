@@ -66,7 +66,10 @@ export async function POST(req: Request) {
 		const rowNum = idx + 2;
 		const firstName = trimCell(row, "firstname");
 		const lastName = trimCell(row, "lastname");
-		const clientName = trimCell(row, "client");
+		// Accept both "client" (the correct column name) and "client
+		// (optional)" — the UI used to suggest naming it the latter, so
+		// files already prepared that way should still import correctly.
+		const clientName = trimCell(row, "client") || trimCell(row, "client (optional)");
 
 		if (!firstName || !lastName) {
 			result.failed++;

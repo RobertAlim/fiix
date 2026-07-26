@@ -190,7 +190,7 @@ export default function DataImportPage() {
 										tableName="Signatories"
 										description="Client is optional — leave blank if not tied to one."
 										endpoint="/api/admin/import/signatories"
-										expectedColumns={["firstName", "lastName", "client (optional)"]}
+										expectedColumns={["firstName", "lastName", "client"]}
 									/>
 								}
 							/>

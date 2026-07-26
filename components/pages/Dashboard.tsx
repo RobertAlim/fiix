@@ -241,9 +241,30 @@ export default function DashboardPage({
 				))}
 			</div>
 
-			{/* Chart + Itinerary */}
-			<div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-				<Card className="min-w-0 rounded-2xl border shadow-sm lg:col-span-2">
+			{/* Itinerary + Chart — stacked, Itinerary first */}
+			<div className="flex flex-col gap-4">
+				<Card className="min-w-0 rounded-2xl border shadow-sm">
+					<CardHeader>
+						<CardTitle className="text-base font-semibold">
+							{users.role === "Technician" ? "Your Itinerary Today" : "Overview"}
+						</CardTitle>
+					</CardHeader>
+					<CardContent>
+						{users.role === "Technician" ? (
+							<SchedulesDataTable
+								technicianId={users.id}
+								scheduledAt={formattedDate}
+								onCardClick={onCardClick}
+							/>
+						) : (
+							<p className="text-sm text-muted-foreground">
+								Assign yourself as a technician to see a daily itinerary here.
+							</p>
+						)}
+					</CardContent>
+				</Card>
+
+				<Card className="min-w-0 rounded-2xl border shadow-sm">
 					<CardHeader>
 						<CardTitle className="text-base font-semibold">
 							Maintenance Completed — Last 7 Days
@@ -275,27 +296,6 @@ export default function DashboardPage({
 							<div className="flex h-full items-center justify-center text-sm text-muted-foreground">
 								{statsLoading ? "Loading…" : "No maintenance activity yet this week."}
 							</div>
-						)}
-					</CardContent>
-				</Card>
-
-				<Card className="min-w-0 rounded-2xl border shadow-sm">
-					<CardHeader>
-						<CardTitle className="text-base font-semibold">
-							{users.role === "Technician" ? "Your Itinerary Today" : "Overview"}
-						</CardTitle>
-					</CardHeader>
-					<CardContent>
-						{users.role === "Technician" ? (
-							<SchedulesDataTable
-								technicianId={users.id}
-								scheduledAt={formattedDate}
-								onCardClick={onCardClick}
-							/>
-						) : (
-							<p className="text-sm text-muted-foreground">
-								Assign yourself as a technician to see a daily itinerary here.
-							</p>
 						)}
 					</CardContent>
 				</Card>

@@ -126,8 +126,10 @@ export default function MaintenancePage({
 					const errorData = await response.json();
 					showAppToast({
 						message:
-							"Failed to add signatory. Please try again later or contact support: " +
-							errorData.message,
+							response.status === 409
+								? errorData.message
+								: "Failed to add signatory. Please try again later or contact support: " +
+								  errorData.message,
 						description: "Signatory addition failed",
 						position: "top-right",
 						color: "error", // This will influence the default icon color and potential border
