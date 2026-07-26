@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
 import { Printer } from "@/components/columns/printers/columns";
 import { showAppToast } from "./ui/apptoast";
+import { cn } from "@/lib/utils";
 
 export function PrinterStatusCard({
 	id,
@@ -32,7 +33,6 @@ export function PrinterStatusCard({
 }: Printer) {
 	const [localToggle, setLocalToggle] = useState<boolean>(initialToggle);
 
-	// Sync with prop changes
 	useEffect(() => {
 		setLocalToggle(initialToggle);
 	}, [initialToggle]);
@@ -50,21 +50,45 @@ export function PrinterStatusCard({
 
 		setLocalToggle((prev) => {
 			const next = !prev;
-			// Defer parent update until after this component's render is done
 			queueMicrotask(() => onToggleChange(next));
 			return next;
 		});
 	};
+
+	const badgeClass =
+		status === "Good Condition"
+			? "bg-success text-success-foreground"
+			: status === "Pulled Out"
+			? "bg-info text-info-foreground"
+			: status === null
+			? ""
+			: "bg-destructive text-white";
+
+	const issueBoxClass =
+		status === "Good Condition"
+			? "bg-success/10 border-success/30"
+			: status === "Pulled Out"
+			? "bg-info/10 border-info/30"
+			: "bg-destructive/10 border-destructive/30";
+
+	const issueTextClass =
+		status === "Good Condition"
+			? "text-success"
+			: status === "Pulled Out"
+			? "text-info"
+			: "text-destructive";
+
 	return (
 		<Card
-			className={`w-full shadow-lg hover:shadow-xl ease-in-out transition-colors duration-200 cursor-pointer ${
-				localToggle ? "bg-green-100" : "bg-white"
-			} border ${localToggle ? "border-green-300" : "border-gray-200"}`}
+			className={cn(
+				"w-full rounded-xl border transition-colors duration-200 cursor-pointer hover:shadow-sm",
+				localToggle ? "bg-success/10 border-success/40" : "bg-card"
+			)}
 			onClick={() => handleToggle()}
 		>
 			<CardHeader>
 				<div className="flex justify-between items-center">
-					<CardTitle className="text-lg font-bold text-gray-800">
+					<CardTitle className="text-lg font-bold">
 						<span className="inline sm:hidden md:inline lg:hidden">#: </span>
 						<span className="hidden sm:inline md:hidden lg:inline">
 							Printer:{" "}
@@ -73,16 +97,8 @@ export function PrinterStatusCard({
 					</CardTitle>
 
 					<Badge
-						variant={
-							status === "Good Condition"
-								? "secondary"
-								: status === "Pulled Out"
-								? "default"
-								: status === null
-								? "outline"
-								: "destructive"
-						}
-						className="px-3 py-1 text-sm font-semibold rounded-full"
+						variant={status === null ? "outline" : "default"}
+						className={cn("px-3 py-1 text-sm font-semibold rounded-full", badgeClass)}
 					>
 						<span className="hidden sm:inline lg:inline">
 							{status === null ? "New Unit" : status}
@@ -100,24 +116,24 @@ export function PrinterStatusCard({
 						</span>
 					</Badge>
 				</div>
-				<CardDescription className="text-sm text-gray-500">
+				<CardDescription className="text-sm text-muted-foreground">
 					Serial No: {serialNo}
 				</CardDescription>
 			</CardHeader>
 			<CardContent className="grid gap-4">
 				<div className="flex items-center space-x-4 p-2 rounded-md">
 					<div className="flex-1 space-y-1">
-						<p className="text-sm font-medium leading-none text-gray-700">
+						<p className="text-sm font-medium leading-none text-muted-foreground">
 							Model
 						</p>
-						<p className="text-md font-semibold text-gray-900">{model}</p>
+						<p className="text-md font-semibold">{model}</p>
 					</div>
 					<Separator orientation="vertical" className="h-10" />
 					<div className="flex-1 space-y-1 text-right">
-						<p className="text-sm font-medium leading-none text-gray-700">
+						<p className="text-sm font-medium leading-none text-muted-foreground">
 							Department
 						</p>
-						<p className="text-md font-semibold text-gray-900">{department}</p>
+						<p className="text-md font-semibold">{department}</p>
 					</div>
 				</div>
 
@@ -125,69 +141,47 @@ export function PrinterStatusCard({
 
 				<div className="grid grid-cols-2 gap-4">
 					<div>
-						<p className="text-sm font-medium text-gray-700">
+						<p className="text-sm font-medium text-muted-foreground">
 							Last Maintenance
 						</p>
-						<p className="text-md font-semibold text-gray-900">
+						<p className="text-md font-semibold">
 							{lastMt !== null ? format(lastMt, "MM/dd h:mm aa") : ""}
 						</p>
 					</div>
 					<div>
-						<p className="text-sm font-medium text-gray-700">Maintenance ID</p>
-						<p className="text-md font-semibold text-gray-900">{mtId}</p>
+						<p className="text-sm font-medium text-muted-foreground">
+							Maintenance ID
+						</p>
+						<p className="text-md font-semibold">{mtId}</p>
 					</div>
 				</div>
 
 				<div className="grid grid-cols-2 gap-4">
 					<div>
-						<p className="text-sm font-medium text-gray-700">Maintained Date</p>
-						<p className="text-md font-semibold text-gray-900">
+						<p className="text-sm font-medium text-muted-foreground">
+							Maintained Date
+						</p>
+						<p className="text-md font-semibold">
 							{maintainedDate !== null
 								? format(maintainedDate, "MM/dd h:mm aa")
 								: ""}
 						</p>
 					</div>
 					<div>
-						<p className="text-sm font-medium text-gray-700">
+						<p className="text-sm font-medium text-muted-foreground">
 							Sched Details ID
 						</p>
-						<p className="text-md font-semibold text-gray-900">
+						<p className="text-md font-semibold">
 							{schedDetailsId || "Not Scheduled"}
 						</p>
 					</div>
 				</div>
 
-				<div
-					className={`mt-2 p-3 border ${
-						status === "Good Condition"
-							? "bg-green-50 border-green-200"
-							: status === "Pulled Out"
-							? "bg-blue-50 border-blue-200"
-							: "bg-red-50 border-red-200"
-					}  rounded-md`}
-				>
-					<p
-						className={`text-sm font-medium ${
-							status === "Good Condition"
-								? "text-green-700"
-								: status === "Pulled Out"
-								? "text-blue-700"
-								: "text-red-700"
-						}`}
-					>
+				<div className={cn("mt-2 p-3 border rounded-md", issueBoxClass)}>
+					<p className={cn("text-sm font-medium", issueTextClass)}>
 						Current Issue:
 					</p>
-					<p
-						className={`text-md font-semibold ${
-							status === "Good Condition"
-								? "text-green-800"
-								: status === "Pulled Out"
-								? "text-blue-800"
-								: "text-red-800"
-						}`}
-					>
-						{notes}
-					</p>
+					<p className={cn("text-md font-semibold", issueTextClass)}>{notes}</p>
 				</div>
 			</CardContent>
 		</Card>

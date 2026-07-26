@@ -1,0 +1,1 @@
+ALTER TABLE "users" ALTER COLUMN "createdAt" SET DEFAULT now() AT TIME ZONE 'Asia/Manila';

@@ -4,15 +4,21 @@ import {
 	users,
 	status,
 	printers,
+	deployments,
 	models,
 	clients,
 	locations,
 	departments,
+	maintenanceLocation,
 } from "@/db/schema";
 import { eq, sql, desc } from "drizzle-orm";
 import { NextResponse } from "next/server";
+import { requireRole } from "@/lib/require-role";
 
 export async function GET() {
+	const authResult = await requireRole(["Admin", "Scheduler"]);
+	if (authResult.error) return authResult.error;
+
 	const data = await db
 		.select({
 			id: maintain.id,
@@ -22,16 +28,22 @@ export async function GET() {
 			department: departments.name,
 			status: status.name,
 			technician: sql<string>`${users.firstName} || ' ' || ${users.lastName}`,
+			gpsLocation: maintenanceLocation.locationName,
 			date: sql<string>`to_char(${maintain.createdAt}, 'MM/DD/YYYY')`.as(
 				"date"
 			),
 		})
 		.from(maintain)
-		.innerJoin(printers, eq(printers.id, maintain.printerId))
-		.innerJoin(models, eq(printers.modelId, models.id))
-		.innerJoin(clients, eq(printers.clientId, clients.id))
-		.innerJoin(locations, eq(printers.locationId, locations.id))
-		.innerJoin(departments, eq(printers.departmentId, departments.id))
+		.leftJoin(
+			maintenanceLocation,
+			eq(maintenanceLocation.maintenanceId, maintain.id)
+		)
+		.innerJoin(deployments, eq(deployments.id, maintain.deploymentId))
+		.innerJoin(printers, eq(printers.id, deployments.printerId))
+		.innerJoin(models, eq(deployments.modelId, models.id))
+		.innerJoin(clients, eq(deployments.clientId, clients.id))
+		.innerJoin(locations, eq(deployments.locationId, locations.id))
+		.innerJoin(departments, eq(deployments.departmentId, departments.id))
 		.innerJoin(status, eq(status.id, maintain.statusId))
 		.innerJoin(users, eq(users.id, maintain.userId))
 		.orderBy(desc(maintain.createdAt));

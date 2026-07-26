@@ -1,7 +1,11 @@
 import { InferInsertModel, sql } from "drizzle-orm";
 import {
 	timestamp,
+	uuid,
+	doublePrecision,
+	real,
 	pgTable,
+	pgView,
 	serial,
 	text,
 	date,
@@ -70,12 +74,12 @@ export const users = pgTable("users", {
 	clerkId: text("clerkId").notNull(),
 	createdAt: timestamp("createdAt")
 		.notNull()
-		.default(sql`CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Manila'`),
+		.default(sql`now()`),
 });
 
 export const maintain = pgTable("maintain", {
 	id: serial("id").primaryKey(),
-	printerId: integer("printerId").notNull(),
+	deploymentId: integer("deploymentId").notNull(),
 	clientId: integer("clientId").notNull(),
 	locationId: integer("locationId"),
 	departmentId: integer("departmentId"),
@@ -93,8 +97,13 @@ export const maintain = pgTable("maintain", {
 	nozzlePath: text("nozzlePath"),
 	createdAt: timestamp("createdAt")
 		.notNull()
-		.default(sql`CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Manila'`),
+		.default(sql`now()`),
 	originMTId: integer("originMTId").references((): AnyPgColumn => maintain.id), // Self-referencing foreign key
+	// Client-generated UUID for offline-first sync. A retried sync of the same
+	// locally-saved report carries the same clientUuid, so the server can
+	// detect the replay and return the existing record instead of inserting a
+	// duplicate. Nullable because legacy rows predate offline support.
+	clientUuid: uuid("clientUuid").unique(),
 });
 
 export const schedules = pgTable("schedules", {
@@ -106,9 +115,9 @@ export const schedules = pgTable("schedules", {
 	notes: text("notes"),
 	maintainAll: boolean("maintainAll").default(false),
 	scheduledAt: date("scheduledAt").notNull(),
-	createdAt: timestamp("createdAt", { withTimezone: true })
+	createdAt: timestamp("createdAt")
 		.notNull()
-		.default(sql`CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Manila'`),
+		.default(sql`now()`),
 });
 
 export const scheduleDetails = pgTable("scheduleDetails", {
@@ -151,16 +160,51 @@ export const repair = pgTable("repair", {
 export const printers = pgTable("printers", {
 	id: serial("id").primaryKey(),
 	serialNo: varchar("serialNo", { length: 50 }).notNull(),
+	deployedClient: integer("clientId").notNull(),
+	createdAt: timestamp("createdAt")
+		.notNull()
+		.default(sql`now()`),
+});
+
+export const deployments = pgTable("deployments", {
+	id: serial("id").primaryKey(),
+	printerId: integer("printerId").notNull(),
 	modelId: integer("modelId").notNull(),
 	clientId: integer("clientId").notNull(),
 	locationId: integer("locationId").notNull(),
 	departmentId: integer("departmentId").notNull(),
 	deploymentDate: date("deploymentDate").notNull(),
-	deployedClient: integer("clientId").notNull(),
+	deployedHere: boolean("deployedHere").notNull(),
 	createdAt: timestamp("createdAt")
 		.notNull()
-		.default(sql`CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Manila'`),
+		.default(sql`now()`),
 });
+
+// Define the View in TypeScript
+export const activeDeployment = pgView("active_deployment", {
+	// Define the columns the view will return
+	id: serial("id").primaryKey(),
+	printerId: integer("printerId").notNull(),
+	modelId: integer("modelId").notNull(),
+	clientId: integer("clientId").notNull(),
+	locationId: integer("locationId").notNull(),
+	departmentId: integer("departmentId").notNull(),
+	deploymentDate: date("deploymentDate").notNull(),
+	deployedHere: boolean("deployedHere").notNull(),
+	createdAt: timestamp("createdAt")
+		.notNull()
+		.default(sql`now()`),
+}).as(
+	// Use sql template tag to define the view's query
+	sql`
+    SELECT
+        *
+    FROM
+        ${deployments}
+    WHERE
+        ${deployments.deployedHere} = True
+  `
+);
 
 export const signatories = pgTable("signatories", {
 	id: serial("id").primaryKey(),
@@ -177,7 +221,6 @@ export const otps = pgTable("otps", {
 });
 
 // Define relations for Drizzle ORM
-
 // --- RELATIONS ---
 
 // Schedule relations (as before)
@@ -223,35 +266,36 @@ export const scheduleDetailsRelations = relations(
 );
 
 // Printers relations (add models, departments, and maintain relations)
-export const printersRelations = relations(printers, ({ one, many }) => ({
+export const printersRelations = relations(deployments, ({ one, many }) => ({
 	model: one(models, {
 		// Relation to models
-		fields: [printers.modelId],
+		fields: [deployments.modelId],
 		references: [models.id],
 	}),
 	department: one(departments, {
 		// Relation to departments
-		fields: [printers.departmentId],
+		fields: [deployments.departmentId],
 		references: [departments.id],
 	}),
 	// A printer can have MANY maintenance records
 	maintenanceRecords: many(maintain), // Using 'maintenanceRecords' for the many relation
 	// Also relate back to client and location if needed for printer's own data
 	client: one(clients, {
-		fields: [printers.clientId],
+		fields: [deployments.clientId],
 		references: [clients.id],
 	}),
 	location: one(locations, {
-		fields: [printers.locationId],
+		fields: [deployments.locationId],
 		references: [locations.id],
 	}),
+	deploymentRecords: many(deployments),
 }));
 
 // Maintain relations (add printer and status relations)
 export const maintainRelations = relations(maintain, ({ one }) => ({
 	printer: one(printers, {
 		// Relation back to printer
-		fields: [maintain.printerId],
+		fields: [maintain.deploymentId],
 		references: [printers.id],
 	}),
 	status: one(status, {
@@ -280,5 +324,77 @@ export const statusRelations = relations(status, ({ many }) => ({
 	maintainRecords: many(maintain),
 }));
 
+export const deploymentRelations = relations(deployments, ({ many }) => ({
+	printerRecords: many(printers),
+}));
+
 export type User = InferSelectModel<typeof users>;
 export type NewUser = InferInsertModel<typeof users>;
+// You can also infer the type for type-safe usage in Next.js components/APIs
+export type ActiveDeploymentView = typeof activeDeployment.$inferSelect;
+
+//OFFLINE-FIRST GPS SUPPORT****************************************************************************
+
+/**
+ * Normalized GPS record for a maintenance report. Kept in its own table (not
+ * mixed into `maintain`) for cleaner reporting, future GPS history, and reuse
+ * by other modules. One row per maintenance report today (unique FK), but the
+ * shape allows relaxing to one-to-many later.
+ */
+export const maintenanceLocation = pgTable("maintenance_location", {
+	id: uuid("id").primaryKey().defaultRandom(),
+	maintenanceId: integer("maintenanceId")
+		.notNull()
+		.unique()
+		.references(() => maintain.id, { onDelete: "cascade" }),
+	latitude: doublePrecision("latitude").notNull(),
+	longitude: doublePrecision("longitude").notNull(),
+	/** Horizontal accuracy in meters, as reported by the Geolocation API. */
+	accuracy: real("accuracy").notNull(),
+	altitude: doublePrecision("altitude"),
+	heading: real("heading"),
+	speed: real("speed"),
+	/** Short human-readable name, e.g. "Camella Del Rio Talon Dos Las Piñas City". */
+	locationName: text("locationName"),
+	formattedAddress: text("formattedAddress"),
+	city: varchar("city", { length: 100 }),
+	province: varchar("province", { length: 100 }),
+	country: varchar("country", { length: 100 }),
+	postalCode: varchar("postalCode", { length: 20 }),
+	/** Device timestamp at which the fix was acquired (may predate sync). */
+	capturedAt: timestamp("capturedAt", { withTimezone: true }).notNull(),
+	gpsProvider: varchar("gpsProvider", { length: 50 }).default("browser-geolocation"),
+	isMockLocation: boolean("isMockLocation").notNull().default(false),
+	/** False until a reverse-geocode has populated the address fields. */
+	reverseGeocoded: boolean("reverseGeocoded").notNull().default(false),
+	createdAt: timestamp("createdAt").notNull().default(sql`now()`),
+	updatedAt: timestamp("updatedAt").notNull().default(sql`now()`),
+});
+
+export const maintenanceLocationRelations = relations(
+	maintenanceLocation,
+	({ one }) => ({
+		maintenance: one(maintain, {
+			fields: [maintenanceLocation.maintenanceId],
+			references: [maintain.id],
+		}),
+	})
+);
+
+/**
+ * Server-side audit trail of offline synchronization events, keyed by the
+ * client-generated report UUID so events created before the `maintain` row
+ * exists can still be linked afterwards.
+ */
+export const maintenanceSyncEvents = pgTable("maintenance_sync_events", {
+	id: serial("id").primaryKey(),
+	clientUuid: uuid("clientUuid").notNull(),
+	event: varchar("event", { length: 50 }).notNull(),
+	detail: text("detail"),
+	/** When the event happened on the device (client clock). */
+	occurredAt: timestamp("occurredAt", { withTimezone: true }),
+	createdAt: timestamp("createdAt").notNull().default(sql`now()`),
+});
+
+export type MaintenanceLocation = InferSelectModel<typeof maintenanceLocation>;
+export type NewMaintenanceLocation = InferInsertModel<typeof maintenanceLocation>;

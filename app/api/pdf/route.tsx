@@ -20,6 +20,8 @@ import {
 	replace,
 	repair,
 	parts,
+	deployments,
+	maintenanceLocation,
 } from "@/db/schema";
 import { eq, sql } from "drizzle-orm";
 import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
@@ -28,6 +30,7 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { renderToStream } from "@react-pdf/renderer";
 import { Readable } from "node:stream"; // Node stream type + converter
 import { formatUtc } from "@/lib/formatDate";
+import { requireRole } from "@/lib/require-role";
 
 export const runtime = "nodejs"; // react-pdf needs Node (pdfkit internals)
 export const dynamic = "force-dynamic"; // optional: disable static optimization
@@ -42,6 +45,9 @@ const r2 = new S3Client({
 });
 
 export async function GET(request: NextRequest) {
+	const authResult = await requireRole(["Admin", "Scheduler"]);
+	if (authResult.error) return authResult.error;
+
 	try {
 		const mtId = Number(request.nextUrl.searchParams.get("mtId")); // Replace with the actual maintenance ID you want to fetch
 		const [mt] = await db
@@ -65,13 +71,22 @@ export async function GET(request: NextRequest) {
 				signatory: sql<string>`${signatories.firstName} || ' ' || ${signatories.lastName}`,
 				signPath: maintain.signPath,
 				nozzlePath: maintain.nozzlePath,
+				gpsLocationName: maintenanceLocation.locationName,
+				gpsLatitude: maintenanceLocation.latitude,
+				gpsLongitude: maintenanceLocation.longitude,
+				gpsAccuracy: maintenanceLocation.accuracy,
 			})
 			.from(maintain)
-			.innerJoin(printers, eq(printers.id, maintain.printerId))
-			.innerJoin(models, eq(printers.modelId, models.id))
-			.innerJoin(clients, eq(printers.clientId, clients.id))
-			.innerJoin(locations, eq(printers.locationId, locations.id))
-			.innerJoin(departments, eq(printers.departmentId, departments.id))
+			.leftJoin(
+				maintenanceLocation,
+				eq(maintenanceLocation.maintenanceId, maintain.id)
+			)
+			.innerJoin(deployments, eq(deployments.id, maintain.deploymentId))
+			.innerJoin(printers, eq(printers.id, deployments.printerId))
+			.innerJoin(models, eq(deployments.modelId, models.id))
+			.innerJoin(clients, eq(deployments.clientId, clients.id))
+			.innerJoin(locations, eq(deployments.locationId, locations.id))
+			.innerJoin(departments, eq(deployments.departmentId, departments.id))
 			.innerJoin(status, eq(status.id, maintain.statusId))
 			.innerJoin(users, eq(users.id, maintain.userId))
 			.innerJoin(signatories, eq(signatories.id, maintain.signatoryId))
@@ -178,6 +193,13 @@ export async function GET(request: NextRequest) {
 			signatory: mt.signatory,
 			signPath: mt.signPath || "", // this is base64 image string
 			nozzlePath: mt.nozzlePath || "", // this is base64 image string
+			gpsLocation: mt.gpsLocationName ?? undefined,
+			gpsCoordinates:
+				mt.gpsLatitude != null && mt.gpsLongitude != null
+					? `${mt.gpsLatitude.toFixed(6)}, ${mt.gpsLongitude.toFixed(6)}${
+							mt.gpsAccuracy != null ? ` (±${Math.round(mt.gpsAccuracy)}m)` : ""
+					  }`
+					: undefined,
 		};
 
 		const nodeStream = await renderToStream(<MaintainReport data={data} />);

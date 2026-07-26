@@ -32,7 +32,6 @@ import SignaturePad from "@/components/SignaturePad";
 import { useUserStore } from "@/state/userStore";
 import { format } from "date-fns";
 import { showAppToast } from "../ui/apptoast";
-import { v4 as uuidv4 } from "uuid";
 
 import { ScanQRCodeModalContent } from "@/components/ScanQRCodeModalContent";
 
@@ -45,8 +44,11 @@ import {
 import { useRouter } from "next/navigation"; // if not alread
 import Image from "next/image";
 import { CameraCapture } from "../CameraCapture";
-import { ensureError } from "@/lib/errors";
 import { base64ToFile } from "@/lib/fileConverter";
+import {
+	saveMaintenanceReport,
+	type SaveFailureCode,
+} from "@/features/offline-sync";
 
 type item = {
 	label: string;
@@ -91,6 +93,11 @@ export default function MaintenancePage({
 	const { users } = useUserStore();
 	const [today, setToday] = useState("");
 	const [isSaving, setIsSaving] = useState(false);
+	const [saveStep, setSaveStep] = useState<string | null>(null);
+	const [gpsFailure, setGpsFailure] = useState<{
+		code: SaveFailureCode;
+		message: string;
+	} | null>(null);
 	const [capturedBlob, setCapturedBlob] = useState<Blob | null>(null);
 	const [objectURL, setObjectURL] = useState<string | null>(null);
 	const router = useRouter();
@@ -189,7 +196,7 @@ export default function MaintenancePage({
 
 	const clientsComboboxData: ComboboxItem[] = useMemo(() => {
 		return (clients ?? []).map((tech) => ({
-			value: tech.id,
+			value: String(tech.id),
 			label: tech.name,
 		}));
 	}, [clients]); // Only recompute if allTechnicians array reference changes
@@ -197,136 +204,83 @@ export default function MaintenancePage({
 	const refillInk = useWatch({ control, name: "colorSelected" }) ?? false;
 	const reset = useWatch({ control, name: "resetSelected" }) ?? false;
 
+	// Offline-first save: validate → mandatory GPS → persist to IndexedDB →
+	// background sync uploads photos/signature to R2 and the report to Neon.
+	// The technician gets confirmation as soon as the LOCAL save succeeds —
+	// this never waits for connectivity.
 	const onSubmit = async (data: MaintainFormData) => {
-		setIsSaving(true); // ⛔ block UI
-		if (!objectURL) {
+		setIsSaving(true);
+
+		if (!objectURL || !capturedBlob) {
 			showAppToast({
 				message: "Nozzle Check is required",
 				description: "Missing nozzle check image",
 				duration: 5000,
 				position: "bottom-right",
-				color: "warning", // This will influence the default icon color and potential border
+				color: "warning",
 			});
 			setIsSaving(false);
 			return;
 		}
 
-		const uuidSignFileName = `${uuidv4()}.png`;
-		const contentType = "image/png";
-
-		const getUrlRespSign = await fetch("/api/get-upload-url", {
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({
-				key: uuidSignFileName,
-				contentType: contentType,
-				bucketName: "fiixdrive",
-			}),
-		});
-
-		if (!getUrlRespSign.ok) {
-			throw new Error("Failed to get upload URL.");
-		}
-
-		if (signature) {
-			// If there is a signature, proceed to upload in cloudflare R2
-			const signBlob = base64ToFile(signature!, uuidSignFileName);
-			const { url } = await getUrlRespSign.json();
-
-			const uploadResponseSign = await fetch(url, {
-				method: "PUT",
-				headers: { "Content-Type": contentType },
-				body: signBlob,
-			});
-
-			if (!uploadResponseSign.ok) {
-				// Provides better debug info on failure
-				const errorText = await uploadResponseSign.text();
-				throw new Error(
-					`Failed to upload image to R2: ${uploadResponseSign.status}. Details: ${errorText}`
-				);
-			}
-		}
-		// END saving the signature
-
-		// START saving the nozzle check photo
-		const uuidNozzleFileName = `${uuidv4()}.png`;
-
-		try {
-			const getUrlRespNozzle = await fetch("/api/get-upload-url", {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({
-					key: uuidNozzleFileName,
-					contentType: contentType,
-					bucketName: "fiixnozzle",
-				}),
-			});
-
-			if (!getUrlRespNozzle.ok) {
-				throw new Error("Failed to get upload URL.");
-			}
-
-			const { url } = await getUrlRespNozzle.json();
-
-			// 2. Upload the image directly to Cloudflare R2
-			const uploadRespNozzle = await fetch(url, {
-				method: "PUT",
-				headers: { "Content-Type": contentType },
-				body: capturedBlob,
-			});
-
-			if (!uploadRespNozzle.ok) {
-				const errorText = await uploadRespNozzle.text();
-				throw new Error(
-					`Failed to upload image to R2: ${uploadRespNozzle.status}. Details: ${errorText}`
-				);
-			}
-		} catch (error) {
-			const err = ensureError(error);
-			console.error("Upload error:", err);
-		}
-		// END saving the nozzle check photo
-
-		data.nozzlePath = uuidNozzleFileName;
-		data.signPath = signature ? uuidSignFileName : "Unsigned";
-		data.userId = users.id; // Ensure userId is set correctly
+		data.userId = users.id;
 		data.printerId = getValues("printerId");
-
+		data.deploymentId = getValues("deploymentId");
 		if (originMTId > 0) {
 			data.originMTId = originMTId;
 		}
 
-		const res = await fetch("/api/maintain", {
-			method: "POST",
-			body: JSON.stringify(data),
-		});
-		const { id: mtId } = await res.json();
-
-		// schedDetailsId
-		const schedRes = await fetch("/api/sched-details", {
-			method: "POST",
-			body: JSON.stringify({ schedDetailsId, mtId }),
+		const result = await saveMaintenanceReport({
+			payload: data,
+			schedDetailsId,
+			signatureBlob: signature
+				? base64ToFile(signature, "signature.png")
+				: null,
+			nozzleBlob: capturedBlob,
+			onProgress: setSaveStep,
 		});
 
-		if (!schedRes.ok) {
-			console.error("Update Schedule Details failed");
+		setSaveStep(null);
+		setIsSaving(false);
+
+		if (!result.ok) {
+			// Permission / location-services problems get a blocking dialog with
+			// instructions; everything else is a toast the technician can retry.
+			if (
+				result.code === "permission-denied" ||
+				result.code === "location-services-off"
+			) {
+				setGpsFailure({ code: result.code, message: result.message });
+			} else {
+				showAppToast({
+					message: result.message,
+					description:
+						result.code === "gps-poor-accuracy" ||
+						result.code === "gps-timeout"
+							? "GPS verification failed"
+							: "Could not save the report",
+					duration: 8000,
+					position: "top-center",
+					color: "error",
+				});
+			}
 			return;
 		}
 
-		// const { success } = await schedRes.json();
-
-		router.push("/dashboard");
-
-		setIsSaving(false);
-
+		const isOnline = typeof navigator === "undefined" || navigator.onLine;
 		showAppToast({
-			message: "The maintenance record has been successfully saved.",
-			description: "Successful save",
-			duration: 5000,
+			message: isOnline
+				? "Maintenance report saved — syncing to the server in the background."
+				: "You're offline. The report is safely saved on this device and will sync automatically when connection returns.",
+			description: result.geocode
+				? `Location: ${result.geocode.locationName}`
+				: `GPS captured (±${Math.round(result.gps.accuracy)}m) — address will be resolved during sync`,
+			duration: 6000,
 			position: "top-center",
 			color: "success",
 		});
+
+		router.push("/dashboard");
 	};
 
 	const handleCustomSubmit = async (e: React.MouseEvent<HTMLButtonElement>) => {
@@ -441,6 +395,7 @@ export default function MaintenancePage({
 				setValue("serialNo", maintenanceData.serialNo);
 				setValue("replaceSerialNo", maintenanceData.replaceSerialNo || "");
 				setValue("printerId", maintenanceData.id);
+				setValue("deploymentId", maintenanceData.deploymentId);
 				// Do something with `data` (e.g. update Zustand, UI, etc.)
 
 				setSignatory(signatories);
@@ -1385,8 +1340,47 @@ export default function MaintenancePage({
 					</DialogHeader>
 					<Loader2 className="h-6 w-6 animate-spin text-blue-600 my-4" />
 					<p className="text-gray-500 text-sm">
-						Please wait while we save your data.
+						{saveStep ?? "Please wait while we save your data."}
 					</p>
+				</DialogContent>
+			</Dialog>
+			<Dialog
+				open={gpsFailure !== null}
+				onOpenChange={(open) => !open && setGpsFailure(null)}
+			>
+				<DialogContent className="max-w-sm p-6">
+					<DialogHeader>
+						<DialogTitle className="text-lg font-medium">
+							Location Required
+						</DialogTitle>
+					</DialogHeader>
+					<p className="text-sm text-muted-foreground">{gpsFailure?.message}</p>
+					<div className="rounded-lg bg-muted p-3 text-xs text-muted-foreground">
+						{gpsFailure?.code === "permission-denied" ? (
+							<>
+								<p className="font-medium text-foreground">
+									How to allow location access:
+								</p>
+								<p className="mt-1">
+									Tap the lock / tune icon beside the address bar → Site
+									settings → Location → Allow, then try saving again.
+								</p>
+							</>
+						) : (
+							<>
+								<p className="font-medium text-foreground">
+									How to enable Location Services:
+								</p>
+								<p className="mt-1">
+									Open your device settings → Location, switch it on, then
+									return to Fiix and try saving again.
+								</p>
+							</>
+						)}
+					</div>
+					<Button className="w-full" onClick={() => setGpsFailure(null)}>
+						Got it — I&apos;ll try again
+					</Button>
 				</DialogContent>
 			</Dialog>
 		</div>

@@ -64,6 +64,12 @@
 	--color-popover: var(--popover);
 	--color-card-foreground: var(--card-foreground);
 	--color-card: var(--card);
+	--color-success: var(--success);
+	--color-success-foreground: var(--success-foreground);
+	--color-info: var(--info);
+	--color-info-foreground: var(--info-foreground);
+	--color-warning: var(--warning);
+	--color-warning-foreground: var(--warning-foreground);
 	--radius-sm: calc(var(--radius) - 4px);
 	--radius-md: calc(var(--radius) - 2px);
 	--radius-lg: var(--radius);
@@ -71,51 +77,59 @@
 }
 
 :root {
-	/* Light Mode: Blue & Pastel Green */
-	--radius: 0.625rem;
-	--background: oklch(98% 0.01 270); /* Very light blue */
-	--foreground: oklch(20% 0.05 240); /* Deep blue for text */
+	/* Light Mode: Fiix design system — vivid blue primary, white cards,
+	   pastel-green/cyan accents. Tuned to match the reference dashboard. */
+	--radius: 1rem;
+	--background: oklch(97% 0.008 260); /* Soft near-white blue-gray */
+	--foreground: oklch(22% 0.04 255); /* Deep blue-black for text */
 
 	--card: oklch(100% 0 0); /* White for cards */
 	--card-foreground: var(--foreground);
 
-	--popover: oklch(100% 0 0); /* White for popovers */
+	--popover: oklch(100% 0 0);
 	--popover-foreground: var(--foreground);
 
-	--primary: oklch(45% 0.15 260); /* Medium strong blue */
-	--primary-foreground: oklch(98.5% 0 0); /* White for primary text */
+	--primary: oklch(52% 0.19 258); /* Vivid Fiix blue */
+	--primary-foreground: oklch(98.5% 0 0);
 
-	--secondary: oklch(90% 0.05 140); /* Light pastel green */
-	--secondary-foreground: oklch(
-		25% 0.05 150
-	); /* Darker green for secondary text */
+	--secondary: oklch(93% 0.04 145); /* Light pastel green */
+	--secondary-foreground: oklch(30% 0.06 150);
 
-	--muted: oklch(95% 0.02 180); /* Muted pastel green */
-	--muted-foreground: oklch(50% 0.03 200); /* Muted blue-green for text */
+	--muted: oklch(96% 0.012 260); /* Very light blue-gray */
+	--muted-foreground: oklch(48% 0.03 250); /* Muted slate-blue text */
 
-	--accent: oklch(85% 0.08 160); /* Brighter pastel green */
-	--accent-foreground: oklch(20% 0.05 240); /* Deep blue for accent text */
+	--accent: oklch(95% 0.03 258); /* Pale blue accent (hover states) */
+	--accent-foreground: oklch(22% 0.04 255);
 
-	--destructive: oklch(65% 0.25 20); /* A warm red for destructive actions */
-	--border: oklch(85% 0.03 260); /* Subtle light blue border */
-	--input: oklch(90% 0.02 270); /* Very light blue for inputs */
-	--ring: oklch(60% 0.1 250); /* Mid-tone blue for focus rings */
+	--destructive: oklch(63% 0.24 25); /* Warm red */
+	--border: oklch(92% 0.01 260); /* Subtle border */
+	--input: oklch(94% 0.01 260);
+	--ring: oklch(60% 0.15 258);
 
-	/* Chart colors - a blend of blues and greens */
-	--chart-1: oklch(55% 0.18 255); /* Deep Blue */
-	--chart-2: oklch(65% 0.15 200); /* Teal Blue */
-	--chart-3: oklch(75% 0.1 160); /* Muted Pastel Green */
-	--chart-4: oklch(80% 0.08 120); /* Light Pastel Green */
-	--chart-5: oklch(40% 0.12 240); /* Darker Blue */
+	/* Semantic status colors used across stat cards / badges */
+	--success: oklch(65% 0.17 150); /* Green — completed */
+	--success-foreground: oklch(98% 0 0);
+	--info: oklch(70% 0.14 210); /* Cyan — in progress */
+	--info-foreground: oklch(98% 0 0);
+	--warning: oklch(75% 0.16 80); /* Amber — pending / priority */
+	--warning-foreground: oklch(20% 0.04 80);
 
-	--sidebar: oklch(95% 0.01 270); /* Very light blue for sidebar */
-	--sidebar-foreground: var(--foreground);
-	--sidebar-primary: var(--primary);
-	--sidebar-primary-foreground: var(--primary-foreground);
-	--sidebar-accent: var(--accent);
-	--sidebar-accent-foreground: var(--accent-foreground);
-	--sidebar-border: var(--border);
-	--sidebar-ring: var(--ring);
+	/* Chart colors */
+	--chart-1: oklch(65% 0.17 150); /* Green — completed */
+	--chart-2: oklch(52% 0.19 258); /* Blue — in progress / primary */
+	--chart-3: oklch(70% 0.14 210); /* Cyan */
+	--chart-4: oklch(75% 0.16 80); /* Amber */
+	--chart-5: oklch(40% 0.12 250); /* Deep blue */
+
+	/* Sidebar: solid vivid blue, matching the reference */
+	--sidebar: oklch(38% 0.16 258);
+	--sidebar-foreground: oklch(96% 0.01 258);
+	--sidebar-primary: oklch(100% 0 0);
+	--sidebar-primary-foreground: oklch(38% 0.16 258);
+	--sidebar-accent: oklch(46% 0.17 258); /* Active nav item highlight */
+	--sidebar-accent-foreground: oklch(100% 0 0);
+	--sidebar-border: oklch(46% 0.15 258);
+	--sidebar-ring: oklch(70% 0.12 258);
 }
 
 .dark {
@@ -151,6 +165,13 @@
 	--border: oklch(100% 0 0 / 10%); /* Subtle border */
 	--input: oklch(100% 0 0 / 15%); /* Slightly more visible input */
 	--ring: oklch(60% 0.1 180); /* Mid-tone pastel green for focus rings */
+
+	--success: oklch(70% 0.16 150);
+	--success-foreground: oklch(15% 0.03 240);
+	--info: oklch(72% 0.13 210);
+	--info-foreground: oklch(15% 0.03 240);
+	--warning: oklch(78% 0.15 80);
+	--warning-foreground: oklch(20% 0.04 80);
 
 	/* Chart colors for dark mode */
 	--chart-1: oklch(70% 0.18 165); /* Brighter Pastel Green */

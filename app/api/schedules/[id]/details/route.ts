@@ -3,11 +3,15 @@ import { db } from "@/db";
 import { eq, desc } from "drizzle-orm";
 import { scheduleDetails as sd, printers, maintain } from "@/db/schema";
 import type { ScheduleDetailRow } from "@/types/tracker";
+import { requireRole } from "@/lib/require-role";
 
 export async function GET(
 	_req: Request,
 	{ params }: { params: Promise<{ id: number }> }
 ) {
+	const authResult = await requireRole(["Admin", "Scheduler"]);
+	if (authResult.error) return authResult.error;
+
 	const { id } = await params;
 	const scheduleId = id;
 	if (Number.isFinite(scheduleId)) {

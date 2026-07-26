@@ -35,6 +35,10 @@ export interface MaintenanceHistory {
 	technician: string;
 	signatory: string;
 	mtDate: string;
+	gpsLocation: string | null;
+	gpsLatitude: number | null;
+	gpsLongitude: number | null;
+	gpsAccuracy: number | null;
 }
 
 export interface MaintenanceOpenIssues {

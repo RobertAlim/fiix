@@ -208,30 +208,37 @@ export function SchedulesDataTable({
 														<h4 className="font-semibold mb-2 text-lg">
 															Schedule Details:
 														</h4>
-														<span className="font-medium">Legend:</span>
-														<div className="grid grid-cols-2 md:grid-cols-4 mb-2">
-															<div className="flex flex-col items-center space-x-1">
-																<Badge variant={"secondary"}>RM</Badge>
-																<span className="text-xs">
-																	Regular Maintenance
-																</span>
-															</div>
 
-															<div className="flex flex-col items-center space-x-1">
-																<Badge variant={"destructive"}>RU</Badge>
-																<span className="text-xs">
-																	Replacement (Unit)
-																</span>
-															</div>
-															<div className="flex flex-col items-center space-x-1">
-																<Badge variant={"destructive"}>RP</Badge>
-																<span className="text-xs">
-																	Replacement (Parts)
-																</span>
-															</div>
-															<div className="flex flex-col items-center space-x-1">
-																<Badge variant={"default"}>PO</Badge>
-																<span className="text-xs">Pulled Out</span>
+														<div
+															className={`${
+																table.getRowModel().rows.length === 0 ? "" : ""
+															} grid grid-cols-2 md:grid-cols-4 mb-2`}
+														>
+															<div className="flex space-x-4">
+																<span className="font-medium">Legend:</span>
+																<div className="flex flex-col items-center space-x-1">
+																	<Badge variant={"secondary"}>RM</Badge>
+																	<span className="text-xs">
+																		Regular Maintenance
+																	</span>
+																</div>
+
+																<div className="flex flex-col items-center space-x-1">
+																	<Badge variant={"destructive"}>RU</Badge>
+																	<span className="text-xs">
+																		Replacement (Unit)
+																	</span>
+																</div>
+																<div className="flex flex-col items-center space-x-1">
+																	<Badge variant={"destructive"}>RP</Badge>
+																	<span className="text-xs">
+																		Replacement (Parts)
+																	</span>
+																</div>
+																<div className="flex flex-col items-center space-x-1">
+																	<Badge variant={"default"}>PO</Badge>
+																	<span className="text-xs">Pulled Out</span>
+																</div>
 															</div>
 														</div>
 														{row.original.scheduleDetails.length > 0 ? (
@@ -406,9 +413,8 @@ export function SchedulesDataTable({
 																})}
 															</div>
 														) : (
-															<p className="text-gray-500 italic">
-																No specific printer details found for this
-																schedule.
+															<p className="text-black bg-orange-300 text-center text-lg p-4 rounded">
+																Please Get Check.
 															</p>
 														)}
 													</div>

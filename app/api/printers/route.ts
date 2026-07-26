@@ -9,12 +9,17 @@ import {
 	status,
 	schedules,
 	scheduleDetails,
+	deployments,
 } from "@/db/schema";
 import { eq, sql, and, desc } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { NextResponse } from "next/server";
+import { requireActiveUser } from "@/lib/require-role";
 
 export async function GET(req: Request) {
+	const authResult = await requireActiveUser();
+	if (authResult.error) return authResult.error;
+
 	const { searchParams } = new URL(req.url);
 
 	const serialNoParam = searchParams.get("serialNo");
@@ -70,17 +75,19 @@ export async function GET(req: Request) {
 
 		const latestMaintain = db.$with("latestMaintain").as(
 			db
-				.selectDistinctOn([maintain.printerId], {
+				.selectDistinctOn([deployments.printerId], {
 					mtId: maintain.id,
-					printerId: maintain.printerId,
+					printerId: deployments.printerId,
 					statusName: status.name,
 					notes: maintain.notes,
 					createdAt: maintain.createdAt,
 				})
 				.from(maintain)
+				.innerJoin(deployments, eq(maintain.deploymentId, deployments.id))
+				.innerJoin(printers, eq(printers.id, deployments.printerId))
 				.innerJoin(status, eq(maintain.statusId, status.id))
 				.orderBy(
-					maintain.printerId,
+					deployments.printerId,
 					desc(maintain.createdAt),
 					desc(maintain.id)
 				)
@@ -110,11 +117,12 @@ export async function GET(req: Request) {
 				END
 				`.as("is_toggled"),
 				})
-				.from(printers)
-				.innerJoin(models, eq(printers.modelId, models.id))
-				.innerJoin(clients, eq(printers.clientId, clients.id))
-				.innerJoin(locations, eq(printers.locationId, locations.id))
-				.innerJoin(departments, eq(printers.departmentId, departments.id))
+				.from(deployments)
+				.innerJoin(printers, eq(printers.id, deployments.printerId))
+				.innerJoin(models, eq(deployments.modelId, models.id))
+				.innerJoin(clients, eq(deployments.clientId, clients.id))
+				.innerJoin(locations, eq(deployments.locationId, locations.id))
+				.innerJoin(departments, eq(deployments.departmentId, departments.id))
 				.leftJoin(latestMaintain, eq(printers.id, latestMaintain.printerId))
 				.leftJoin(
 					scheduleDetailsData,
@@ -122,8 +130,8 @@ export async function GET(req: Request) {
 				)
 				.where(
 					and(
-						eq(printers.clientId, clientId),
-						eq(printers.locationId, locationId)
+						eq(deployments.clientId, clientId),
+						eq(deployments.locationId, locationId)
 					)
 				)
 				.orderBy(scheduleDetailsData.schedId);
@@ -153,17 +161,18 @@ export async function GET(req: Request) {
 					department: departments.name,
 					model: models.name,
 					deploymentDate:
-						sql<string>`to_char(${printers.deploymentDate}, 'MM/DD/YYYY')`.as(
+						sql<string>`to_char(${deployments.deploymentDate}, 'MM/DD/YYYY')`.as(
 							"deploymentDate"
 						),
 					deployedClient: deployedClient.name,
 					serialNo: printers.serialNo,
 				})
-				.from(printers)
-				.innerJoin(models, eq(printers.modelId, models.id))
-				.innerJoin(clients, eq(printers.clientId, clients.id))
-				.innerJoin(locations, eq(printers.locationId, locations.id))
-				.innerJoin(departments, eq(printers.departmentId, departments.id))
+				.from(deployments)
+				.innerJoin(printers, eq(printers.id, deployments.printerId))
+				.innerJoin(models, eq(deployments.modelId, models.id))
+				.innerJoin(clients, eq(deployments.clientId, clients.id))
+				.innerJoin(locations, eq(deployments.locationId, locations.id))
+				.innerJoin(departments, eq(deployments.departmentId, departments.id))
 				.innerJoin(
 					deployedClient,
 					eq(printers.deployedClient, deployedClient.id)

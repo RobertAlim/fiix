@@ -1,0 +1,6 @@
+-- No-op: the original CREATE VIEW here referenced deployments.DeployedHere
+-- unquoted, which Postgres folds to "deployedhere" — a column that does not
+-- exist (the real column is the quoted "deployedHere"). This file also
+-- immediately dropped the view it just created, so even a syntactically
+-- valid version of it would have produced nothing. The correct, properly
+-- quoted CREATE VIEW is in 0044_uneven_goliath.sql.

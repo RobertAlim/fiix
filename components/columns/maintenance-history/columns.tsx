@@ -19,6 +19,30 @@ export const maintenanceHistoryColumns: ColumnDef<MaintenanceHistory>[] = [
 		header: "Location",
 	},
 	{
+		accessorKey: "gpsLocation",
+		header: "GPS Location",
+		cell: ({ row }) => {
+			const { gpsLocation, gpsLatitude, gpsLongitude, gpsAccuracy } =
+				row.original;
+			if (gpsLatitude == null || gpsLongitude == null) {
+				return <span className="text-muted-foreground">—</span>;
+			}
+			return (
+				<a
+					href={`https://www.google.com/maps?q=${gpsLatitude},${gpsLongitude}`}
+					target="_blank"
+					rel="noopener noreferrer"
+					className="text-primary underline-offset-2 hover:underline"
+					title={`${gpsLatitude.toFixed(6)}, ${gpsLongitude.toFixed(6)}${
+						gpsAccuracy != null ? ` (±${Math.round(gpsAccuracy)}m)` : ""
+					}`}
+				>
+					{gpsLocation ?? "View on map"}
+				</a>
+			);
+		},
+	},
+	{
 		accessorKey: "department",
 		header: "Department",
 	},

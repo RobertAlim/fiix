@@ -8,6 +8,7 @@ const optionSchema = z.object({
 export const maintainFormSchema = z
 	.object({
 		printerId: z.number(),
+		deploymentId: z.number(),
 		client: optionSchema,
 		location: optionSchema.optional(),
 		department: optionSchema.optional(),
@@ -109,3 +110,58 @@ export const maintainFormSchema = z
 	);
 
 export type MaintainFormData = z.infer<typeof maintainFormSchema>;
+
+// ---------------------------------------------------------------------------
+// Offline-first submission envelope
+// ---------------------------------------------------------------------------
+
+/** GPS fix captured on the device. Mandatory for every maintenance report. */
+export const gpsFixSchema = z.object({
+	latitude: z.number().min(-90).max(90),
+	longitude: z.number().min(-180).max(180),
+	/** Horizontal accuracy in meters. Must be a sane positive value. */
+	accuracy: z.number().positive().max(10_000),
+	altitude: z.number().nullable().optional(),
+	heading: z.number().min(0).max(360).nullable().optional(),
+	speed: z.number().min(0).nullable().optional(),
+	/** ISO timestamp from the device at the moment the fix was acquired. */
+	capturedAt: z.string().datetime({ offset: true }),
+	gpsProvider: z.string().max(50).default("browser-geolocation"),
+	isMockLocation: z.boolean().default(false),
+});
+
+export type GpsFix = z.infer<typeof gpsFixSchema>;
+
+/** Reverse-geocode result. Optional at submit time — if the device was
+ * offline the address is resolved later and the row updated. */
+export const geocodeResultSchema = z.object({
+	locationName: z.string().max(500),
+	formattedAddress: z.string().max(1000),
+	city: z.string().max(100).nullable().optional(),
+	province: z.string().max(100).nullable().optional(),
+	country: z.string().max(100).nullable().optional(),
+	postalCode: z.string().max(20).nullable().optional(),
+});
+
+export type GeocodeResult = z.infer<typeof geocodeResultSchema>;
+
+export const syncAuditEventSchema = z.object({
+	event: z.string().max(50),
+	detail: z.string().max(1000).optional(),
+	occurredAt: z.string().datetime({ offset: true }).optional(),
+});
+
+/**
+ * What the sync engine actually POSTs to /api/maintain: the original form
+ * data plus the client-generated idempotency UUID and the mandatory GPS fix.
+ */
+export const maintainSubmitSchema = maintainFormSchema.and(
+	z.object({
+		clientUuid: z.string().uuid(),
+		gps: gpsFixSchema,
+		geocode: geocodeResultSchema.nullable().optional(),
+		auditTrail: z.array(syncAuditEventSchema).max(100).optional(),
+	})
+);
+
+export type MaintainSubmitData = z.infer<typeof maintainSubmitSchema>;

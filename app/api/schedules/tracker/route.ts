@@ -10,8 +10,12 @@ import {
 	priorities,
 } from "@/db/schema";
 import type { ScheduleTrackerRow } from "@/types/tracker";
+import { requireRole } from "@/lib/require-role";
 
 export async function GET() {
+	const authResult = await requireRole(["Admin", "Scheduler"]);
+	if (authResult.error) return authResult.error;
+
 	// Aggregate progress per schedule
 	const rows = await db
 		.select({

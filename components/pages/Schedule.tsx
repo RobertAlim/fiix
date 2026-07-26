@@ -18,7 +18,6 @@ import {
 	getScheduleColumns,
 	Schedule,
 } from "@/components/columns/schedules/columns";
-import { Datatable } from "@/components/ui/data-table";
 import { showAppToast } from "../ui/apptoast";
 import {
 	Sheet,
@@ -68,6 +67,8 @@ import { MaintenanceOpenIssues } from "@/types/index";
 import { OpenIssueComponent } from "../OpenIssueComponents";
 import { LoadingSpinnerModal } from "../ui/loading-modal";
 import { PrinterStatusCard } from "../PrinterStatusCard";
+import PendingMaintenancePanel from "./PendingMaintenancePanel";
+import { ScheduleCard } from "../ScheduleCard";
 
 export type Maintenance = {
 	id: number;
@@ -377,6 +378,83 @@ export default function SchedulePage() {
 		retry: false,
 	});
 
+	// Determines Save vs Update automatically: is there already a schedule
+	// for this client + location + date, regardless of which technician is
+	// currently selected in the form? Drives the button label/action instead
+	// of the previous manual isEditing toggle, and also prevents creating a
+	// second, conflicting schedule for a company/date that already has one.
+	const { data: existingScheduleCheck } = useQuery<{
+		exists: boolean;
+		schedule?: {
+			id: number;
+			technicianId: number;
+			priority: number;
+			notes: string | null;
+			maintainAll: boolean;
+		};
+	}>({
+		queryKey: ["schedule-exists", selectedClientId, selectedLocationId, scheduleDate],
+		queryFn: () =>
+			fetchData(
+				`/api/schedule/exists?clientId=${selectedClientId}&locationId=${selectedLocationId}&scheduledAt=${format(
+					scheduleDate!,
+					"yyyy-MM-dd"
+				)}`
+			),
+		enabled: !!selectedClientId && !!selectedLocationId && !!scheduleDate,
+		staleTime: 1000 * 30,
+	});
+
+	const existingSchedule = existingScheduleCheck?.exists
+		? existingScheduleCheck.schedule
+		: undefined;
+
+	// When an existing schedule is found for the selected client/location/
+	// date, switch into "editing that schedule" mode automatically and pull
+	// in its printers, so the user lands on Update with the right data
+	// already loaded instead of hitting a duplicate error on Save.
+	useEffect(() => {
+		if (!existingSchedule) {
+			return;
+		}
+
+		setIsEditing(true);
+		setScheduleId(existingSchedule.id);
+		setSelectedTechnicianId(String(existingSchedule.technicianId));
+		setSelectedPriorityId(String(existingSchedule.priority));
+		setNotes(existingSchedule.notes || "");
+		setIsShowDetails(true);
+
+		const fullQueryKey = [
+			"printers",
+			selectedClientId,
+			selectedLocationId,
+			existingSchedule.id,
+		];
+
+		queryClient
+			.fetchQuery<Printer[], Error>({
+				queryKey: fullQueryKey,
+				queryFn: () =>
+					fetchData<Printer[]>(
+						`/api/printers?clientId=${selectedClientId}&locationId=${selectedLocationId}&scheduleId=${existingSchedule.id}`
+					),
+				staleTime: 1000 * 60,
+			})
+			.then((printers) => setImmediatePrinters(printers ?? []))
+			.catch(() => setImmediatePrinters([]));
+	}, [existingSchedule, selectedClientId, selectedLocationId, queryClient]);
+
+	// No existing schedule for this combo — make sure we're in fresh
+	// "create" mode rather than left over in edit mode from a previous
+	// selection.
+	useEffect(() => {
+		if (existingScheduleCheck && !existingScheduleCheck.exists) {
+			setIsEditing(false);
+			setScheduleId(0);
+		}
+	}, [existingScheduleCheck]);
+
 	// Combined Loading and Error states
 	const overallLoading =
 		isLoadingClients ||
@@ -409,7 +487,7 @@ export default function SchedulePage() {
 
 	const clientComboboxData: ComboboxItem[] = useMemo(() => {
 		return (allClients ?? []).map((client) => ({
-			value: client.id,
+			value: String(client.id),
 			label: client.name,
 		}));
 	}, [allClients]); // Only recompute if allClients array reference changes
@@ -434,21 +512,21 @@ export default function SchedulePage() {
 
 	const locationComboboxData: ComboboxItem[] = useMemo(() => {
 		return filteredLocations.map((location) => ({
-			value: location.id,
+			value: String(location.id),
 			label: location.name,
 		}));
 	}, [filteredLocations]); // Only recompute if filteredLocations changes
 
 	const technicianComboboxData: ComboboxItem[] = useMemo(() => {
 		return (allTechnicians ?? []).map((tech) => ({
-			value: tech.id,
+			value: String(tech.id),
 			label: tech.name,
 		}));
 	}, [allTechnicians]); // Only recompute if allTechnicians array reference changes
 
 	const priorityComboboxData: ComboboxItem[] = useMemo(() => {
 		return (allPriorities ?? []).map((priority) => ({
-			value: priority.id,
+			value: String(priority.id),
 			label: priority.name,
 		}));
 	}, [allPriorities]); // Only recompute if allTechnicians array reference changes
@@ -785,6 +863,70 @@ export default function SchedulePage() {
 		] // Add setImmediatePrinters to the dependency array
 	);
 
+	// Clicking a schedule card: populate the existing form fields and the
+	// "Printer Details List" section below with this schedule's data, and
+	// switch the submit button into "Update Schedule" mode. Written as one
+	// self-contained handler rather than reusing handleShowDetails or
+	// handleEditSchedule directly, since neither of those sets technicianId
+	// (a required field for the update payload) — this fixes that gap too.
+	const handleCardClick = React.useCallback(
+		async (clickedSchedule: Schedule) => {
+			const schedId = Number(clickedSchedule.id);
+
+			setIsEditing(true);
+			setScheduleId(schedId);
+			setIsShowDetails(true);
+			setSelectedClientId(String(clickedSchedule.clientId));
+			setSelectedLocationId(String(clickedSchedule.locationId));
+			setSelectedTechnicianId(String(clickedSchedule.technicianId));
+			setSelectedPriorityId(String(clickedSchedule.priorityId));
+			setNotes(clickedSchedule.notes || "");
+			setScheduleDate(new Date(clickedSchedule.scheduleAt));
+
+			const fullQueryKey = [
+				"printers",
+				clickedSchedule.clientId,
+				clickedSchedule.locationId,
+				schedId,
+			];
+
+			try {
+				await queryClient.invalidateQueries({ queryKey: fullQueryKey });
+
+				const printers = await queryClient.fetchQuery<Printer[], Error>({
+					queryKey: fullQueryKey,
+					queryFn: () =>
+						fetchData<Printer[]>(
+							`/api/printers?clientId=${clickedSchedule.clientId}&locationId=${clickedSchedule.locationId}&scheduleId=${schedId}`
+						),
+					staleTime: 1000 * 60,
+				});
+
+				setImmediatePrinters(printers ?? []);
+
+				if (!printers || printers.length === 0) {
+					showAppToast({
+						message: "No Printers Found.",
+						description:
+							"No printers are assigned to the selected client and location.",
+						position: "top-right",
+						color: "error",
+					});
+				}
+			} catch (err) {
+				console.error("Failed to fetch printer data:", err);
+				setImmediatePrinters([]);
+				showAppToast({
+					message: "Error fetching printers.",
+					description: "An error occurred while fetching printer data.",
+					position: "top-right",
+					color: "error",
+				});
+			}
+		},
+		[queryClient]
+	);
+
 	const handleReschedule = React.useCallback(
 		(schedId: number) => {
 			setScheduleId(schedId);
@@ -998,8 +1140,13 @@ export default function SchedulePage() {
 		);
 	}
 
-	const handleSchedule = async (event: React.MouseEvent<HTMLButtonElement>) => {
-		const buttonText = event.currentTarget.textContent || "";
+	const handleSchedule = async () => {
+		// Previously derived from the clicked button's rendered text
+		// (event.currentTarget.textContent), which broke the moment the
+		// label needed to say "Save"/"Update" instead of "Add Schedule"/
+		// "Update Schedule". Derive it explicitly from the same data that
+		// decides the label instead.
+		const buttonText = existingSchedule ? "Update Schedule" : "Add Schedule";
 
 		if (
 			!selectedTechnicianId ||
@@ -1149,8 +1296,10 @@ export default function SchedulePage() {
 	};
 
 	return (
-		<div className="moving-gradient-border">
-			<Card className="rounded-2xl bg-white dark:bg-black">
+		<div className="space-y-6">
+			<PendingMaintenancePanel />
+
+			<Card className="rounded-2xl border shadow-sm">
 				<CardContent className="p-6 space-y-4">
 					<div className="grid lg:grid-cols-3 grid-cols-1 gap-4">
 						<div className="col-span-1 space-y-2">
@@ -1344,16 +1493,30 @@ export default function SchedulePage() {
 								onClick={handleSchedule}
 								// disabled={!isEditing || !isAdding} // Disable if scheduleData has items and in editing mode
 							>
-								{isEditing ? "Update Schedule" : "Add Schedule"}
+								{existingSchedule ? "Update" : "Save"}
 							</Button>
 
 							<Separator className="my-2" />
 
-							<Datatable<Schedule>
-								table={tableSchedules}
-								columns={colsSchedule}
-								data={scheduleData || []}
-							/>
+							{scheduleData && scheduleData.length > 0 ? (
+								<div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+									{scheduleData.map((schedule) => (
+										<ScheduleCard
+											key={schedule.id}
+											schedule={schedule}
+											onEditClick={handleEditSchedule}
+											onDeleteClick={handleDeleteSchedule}
+											onShowDetailsClick={handleShowDetails}
+											onShowReschedClick={handleReschedule}
+											onCardClick={handleCardClick}
+										/>
+									))}
+								</div>
+							) : (
+								<p className="py-6 text-center text-sm text-muted-foreground">
+									No schedules yet for this selection.
+								</p>
+							)}
 						</div>
 					</div>
 

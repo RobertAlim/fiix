@@ -2,8 +2,12 @@ import { db } from "@/db";
 import { priorities } from "@/db/schema";
 import { asc } from "drizzle-orm";
 import { NextResponse } from "next/server";
+import { requireRole } from "@/lib/require-role";
 
 export async function GET() {
+	const authResult = await requireRole(["Admin", "Scheduler"]);
+	if (authResult.error) return authResult.error;
+
 	const data = await db
 		.select({
 			id: priorities.id,

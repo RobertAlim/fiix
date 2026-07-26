@@ -3,8 +3,12 @@ import { db } from "@/db"; // your Drizzle setup
 import { scheduleDetails } from "@/db/schema"; // your table schema
 import { NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
+import { requireRole } from "@/lib/require-role";
 
 export async function POST(req: Request) {
+	const authResult = await requireRole(["Admin", "Technician"]);
+	if (authResult.error) return authResult.error;
+
 	try {
 		const body = await req.json();
 		const { schedDetailsId, mtId } = body;

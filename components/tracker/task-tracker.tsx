@@ -259,14 +259,17 @@ export default function TaskTracker() {
 					) : (
 						<Table>
 							<TableHeader>
-								<TableRow>
-									<TableHead>Printer</TableHead>
-									<TableHead>Status</TableHead>
-									<TableHead>Maintained</TableHead>
-									<TableHead>MT Id</TableHead>
-									<TableHead>Updated</TableHead>
-								</TableRow>
+								{details?.data?.length !== 0 && (
+									<TableRow>
+										<TableHead>Printer</TableHead>
+										<TableHead>Status</TableHead>
+										<TableHead>Maintained</TableHead>
+										<TableHead>MT Id</TableHead>
+										<TableHead>Updated</TableHead>
+									</TableRow>
+								)}
 							</TableHeader>
+
 							<TableBody>
 								{(details?.data ?? []).map((d) => {
 									const statusBadge = d.isMaintained ? (
@@ -325,13 +328,13 @@ export default function TaskTracker() {
 									);
 								})}
 								{!loadingDetails && (details?.data?.length ?? 0) === 0 && (
-									<TableRow>
+									<TableRow className={`${selectedId} bg-orange-300`}>
 										<TableCell
 											colSpan={5}
-											className="text-center text-sm text-muted-foreground py-8"
+											className={`text-center text-lg text-black py-8`}
 										>
 											{selectedId
-												? "No printers in this schedule."
+												? "Please Get Check."
 												: "Select a schedule to view details."}
 										</TableCell>
 									</TableRow>

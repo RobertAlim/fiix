@@ -1,8 +1,18 @@
 "use client";
 
 import React, { useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
+import {
+	LineChart,
+	Line,
+	XAxis,
+	YAxis,
+	CartesianGrid,
+	Tooltip,
+	ResponsiveContainer,
+} from "recharts";
 
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useUserStore } from "@/state/userStore";
 import { SchedulesDataTable } from "@/components/TechnicianSchedules";
 import { useState } from "react";
@@ -12,13 +22,19 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "@/components/ui/dialog";
-import { Signature } from "lucide-react";
+import {
+	Signature,
+	Printer,
+	CheckCircle2,
+	Clock,
+	CalendarClock,
+} from "lucide-react";
 import SignaturePad from "@/components/SignaturePad";
 import { v4 as uuidv4 } from "uuid";
 import { base64ToFile } from "@/lib/fileConverter";
 import { showAppToast } from "../ui/apptoast";
+import { OfflineSyncWidgets } from "@/components/OfflineSyncWidgets";
 
-// Define the props interface for DashboardRealPage
 interface DashboardRealPageProps {
 	onCardClick: (args: {
 		serialNo: string;
@@ -29,13 +45,55 @@ interface DashboardRealPageProps {
 	}) => void;
 	signPath: string;
 	mtId: number;
-	// Add any other props DashboardRealPage might need
 }
 
 interface PatchBody {
-	id: number; // Assuming mtId is a number, match this to your Zod schema
+	id: number;
 	signPath: string;
 }
+
+interface DashboardStats {
+	totalPrinters: number;
+	completedThisMonth: number;
+	pending: number;
+	upcomingSchedules: number;
+	trend: { day: string; completed: number }[];
+}
+
+const STAT_CARDS: {
+	key: keyof Pick<
+		DashboardStats,
+		"totalPrinters" | "completedThisMonth" | "pending" | "upcomingSchedules"
+	>;
+	label: string;
+	icon: React.ElementType;
+	badgeClass: string;
+}[] = [
+	{
+		key: "totalPrinters",
+		label: "Deployed Printers",
+		icon: Printer,
+		badgeClass: "bg-primary text-primary-foreground",
+	},
+	{
+		key: "completedThisMonth",
+		label: "Completed This Month",
+		icon: CheckCircle2,
+		badgeClass: "bg-success text-success-foreground",
+	},
+	{
+		key: "pending",
+		label: "Pending Maintenance",
+		icon: Clock,
+		badgeClass: "bg-warning text-warning-foreground",
+	},
+	{
+		key: "upcomingSchedules",
+		label: "Upcoming Schedules",
+		icon: CalendarClock,
+		badgeClass: "bg-info text-info-foreground",
+	},
+];
 
 export default function DashboardPage({
 	onCardClick,
@@ -52,6 +110,15 @@ export default function DashboardPage({
 
 	const { users } = useUserStore();
 
+	const { data: stats, isLoading: statsLoading } = useQuery<DashboardStats>({
+		queryKey: ["dashboard-stats"],
+		queryFn: async () => {
+			const res = await fetch("/api/dashboard-stats");
+			if (!res.ok) throw new Error("Failed to fetch dashboard stats");
+			return res.json();
+		},
+	});
+
 	const formattedDate = new Intl.DateTimeFormat("en-US").format(new Date());
 	const formattedFullDate = formatFullDate(new Date());
 
@@ -63,17 +130,14 @@ export default function DashboardPage({
 			position: "top-center",
 			color: "success",
 		});
-	}; // Function to call upon successful update
+	};
 
 	const handleSaveSign = async (sig: string) => {
-		// 1. Linting/Type Safety: Ensure the necessary data is available
 		if (mtId === null || !sig) {
 			console.error("Missing Maintenance ID or Sign Path data.");
-			// Optionally show a user error notification here
 			return;
 		}
 
-		// START Signature Upload to Cloudflare R2
 		const uuidSignFileName = `${uuidv4()}.png`;
 		const contentType = "image/png";
 
@@ -92,7 +156,6 @@ export default function DashboardPage({
 		}
 
 		if (sig) {
-			// If there is a signature, proceed to upload in cloudflare R2
 			const signBlob = base64ToFile(sig!, uuidSignFileName);
 			const { url } = await getUrlRespSign.json();
 
@@ -103,7 +166,6 @@ export default function DashboardPage({
 			});
 
 			if (!uploadResponseSign.ok) {
-				// Provides better debug info on failure
 				const errorText = await uploadResponseSign.text();
 				throw new Error(
 					`Failed to upload image to R2: ${uploadResponseSign.status}. Details: ${errorText}`
@@ -126,7 +188,6 @@ export default function DashboardPage({
 			});
 
 			if (!res.ok) {
-				// Handle HTTP errors (400, 404, 500 etc.)
 				const errorData = await res
 					.json()
 					.catch(() => ({ message: res.statusText }));
@@ -134,51 +195,119 @@ export default function DashboardPage({
 				return;
 			}
 
-			// 3. Close the dialog and perform any other success actions
 			setESignOpen(false);
-			onSignSuccess(); // e.g., refresh data, show success toast
+			onSignSuccess();
 		} catch (error) {
 			console.error("Network or Fetch Error:", error);
 		}
 	};
 
 	return (
-		<div className="moving-gradient-border">
-			<Card className="rounded-2xl bg-white dark:bg-black">
-				<CardContent className="p-6 space-y-4">
-					<div className="grid grid-cols-1 gap-4">
-						{users.role === "Technician" && (
-							<div>
+		<div className="space-y-6">
+			{/* Greeting */}
+			<div>
+				<h2 className="text-2xl font-bold tracking-tight">
+					Hello, {users?.firstName || "there"}
+					<span className="ml-2">👋</span>
+				</h2>
+				<p className="text-sm text-muted-foreground">
+					{formattedFullDate} — here&apos;s what&apos;s happening today.
+				</p>
+			</div>
+
+			{/* Offline sync & GPS status */}
+			<OfflineSyncWidgets />
+
+			{/* Stat cards */}
+			<div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+				{STAT_CARDS.map(({ key, label, icon: Icon, badgeClass }) => (
+					<Card key={key} className="rounded-2xl border shadow-sm">
+						<CardContent className="p-5">
+							<div className="flex items-start justify-between">
 								<div>
-									Good day,{" "}
-									<span className="font-semibold text-green-600">
-										{users.firstName}
-									</span>
-									! Today is{" "}
-									<span className="font-semibold text-blue-400">
-										{formattedFullDate}
-									</span>
+									<p className="text-sm text-muted-foreground">{label}</p>
+									<p className="mt-1 text-3xl font-bold">
+										{statsLoading ? "—" : stats?.[key] ?? 0}
+									</p>
 								</div>
-								<div className="py-4">
-									And here&lsquo;s your itinerary for the day.
+								<div
+									className={`flex h-10 w-10 items-center justify-center rounded-xl ${badgeClass}`}
+								>
+									<Icon className="h-5 w-5" />
 								</div>
-								<SchedulesDataTable
-									technicianId={users.id}
-									scheduledAt={formattedDate}
-									onCardClick={onCardClick}
-								/>
+							</div>
+						</CardContent>
+					</Card>
+				))}
+			</div>
+
+			{/* Chart + Itinerary */}
+			<div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+				<Card className="rounded-2xl border shadow-sm lg:col-span-2">
+					<CardHeader>
+						<CardTitle className="text-base font-semibold">
+							Maintenance Completed — Last 7 Days
+						</CardTitle>
+					</CardHeader>
+					<CardContent className="h-64 pl-0">
+						{stats?.trend && stats.trend.length > 0 ? (
+							<ResponsiveContainer width="100%" height="100%">
+								<LineChart data={stats.trend}>
+									<CartesianGrid strokeDasharray="3 3" vertical={false} />
+									<XAxis dataKey="day" fontSize={12} tickLine={false} axisLine={false} />
+									<YAxis
+										allowDecimals={false}
+										fontSize={12}
+										tickLine={false}
+										axisLine={false}
+									/>
+									<Tooltip />
+									<Line
+										type="monotone"
+										dataKey="completed"
+										stroke="var(--color-success)"
+										strokeWidth={2}
+										dot={{ r: 3 }}
+									/>
+								</LineChart>
+							</ResponsiveContainer>
+						) : (
+							<div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+								{statsLoading ? "Loading…" : "No maintenance activity yet this week."}
 							</div>
 						)}
-					</div>
-				</CardContent>
-			</Card>
+					</CardContent>
+				</Card>
+
+				<Card className="rounded-2xl border shadow-sm">
+					<CardHeader>
+						<CardTitle className="text-base font-semibold">
+							{users.role === "Technician" ? "Your Itinerary Today" : "Overview"}
+						</CardTitle>
+					</CardHeader>
+					<CardContent>
+						{users.role === "Technician" ? (
+							<SchedulesDataTable
+								technicianId={users.id}
+								scheduledAt={formattedDate}
+								onCardClick={onCardClick}
+							/>
+						) : (
+							<p className="text-sm text-muted-foreground">
+								Assign yourself as a technician to see a daily itinerary here.
+							</p>
+						)}
+					</CardContent>
+				</Card>
+			</div>
+
 			<Dialog open={eSignOpen} onOpenChange={setESignOpen}>
 				<DialogContent className="max-w-2xl max-h-[90vh] overflow-auto">
 					<DialogHeader>
 						<DialogTitle>
-							<div className="flex items-center justify-between p-4 bg-gray-100 border-b mt-2">
+							<div className="flex items-center justify-between rounded-xl bg-muted p-4">
 								<h1 className="text-xl font-semibold">Signatory</h1>
-								<Signature className="w-8 h-8 text-green-400" />
+								<Signature className="w-8 h-8 text-success" />
 							</div>
 						</DialogTitle>
 					</DialogHeader>
@@ -225,7 +354,6 @@ function formatFullDate(date: Date): string {
 	const month = months[date.getMonth()];
 	const year = date.getFullYear();
 
-	// Get ordinal suffix
 	const suffix =
 		day % 10 === 1 && day !== 11
 			? "st"

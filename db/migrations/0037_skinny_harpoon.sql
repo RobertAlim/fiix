@@ -1,0 +1,13 @@
+-- No-op: this migration originally duplicated the "deployments" table already
+-- created in 0027_left_wolfpack.sql, which caused "relation already exists"
+-- on migrate. The ALTER statements below were already commented out in the
+-- original file and are kept only for history.
+-- ALTER TABLE "deployments" ALTER COLUMN "createdAt" SET DATA TYPE timestamp;--> statement-breakpoint
+-- ALTER TABLE "deployments" ALTER COLUMN "createdAt" SET DEFAULT CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Manila';--> statement-breakpoint
+-- ALTER TABLE "maintain" ALTER COLUMN "createdAt" SET DEFAULT CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Manila';--> statement-breakpoint
+-- ALTER TABLE "printers" ALTER COLUMN "createdAt" SET DATA TYPE timestamp;--> statement-breakpoint
+-- ALTER TABLE "printers" ALTER COLUMN "createdAt" SET DEFAULT CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Manila';--> statement-breakpoint
+-- ALTER TABLE "schedules" ALTER COLUMN "createdAt" SET DATA TYPE timestamp;--> statement-breakpoint
+-- ALTER TABLE "schedules" ALTER COLUMN "createdAt" SET DEFAULT CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Manila';--> statement-breakpoint
+-- ALTER TABLE "users" ALTER COLUMN "createdAt" SET DATA TYPE timestamp;--> statement-breakpoint
+-- ALTER TABLE "users" ALTER COLUMN "createdAt" SET DEFAULT CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Manila';

@@ -7,49 +7,85 @@ const isPublicRoute = createRouteMatcher([
 	"/api/webhooks(.*)",
 ]);
 
+// App pages that require the user's account to be ACTIVE and have a role
+// assigned. Registration is included: per the activation workflow, an
+// inactive user must not be able to reach any part of the application,
+// including the profile-completion form — only the account-pending screen.
+const isGatedAppPage = createRouteMatcher([
+	"/",
+	"/dashboard(.*)",
+	"/profile(.*)",
+	"/scan-qrcode(.*)",
+	"/registration(.*)",
+]);
+
+const ACTIVE_COOKIE = "fiix_active";
+const ACTIVE_COOKIE_MAX_AGE = 5 * 60; // seconds — re-verify at most every 5 min
+
 export default clerkMiddleware(async (auth, req) => {
 	const { userId } = await auth();
 	const currentPath = req.nextUrl.pathname;
 
-	// Redirect logged-in users away from `/` to `/dashboard`
-	if (
-		userId &&
-		(req.nextUrl.pathname === "/" || req.nextUrl.pathname === "/dashboard")
-	) {
-		const baseUrl = req.nextUrl.origin;
+	if (userId && isGatedAppPage(req)) {
+		// Cheap path: recently-verified active users with a role skip the
+		// status fetch.
+		const cachedActive = req.cookies.get(ACTIVE_COOKIE)?.value === "1";
 
-		try {
-			const relativeApiUrl = `${baseUrl}/api/user-status?userId=${userId}`;
-			const res = await fetch(relativeApiUrl, { headers: req.headers });
-			const contentType = res.headers.get("content-type");
-
-			if (!res.ok) {
-				console.error("API error:", await res.text());
-				return NextResponse.next(); // fallback behavior
-			}
-
-			if (!contentType?.includes("application/json")) {
-				console.error("Invalid content type:", contentType);
-				return NextResponse.next(); // fallback
-			}
-
-			const data = await res.json();
-
-			// If user is inactive and NOT on profile page → redirect to profile
-			if (!data?.isActive && currentPath !== "/registration") {
-				const profileUrl = req.nextUrl.clone();
-				profileUrl.pathname = "/registration";
-				return NextResponse.redirect(profileUrl);
-			}
-
-			// If user is active and on "/" → redirect to dashboard
-			if (data?.isActive && currentPath === "/") {
+		if (cachedActive) {
+			if (currentPath === "/") {
 				const dashboardUrl = req.nextUrl.clone();
 				dashboardUrl.pathname = "/dashboard";
 				return NextResponse.redirect(dashboardUrl);
 			}
-		} catch (err) {
-			console.error("Fetch failed:", err);
+		} else {
+			try {
+				// Identity is taken from the forwarded Clerk session cookie —
+				// the route no longer accepts a userId parameter.
+				const res = await fetch(`${req.nextUrl.origin}/api/user-status`, {
+					headers: req.headers,
+				});
+
+				if (
+					res.ok &&
+					res.headers.get("content-type")?.includes("application/json")
+				) {
+					const data = await res.json();
+
+					if (!data?.isActive) {
+						const pendingUrl = req.nextUrl.clone();
+						pendingUrl.pathname = "/account-pending";
+						pendingUrl.search = "";
+						return NextResponse.redirect(pendingUrl);
+					}
+
+					if (!data?.role) {
+						const pendingUrl = req.nextUrl.clone();
+						pendingUrl.pathname = "/account-pending";
+						pendingUrl.search = "?reason=no-role";
+						return NextResponse.redirect(pendingUrl);
+					}
+
+					// Active with a role assigned.
+					const response =
+						currentPath === "/"
+							? NextResponse.redirect(
+									new URL("/dashboard", req.nextUrl.origin)
+							  )
+							: NextResponse.next();
+					response.cookies.set(ACTIVE_COOKIE, "1", {
+						maxAge: ACTIVE_COOKIE_MAX_AGE,
+						httpOnly: true,
+						sameSite: "lax",
+						secure: process.env.NODE_ENV === "production",
+					});
+					return response;
+				} else {
+					console.error("user-status check failed:", res.status);
+				}
+			} catch (err) {
+				console.error("user-status fetch failed:", err);
+				// Fail open to avoid locking users out on transient errors.
+			}
 		}
 	}
 

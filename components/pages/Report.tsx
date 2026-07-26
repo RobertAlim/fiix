@@ -51,6 +51,7 @@ export type Maintenance = {
 		| "Pulled Out";
 	technician: string;
 	date: string;
+	gpsLocation: string | null;
 };
 
 const handlePrintMaintenance = (mtId: number) => {
@@ -118,6 +119,28 @@ export const columns: ColumnDef<Maintenance>[] = [
 		},
 		cell: ({ row }) => (
 			<div className="capitalize">{row.getValue("location")}</div>
+		),
+	},
+	{
+		accessorKey: "gpsLocation",
+		minSize: 120,
+		header: ({ column }) => {
+			return (
+				<Button
+					variant="ghost"
+					onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+				>
+					GPS Location
+					<ArrowUpDown />
+				</Button>
+			);
+		},
+		cell: ({ row }) => (
+			<div>
+				{row.getValue("gpsLocation") ?? (
+					<span className="text-muted-foreground">—</span>
+				)}
+			</div>
 		),
 	},
 	{

@@ -15,6 +15,7 @@ import { ArrowUpDown, MoreHorizontal } from "lucide-react";
 
 export type Schedule = {
 	id: string;
+	technicianId: number;
 	technician: string;
 	clientId: number;
 	client: string;

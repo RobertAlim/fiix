@@ -9,7 +9,8 @@ export const useDBUser = () => {
 		queryKey: ["dbUser", user?.id],
 		enabled: isLoaded && !!user,
 		queryFn: async () => {
-			const res = await fetch(`/api/user-status?userId=${user?.id}`);
+			// Identity is derived server-side from the Clerk session.
+			const res = await fetch("/api/user-status");
 			if (!res.ok) throw new Error("Failed to fetch user from DB");
 			return res.json();
 		},

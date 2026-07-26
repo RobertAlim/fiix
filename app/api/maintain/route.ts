@@ -6,19 +6,30 @@ import {
 	colors,
 	resets,
 	printers,
+	activeDeployment,
 	models,
 	clients,
 	locations,
 	departments,
 	signatories,
+	maintenanceLocation,
+	maintenanceSyncEvents,
 } from "@/db/schema";
 import { eq, sql, and } from "drizzle-orm";
 import { NextResponse } from "next/server";
-import { maintainFormSchema } from "@/validation/maintainSchema";
+import {
+	maintainSubmitSchema,
+	type MaintainSubmitData,
+} from "@/validation/maintainSchema";
+import { reverseGeocodeServer } from "@/lib/geocoder";
 import { z } from "zod"; // Assuming Zod for validation
 import { NextRequest } from "next/server"; // Use NextRequest for easier URL/Body parsing
+import { requireRole } from "@/lib/require-role";
 
 export async function GET(req: Request) {
+	const authResult = await requireRole(["Admin", "Technician"]);
+	if (authResult.error) return authResult.error;
+
 	const { searchParams } = new URL(req.url);
 	const serialNo = searchParams.get("serialNo");
 
@@ -31,10 +42,14 @@ export async function GET(req: Request) {
 		await db
 			.select({
 				serialNo: printers.serialNo,
-				printerId: maintain.printerId,
+				printerId: printers.id,
 			})
 			.from(maintain)
-			.innerJoin(printers, eq(printers.id, maintain.printerId))
+			.innerJoin(
+				activeDeployment,
+				eq(maintain.deploymentId, activeDeployment.id)
+			)
+			.innerJoin(printers, eq(printers.id, activeDeployment.printerId))
 			.where(
 				and(
 					sql`DATE(${maintain.createdAt}) = ${today}`,
@@ -49,21 +64,23 @@ export async function GET(req: Request) {
 	const maintenanceData = await db
 		.select({
 			id: printers.id,
+			deploymentId: activeDeployment.id,
 			serialNo: printers.serialNo,
-			modelId: printers.modelId,
+			modelId: activeDeployment.modelId,
 			model: models.name,
-			clientId: printers.clientId,
+			clientId: activeDeployment.clientId,
 			client: clients.name,
-			locationId: printers.locationId,
+			locationId: activeDeployment.locationId,
 			location: locations.name,
-			departmentId: printers.departmentId,
+			departmentId: activeDeployment.departmentId,
 			department: departments.name,
 		})
-		.from(printers)
-		.innerJoin(models, eq(printers.modelId, models.id))
-		.innerJoin(clients, eq(printers.clientId, clients.id))
-		.innerJoin(locations, eq(printers.locationId, locations.id))
-		.innerJoin(departments, eq(printers.departmentId, departments.id))
+		.from(activeDeployment)
+		.innerJoin(printers, eq(activeDeployment.printerId, printers.id))
+		.innerJoin(models, eq(activeDeployment.modelId, models.id))
+		.innerJoin(clients, eq(activeDeployment.clientId, clients.id))
+		.innerJoin(locations, eq(activeDeployment.locationId, locations.id))
+		.innerJoin(departments, eq(activeDeployment.departmentId, departments.id))
 		.where(eq(printers.serialNo, serialNo))
 		.then((rows) => rows[0]);
 
@@ -96,21 +113,43 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
+	const authResult = await requireRole(["Admin", "Technician"]);
+	if (authResult.error) return authResult.error;
+
 	const body = await req.json();
 
-	const parsed = maintainFormSchema.safeParse(body);
+	// Offline-first envelope: form data + client-generated idempotency UUID +
+	// mandatory GPS fix (+ optional client-side geocode and audit trail).
+	const parsed = maintainSubmitSchema.safeParse(body);
 	if (!parsed.success) {
 		return new Response(JSON.stringify(parsed.error.format()), { status: 400 });
 	}
 
 	const data = parsed.data;
+	const { clientUuid, gps, geocode, auditTrail } = data;
 
 	try {
+		// IDEMPOTENCY — a retried sync of the same locally-saved report replays
+		// the same clientUuid. Return the existing record instead of inserting a
+		// duplicate, but still make sure its GPS row exists (covers a crash
+		// between the maintain insert and the location insert on a prior try).
+		const [existing] = await db
+			.select({ id: maintain.id })
+			.from(maintain)
+			.where(eq(maintain.clientUuid, clientUuid))
+			.limit(1);
+
+		if (existing) {
+			await ensureLocationRow(existing.id, clientUuid, gps, geocode ?? null);
+			await recordSyncEvent(clientUuid, "sync-replayed", `mtId=${existing.id}`);
+			return Response.json({ id: existing.id, replayed: true });
+		}
+
 		// ✅ Step 1: Insert into main maintain table
 		const [mt] = await db
 			.insert(maintain)
 			.values({
-				printerId: data.printerId,
+				deploymentId: data.deploymentId,
 				clientId: data.client.value,
 				locationId: data.location?.value,
 				departmentId: data.department?.value,
@@ -127,10 +166,26 @@ export async function POST(req: Request) {
 				signPath: data.signPath,
 				nozzlePath: data.nozzlePath,
 				originMTId: data.originMTId,
+				clientUuid,
 			})
-			.returning({ id: maintain.id });
+			.returning({ id: maintain.id })
+			.onConflictDoNothing({ target: maintain.clientUuid });
 
-		const mtId = mt.id;
+		// A concurrent replay (window + service worker racing) can make the
+		// insert no-op on the unique clientUuid index — resolve to the winner.
+		let mtId: number;
+		if (mt) {
+			mtId = mt.id;
+		} else {
+			const [winner] = await db
+				.select({ id: maintain.id })
+				.from(maintain)
+				.where(eq(maintain.clientUuid, clientUuid))
+				.limit(1);
+			if (!winner) throw new Error("Insert conflict but no existing row");
+			await ensureLocationRow(winner.id, clientUuid, gps, geocode ?? null);
+			return Response.json({ id: winner.id, replayed: true });
+		}
 
 		// ✅ Step 2: Conditionally insert parts and related tables
 		if (data.replace && data.replaceParts?.length) {
@@ -169,10 +224,92 @@ export async function POST(req: Request) {
 			});
 		}
 
+		// ✅ Step 3: Normalized GPS record (mandatory). If the device could not
+		// reverse-geocode (offline at capture), the server resolves the address
+		// now — it is online by definition while handling this request.
+		await ensureLocationRow(mtId, clientUuid, gps, geocode ?? null);
+
+		// ✅ Step 4: Persist the device-side audit trail + server receipt.
+		if (auditTrail?.length) {
+			await db.insert(maintenanceSyncEvents).values(
+				auditTrail.map((e) => ({
+					clientUuid,
+					event: e.event.slice(0, 50),
+					detail: e.detail,
+					occurredAt: e.occurredAt ? new Date(e.occurredAt) : null,
+				}))
+			);
+		}
+		await recordSyncEvent(clientUuid, "server-received", `mtId=${mtId}`);
+
 		return Response.json({ id: mtId });
 	} catch (err) {
 		console.error("Error saving maintenance record:", err);
 		return new Response("Internal Server Error", { status: 500 });
+	}
+}
+
+/**
+ * Insert the maintenance_location row for a report if it doesn't exist yet,
+ * reverse-geocoding server-side when the client couldn't. Idempotent via the
+ * unique maintenanceId constraint, so replays and races are harmless.
+ */
+async function ensureLocationRow(
+	mtId: number,
+	clientUuid: string,
+	gps: MaintainSubmitData["gps"],
+	clientGeocode: MaintainSubmitData["geocode"] | null
+) {
+	const [existingLoc] = await db
+		.select({ id: maintenanceLocation.id })
+		.from(maintenanceLocation)
+		.where(eq(maintenanceLocation.maintenanceId, mtId))
+		.limit(1);
+	if (existingLoc) return;
+
+	let geocode = clientGeocode ?? null;
+	if (!geocode) {
+		const resolved = await reverseGeocodeServer(gps.latitude, gps.longitude);
+		if (resolved) {
+			geocode = resolved;
+			await recordSyncEvent(clientUuid, "reverse-geocoded", "server-side");
+		}
+	}
+
+	await db
+		.insert(maintenanceLocation)
+		.values({
+			maintenanceId: mtId,
+			latitude: gps.latitude,
+			longitude: gps.longitude,
+			accuracy: gps.accuracy,
+			altitude: gps.altitude ?? null,
+			heading: gps.heading ?? null,
+			speed: gps.speed ?? null,
+			locationName: geocode?.locationName ?? null,
+			formattedAddress: geocode?.formattedAddress ?? null,
+			city: geocode?.city ?? null,
+			province: geocode?.province ?? null,
+			country: geocode?.country ?? null,
+			postalCode: geocode?.postalCode ?? null,
+			capturedAt: new Date(gps.capturedAt),
+			gpsProvider: gps.gpsProvider,
+			isMockLocation: gps.isMockLocation,
+			reverseGeocoded: geocode !== null,
+		})
+		.onConflictDoNothing({ target: maintenanceLocation.maintenanceId });
+}
+
+/** Best-effort server-side sync event — must never fail the request. */
+async function recordSyncEvent(
+	clientUuid: string,
+	event: string,
+	detail?: string
+) {
+	try {
+		await db.insert(maintenanceSyncEvents).values({ clientUuid, event, detail });
+	} catch (err) {
+		console.error("Failed to record sync event:", err);
 	}
 }
 
@@ -193,6 +330,9 @@ type UpdateSignPathBody = z.infer<typeof updateSignPathSchema>;
  * A PATCH request is semantically correct for partial updates.
  */
 export async function PATCH(req: NextRequest) {
+	const authResult = await requireRole(["Admin", "Technician"]);
+	if (authResult.error) return authResult.error;
+
 	try {
 		// 2. Parse the request body
 		const body: unknown = await req.json();

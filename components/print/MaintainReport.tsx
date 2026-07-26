@@ -116,6 +116,9 @@ export interface MaintenanceReportProps {
 	signatory: string;
 	signPath: string; // Adjust if it's a base64 string or Buffer
 	nozzlePath: string;
+	/** GPS-verified location (offline-first pipeline). Absent on legacy records. */
+	gpsLocation?: string;
+	gpsCoordinates?: string;
 }
 
 export const MaintainReport: React.FC<{ data: MaintenanceReportProps }> = ({
@@ -161,6 +164,18 @@ export const MaintainReport: React.FC<{ data: MaintenanceReportProps }> = ({
 						<Text>{data.date}</Text>
 					</View>
 				</View>
+
+				{(data.gpsLocation || data.gpsCoordinates) && (
+					<View style={styles.row}>
+						<View style={styles.column}>
+							<Text style={styles.label}>GPS Verified Location:</Text>
+							<Text>
+								{data.gpsLocation ?? "Coordinates captured"}
+								{data.gpsCoordinates ? ` — ${data.gpsCoordinates}` : ""}
+							</Text>
+						</View>
+					</View>
+				)}
 			</View>
 
 			{/* Work Done & Services */}

@@ -9,10 +9,17 @@ import {
 	clients,
 	locations,
 	priorities,
+	printers,
+	deployments,
+	models,
+	departments,
+	maintain,
+	status,
 } from "@/db/schema"; // Adjust this path to your Drizzle schema
 import { format } from "date-fns";
 import { ensureError } from "@/lib/errors";
 import { convertToPhilippineTimezone } from "@/lib/dateConverter";
+import { requireRole } from "@/lib/require-role";
 
 // Define the expected structure of the incoming request body
 interface ScheduleMaintenancePayload {
@@ -30,6 +37,9 @@ interface ScheduleMaintenancePayload {
 }
 
 export async function POST(req: NextRequest) {
+	const authResult = await requireRole(["Admin", "Scheduler"]);
+	if (authResult.error) return authResult.error;
+
 	let newScheduleId: number | null = null;
 
 	try {
@@ -64,8 +74,43 @@ export async function POST(req: NextRequest) {
 		}
 
 		if (actions === "Add Schedule") {
+			// scheduleDate arrives over JSON as whatever the client sent — never
+			// trust it's already a valid Date-parseable value. Coerce and
+			// validate explicitly so a bad value gets a clear 400 instead of an
+			// opaque "Invalid time value" crash from date-fns.
+			const parsedScheduleDate = new Date(scheduleDate);
+			if (isNaN(parsedScheduleDate.getTime())) {
+				return NextResponse.json(
+					{ message: "Invalid schedule date." },
+					{ status: 400 }
+				);
+			}
+
 			// --- 2. Insert the main maintenance schedule record ---
-			const dateToSave = convertToPhilippineTimezone(scheduleDate);
+			const dateToSave = convertToPhilippineTimezone(parsedScheduleDate);
+			const scheduledAtStr = format(parsedScheduleDate, "yyyy-MM-dd");
+
+			// Check for a duplicate ourselves rather than relying on
+			// onConflictDoNothing, which requires a matching unique index in
+			// the database — one was never actually created here, so that
+			// approach silently fails with "no unique or exclusion
+			// constraint matching the ON CONFLICT specification".
+			const existing = await db.query.schedules.findFirst({
+				where: and(
+					eq(schedules.technicianId, Number(technicianId)),
+					eq(schedules.clientId, Number(clientId)),
+					eq(schedules.locationId, Number(locationId)),
+					eq(schedules.scheduledAt, scheduledAtStr)
+				),
+			});
+
+			if (existing) {
+				return NextResponse.json(
+					{ error: "duplicate", existing },
+					{ status: 409 }
+				);
+			}
+
 			const [newSchedule] = await db
 				.insert(schedules)
 				.values({
@@ -78,33 +123,55 @@ export async function POST(req: NextRequest) {
 					scheduledAt: dateToSave,
 					// createdAt and updatedAt will be defaultNow() from schema
 				})
-				.onConflictDoNothing({
-					target: [
-						schedules.technicianId,
-						schedules.clientId,
-						schedules.locationId,
-						schedules.scheduledAt,
-					],
-				})
 				.returning({ id: schedules.id }); // Get the ID of the newly inserted schedule
 
 			if (!newSchedule) {
-				// Duplicate: fetch existing (optional, nice for UX)
-				const existing = await db.query.schedules.findFirst({
-					where: and(
-						eq(schedules.clientId, Number(clientId)),
-						eq(schedules.locationId, Number(locationId)),
-						eq(schedules.scheduledAt, format(scheduleDate, "yyyy-MM-dd"))
-					),
-				});
-
 				return NextResponse.json(
-					{ error: "duplicate", existing },
-					{ status: 409 }
+					{ message: "Failed to create schedule." },
+					{ status: 500 }
 				);
 			}
 
 			newScheduleId = newSchedule.id;
+
+			// Attach any printers selected at creation time immediately,
+			// instead of leaving a brand-new schedule empty until the user
+			// happens to click Update again — same duplicate-guard as the
+			// update path below.
+			if (added.length > 0) {
+				const conflicting = await db
+					.select({ printerId: scheduleDetails.printerId })
+					.from(scheduleDetails)
+					.innerJoin(schedules, eq(schedules.id, scheduleDetails.scheduleId))
+					.where(
+						and(
+							eq(schedules.clientId, Number(clientId)),
+							eq(schedules.scheduledAt, dateToSave),
+							inArray(
+								scheduleDetails.printerId,
+								added.map((p) => p.printerId)
+							),
+							sql`${scheduleDetails.scheduleId} != ${newScheduleId}`
+						)
+					);
+
+				if (conflicting.length > 0) {
+					return NextResponse.json(
+						{
+							message: `${conflicting.length} printer(s) are already scheduled for this client on this date under a different schedule.`,
+						},
+						{ status: 409 }
+					);
+				}
+
+				await db.insert(scheduleDetails).values(
+					added.map((printer) => ({
+						scheduleId: newScheduleId!,
+						printerId: printer.printerId,
+						originMTId: printer.mtId,
+					}))
+				);
+			}
 		} else {
 			const [updatedSchedule] = await db
 				.update(schedules)
@@ -114,16 +181,47 @@ export async function POST(req: NextRequest) {
 					maintainAll,
 				})
 				.where(eq(schedules.id, scheduleId!)) // change `schedules.id` to your actual key
-				.returning({ id: schedules.id });
+				.returning({ id: schedules.id, scheduledAt: schedules.scheduledAt });
 
 			newScheduleId = updatedSchedule.id;
 
 			// --- 3. Prepare and Insert associated printers ---
 			if (added.length > 0) {
+				// Prevent the same printer from ending up on two different
+				// schedule rows for the same company + date (e.g. a schedule
+				// created for a different technician on the same client/date/
+				// location before this one). Without this, the same printer
+				// could get duplicate scheduleDetails entries across schedules
+				// that all share the same client + date.
+				const conflicting = await db
+					.select({ printerId: scheduleDetails.printerId })
+					.from(scheduleDetails)
+					.innerJoin(schedules, eq(schedules.id, scheduleDetails.scheduleId))
+					.where(
+						and(
+							eq(schedules.clientId, Number(clientId)),
+							eq(schedules.scheduledAt, updatedSchedule.scheduledAt),
+							inArray(
+								scheduleDetails.printerId,
+								added.map((p) => p.printerId)
+							),
+							sql`${scheduleDetails.scheduleId} != ${newScheduleId}`
+						)
+					);
+
+				if (conflicting.length > 0) {
+					return NextResponse.json(
+						{
+							message: `${conflicting.length} printer(s) are already scheduled for this client on this date under a different schedule.`,
+						},
+						{ status: 409 }
+					);
+				}
+
 				const printersToAdd = added.map((printer) => ({
 					scheduleId: newScheduleId!, // Use the ID from the first insert
 					printerId: printer.printerId,
-					mtId: printer.mtId,
+					originMTId: printer.mtId,
 				}));
 
 				await db.insert(scheduleDetails).values(printersToAdd);
@@ -164,8 +262,17 @@ export async function POST(req: NextRequest) {
 }
 
 export async function GET(req: Request) {
+	// This endpoint serves two different consumers: the Schedule page
+	// (pageSource set, Scheduler/Admin only) and the Dashboard's "my
+	// itinerary today" widget used by every role, including Technician —
+	// so the role check has to branch rather than apply one rule to both.
 	const { searchParams } = new URL(req.url);
 	const pageSource = searchParams.get("pageSource");
+
+	const authResult = await requireRole(
+		pageSource ? ["Admin", "Scheduler"] : ["Admin", "Scheduler", "Technician"]
+	);
+	if (authResult.error) return authResult.error;
 
 	if (pageSource) {
 		//Schedules in Schedule Page
@@ -184,6 +291,7 @@ export async function GET(req: Request) {
 			const data = await db
 				.select({
 					id: schedules.id,
+					technicianId: schedules.technicianId,
 					technician: sql<string>`${users.firstName} || ' ' || ${users.lastName}`,
 					clientId: clients.id,
 					client: clients.name,
@@ -241,47 +349,121 @@ export async function GET(req: Request) {
 			if (scheduledAt) {
 				conditions.push(eq(schedules.scheduledAt, scheduledAt));
 			}
+			const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
-			const fetchedSchedules = await db.query.schedules.findMany({
-				where: conditions.length > 0 ? and(...conditions) : undefined,
-				with: {
-					technician: { columns: { firstName: true, lastName: true } },
-					client: { columns: { name: true } },
-					location: { columns: { name: true } },
-					priorityLevel: { columns: { name: true } },
-					scheduleDetails: {
-						with: {
-							printer: {
-								with: {
-									model: { columns: { name: true } },
-									department: { columns: { name: true } },
-								},
-								columns: {
-									id: true,
-									serialNo: true,
-								},
-							},
-							maintainRecord: {
-								with: {
-									status: { columns: { name: true } },
-								},
-								columns: {
-									id: true,
-									notes: true,
-									signPath: true,
-								},
-							},
-						},
-						columns: {
-							id: true,
-							scheduleId: true,
-							originMTId: true,
-							isMaintained: true,
-							maintainedDate: true,
-						},
+			// NOTE: this used to go through db.query.schedules.findMany({ with: ... }),
+			// but that relies on the schema's relations() config, and the
+			// "printer" relation there is mistakenly bound to the deployments
+			// table instead of printers — resolving printer.model /
+			// printer.department then crashes with "Cannot read properties of
+			// undefined (reading 'referencedTable')". Manual joins below sidestep
+			// that broken metadata entirely (same pattern already used by most
+			// other routes in this app) and also correctly source model/department
+			// via the printer's active deployment, since printers itself no longer
+			// carries those columns after the deployments split.
+			const scheduleRows = await db
+				.select({
+					id: schedules.id,
+					technicianId: schedules.technicianId,
+					clientId: schedules.clientId,
+					locationId: schedules.locationId,
+					priority: schedules.priority,
+					notes: schedules.notes,
+					maintainAll: schedules.maintainAll,
+					scheduledAt: schedules.scheduledAt,
+					createdAt: schedules.createdAt,
+					technicianFirstName: users.firstName,
+					technicianLastName: users.lastName,
+					clientName: clients.name,
+					locationName: locations.name,
+					priorityName: priorities.name,
+				})
+				.from(schedules)
+				.innerJoin(users, eq(users.id, schedules.technicianId))
+				.innerJoin(clients, eq(clients.id, schedules.clientId))
+				.innerJoin(locations, eq(locations.id, schedules.locationId))
+				.innerJoin(priorities, eq(priorities.id, schedules.priority))
+				.where(whereClause);
+
+			if (scheduleRows.length === 0) {
+				return NextResponse.json([]);
+			}
+
+			const scheduleIds = scheduleRows.map((s) => s.id);
+
+			const detailRows = await db
+				.select({
+					id: scheduleDetails.id,
+					scheduleId: scheduleDetails.scheduleId,
+					printerId: scheduleDetails.printerId,
+					originMTId: scheduleDetails.originMTId,
+					isMaintained: scheduleDetails.isMaintained,
+					maintainedDate: scheduleDetails.maintainedDate,
+					printerSerialNo: printers.serialNo,
+					modelId: deployments.modelId,
+					modelName: models.name,
+					departmentId: deployments.departmentId,
+					departmentName: departments.name,
+					maintainNotes: maintain.notes,
+					maintainSignPath: maintain.signPath,
+					maintainStatusName: status.name,
+				})
+				.from(scheduleDetails)
+				.innerJoin(printers, eq(printers.id, scheduleDetails.printerId))
+				.leftJoin(
+					deployments,
+					and(eq(deployments.printerId, printers.id), eq(deployments.deployedHere, true))
+				)
+				.leftJoin(models, eq(models.id, deployments.modelId))
+				.leftJoin(departments, eq(departments.id, deployments.departmentId))
+				.leftJoin(maintain, eq(maintain.id, scheduleDetails.originMTId))
+				.leftJoin(status, eq(status.id, maintain.statusId))
+				.where(inArray(scheduleDetails.scheduleId, scheduleIds));
+
+			const detailsBySchedule = new Map<number, typeof detailRows>();
+			for (const row of detailRows) {
+				const list = detailsBySchedule.get(row.scheduleId) ?? [];
+				list.push(row);
+				detailsBySchedule.set(row.scheduleId, list);
+			}
+
+			const fetchedSchedules = scheduleRows.map((s) => ({
+				id: s.id,
+				technicianId: s.technicianId,
+				clientId: s.clientId,
+				locationId: s.locationId,
+				priority: s.priority,
+				notes: s.notes,
+				maintainAll: s.maintainAll,
+				scheduledAt: s.scheduledAt,
+				createdAt: s.createdAt,
+				technician: { firstName: s.technicianFirstName, lastName: s.technicianLastName },
+				client: { name: s.clientName },
+				location: { name: s.locationName },
+				priorityLevel: { name: s.priorityName },
+				scheduleDetails: (detailsBySchedule.get(s.id) ?? []).map((d) => ({
+					id: d.id,
+					scheduleId: d.scheduleId,
+					printerId: d.printerId,
+					originMTId: d.originMTId,
+					isMaintained: d.isMaintained,
+					maintainedDate: d.maintainedDate,
+					printer: {
+						id: d.printerId,
+						serialNo: d.printerSerialNo,
+						model: { name: d.modelName },
+						department: { name: d.departmentName },
 					},
-				},
-			});
+					maintainRecord: d.originMTId
+						? {
+								id: d.originMTId,
+								notes: d.maintainNotes,
+								signPath: d.maintainSignPath,
+								status: { name: d.maintainStatusName },
+						  }
+						: null,
+				})),
+			}));
 
 			return NextResponse.json(fetchedSchedules);
 		} catch (error) {
@@ -295,6 +477,9 @@ export async function GET(req: Request) {
 }
 
 export async function DELETE(req: NextRequest) {
+	const authResult = await requireRole(["Admin", "Scheduler"]);
+	if (authResult.error) return authResult.error;
+
 	const { searchParams } = new URL(req.url);
 	const scheduleId = searchParams.get("scheduleId");
 

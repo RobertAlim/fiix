@@ -4,6 +4,7 @@ import {
 	users,
 	status,
 	printers,
+	deployments,
 	models,
 	clients,
 	locations,
@@ -14,11 +15,16 @@ import {
 	repair,
 	colors,
 	parts,
+	maintenanceLocation,
 } from "@/db/schema";
 import { eq, sql, desc } from "drizzle-orm";
 import { NextResponse } from "next/server";
+import { requireActiveUser } from "@/lib/require-role";
 
 export async function GET(req: Request) {
+	const authResult = await requireActiveUser();
+	if (authResult.error) return authResult.error;
+
 	// const data = await db
 	// 	.select({
 	// 		id: maintain.id,
@@ -130,13 +136,23 @@ export async function GET(req: Request) {
 			mtDate: sql<string>`to_char(${maintain.createdAt}, 'MM/DD/YYYY')`.as(
 				"date"
 			),
+			// GPS verification (offline-first pipeline). Null on legacy records.
+			gpsLocation: maintenanceLocation.locationName,
+			gpsLatitude: maintenanceLocation.latitude,
+			gpsLongitude: maintenanceLocation.longitude,
+			gpsAccuracy: maintenanceLocation.accuracy,
 		})
 		.from(maintain)
-		.innerJoin(printers, eq(printers.id, maintain.printerId))
-		.innerJoin(models, eq(printers.modelId, models.id))
-		.innerJoin(clients, eq(printers.clientId, clients.id))
-		.innerJoin(locations, eq(printers.locationId, locations.id))
-		.innerJoin(departments, eq(printers.departmentId, departments.id))
+		.leftJoin(
+			maintenanceLocation,
+			eq(maintenanceLocation.maintenanceId, maintain.id)
+		)
+		.innerJoin(deployments, eq(deployments.id, maintain.deploymentId))
+		.innerJoin(printers, eq(printers.id, deployments.printerId))
+		.innerJoin(models, eq(deployments.modelId, models.id))
+		.innerJoin(clients, eq(deployments.clientId, clients.id))
+		.innerJoin(locations, eq(deployments.locationId, locations.id))
+		.innerJoin(departments, eq(deployments.departmentId, departments.id))
 		.innerJoin(status, eq(status.id, maintain.statusId))
 		.innerJoin(users, eq(users.id, maintain.userId))
 		.innerJoin(signatories, eq(maintain.signatoryId, signatories.id))

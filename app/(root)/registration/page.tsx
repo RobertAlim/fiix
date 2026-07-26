@@ -48,7 +48,7 @@ const RegistrationPage = () => {
 		const saveRes = await fetch("/api/save-profile", {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({ middleName, birthday, contactNo, isActive: true }),
+			body: JSON.stringify({ middleName, birthday, contactNo }),
 		});
 
 		if (saveRes.ok) {
@@ -56,8 +56,10 @@ const RegistrationPage = () => {
 			setBirthday("");
 			setContactNo("");
 
-			toast("Profile updated successfully");
-			router.push("/dashboard");
+			toast(
+				"Profile saved. An administrator will review and activate your account."
+			);
+			router.push("/account-pending");
 		} else {
 			toast("Failed to update profile");
 		}

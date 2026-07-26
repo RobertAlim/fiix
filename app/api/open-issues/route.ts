@@ -8,11 +8,16 @@ import {
 	clients,
 	locations,
 	departments,
+	deployments,
 } from "@/db/schema";
 import { eq, sql, desc } from "drizzle-orm";
 import { NextResponse } from "next/server";
+import { requireRole } from "@/lib/require-role";
 
 export async function GET() {
+	const authResult = await requireRole(["Admin", "Scheduler"]);
+	if (authResult.error) return authResult.error;
+
 	const data = await db
 		.selectDistinctOn([printers.serialNo], {
 			// <-- THIS IS THE KEY CHANGE for PostgreSQL
@@ -30,12 +35,13 @@ export async function GET() {
 			createdAt: maintain.createdAt, // Crucial: must be selected and ordered for distinctOn to work correctly
 			// notes: maintain.notes, // Uncomment if you have a 'notes' column in maintain table
 		})
-		.from(printers)
-		.innerJoin(models, eq(printers.modelId, models.id))
-		.innerJoin(clients, eq(printers.clientId, clients.id))
-		.innerJoin(locations, eq(printers.locationId, locations.id))
-		.innerJoin(departments, eq(printers.departmentId, departments.id))
-		.leftJoin(maintain, eq(printers.id, maintain.printerId))
+		.from(deployments)
+		.innerJoin(printers, eq(printers.id, deployments.printerId))
+		.innerJoin(models, eq(deployments.modelId, models.id))
+		.innerJoin(clients, eq(deployments.clientId, clients.id))
+		.innerJoin(locations, eq(deployments.locationId, locations.id))
+		.innerJoin(departments, eq(deployments.departmentId, departments.id))
+		.leftJoin(maintain, eq(deployments.id, maintain.deploymentId))
 		.innerJoin(status, eq(status.id, maintain.statusId))
 		.innerJoin(users, eq(users.id, maintain.userId))
 		// .where(

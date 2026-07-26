@@ -1,11 +1,15 @@
 // src/app/api/profile/route.ts
-import { db } from "@/db"; // Your Drizzle DB connection
+import { db } from "@/db";
 import { users } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { insertUserSchema } from "@/types/index";
+import { requireActiveUser } from "@/lib/require-role";
 
 export async function PUT(request: Request) {
+	const authResult = await requireActiveUser();
+	if (authResult.error) return authResult.error;
+
 	try {
 		const body = await request.json();
 		const result = insertUserSchema.safeParse(body);
@@ -17,9 +21,7 @@ export async function PUT(request: Request) {
 			);
 		}
 
-		// In a real app, you would get the user ID from the session or auth context
-		const userId = 1; // Example user ID
-
+		// Always the caller's own row — never a client-supplied id.
 		const updatedUser = await db
 			.update(users)
 			.set({
@@ -29,7 +31,7 @@ export async function PUT(request: Request) {
 				contactNo: result.data.contactNo,
 				email: result.data.email,
 			})
-			.where(eq(users.id, userId))
+			.where(eq(users.id, authResult.user.id))
 			.returning();
 
 		return NextResponse.json(updatedUser[0]);

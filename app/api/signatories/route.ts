@@ -4,8 +4,12 @@ import { db } from "@/db"; // Adjust this path to your Drizzle client setup
 import { signatories } from "@/db/schema"; // Adjust this path to your Drizzle schema
 import { ensureError } from "@/lib/errors";
 import { toProperCase } from "@/lib/stringUtils";
+import { requireRole } from "@/lib/require-role";
 
 export async function POST(req: NextRequest) {
+	const authResult = await requireRole(["Admin", "Technician"]);
+	if (authResult.error) return authResult.error;
+
 	try {
 		const signatory = await req.json();
 
