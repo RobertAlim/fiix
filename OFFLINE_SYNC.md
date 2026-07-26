@@ -55,8 +55,25 @@ creating duplicates.
 
 ## Database
 
-Migration `db/migrations/0046_offline_gps.sql` (registered in the drizzle
-journal — apply with `npm run db:migrate`, or run the SQL directly in Neon):
+Migration `db/migrations/0047_broken_loa.sql` (registered in the drizzle
+journal — apply with `npm run db:migrate`, or run the SQL directly in Neon).
+
+`npm run db:migrate` runs `db/migrate.ts`, a small script calling
+`drizzle-orm`'s own neon-http `migrate()` function directly, **not** the
+`drizzle-kit migrate` CLI command. That's deliberate: `drizzle-kit`'s CLI has
+documented, unresolved driver-selection problems against Neon specifically —
+it can hang or exit without applying anything and without a clear error,
+regardless of connection string (see drizzle-orm issue #3128 and neondatabase
+issue #5098). `db/migrate.ts` uses the exact same neon-http driver
+`db/index.ts` already uses for every query, so there's no separate
+driver-selection step to go wrong, and it fails fast and loud on a bad
+connection instead of hanging silently.
+
+**Migrations still need Neon's direct (unpooled) connection string** — set
+`DATABASE_URL_UNPOOLED` in `.env.local` to the "Direct connection" string
+from the Neon dashboard (same project/branch, no `-pooler` in the hostname).
+Both `drizzle.config.ts` (used by `db:generate`) and `db/migrate.ts` prefer it
+automatically when present, falling back to `DATABASE_URL`.
 
 - `maintain.clientUuid` (uuid, UNIQUE) — idempotency key.
 - `maintenance_location` — normalized GPS per report: coordinates, accuracy,
@@ -77,6 +94,45 @@ a commercial provider with the same response shape, or adapt the mapper —
 Nominatim's public instance is rate-limited (~1 req/s) and requires a
 descriptive User-Agent. Coordinates are always the source of truth; a failed
 geocode never blocks or loses a report.
+
+## Offline itinerary browsing & reference-data caching
+
+Beyond the report-save pipeline above, the app also has to work when a
+technician *opens* the Maintenance page with no connection — tapping an
+itinerary item, viewing client/signatory data, etc. This is handled by a
+second, separate cache (`features/offline-sync/reference-cache.ts`), distinct
+from the pending-report queue:
+
+- **`cachedJsonFetch(url, key)`** — the general-purpose primitive. Online: hits
+  the network and writes the result to IndexedDB (`refCache` table); offline,
+  or if the request itself fails, falls back to the last cached value.
+  Throws `OfflineCacheMissError` only when nothing has ever been cached for
+  that key, so callers can show a specific "connect once to cache this"
+  message instead of a generic network error.
+- **Prefetch** — `prefetchItineraryData()` runs automatically
+  (`TechnicianSchedules.tsx`) the moment a technician's itinerary loads while
+  online: one `/api/maintain?serialNo=` lookup per assigned printer (which
+  bundles client/location/department/model + that client's signatories in one
+  response), plus the clients list and the parts/status dropdowns. A small
+  status line ("Caching…" / "Available offline") shows progress.
+- **What's cached:** the itinerary list itself (`useSchedules`), per-printer
+  maintain lookups, the clients list, and the parts/status dropdowns used on
+  the Dashboard shell.
+- **Maintenance page behavior offline:** `onHandleScan` (which runs
+  automatically when a printer is opened, and again on a manual QR scan)
+  skips the network entirely when offline and reads straight from the cache.
+  The server-only "already maintained today" duplicate check can't be
+  verified without a connection and is skipped in that path — the server
+  still enforces it when the report syncs.
+- **QR scanner gating:** scanning a *new* printer not on the itinerary
+  requires the live lookup, so the floating scan button is disabled (dimmed,
+  with a `WifiOff` icon and tooltip) whenever `useConnectivity().online` is
+  false, and re-enables the instant connectivity returns. The inline
+  "Replace Service Unit" scan button is unaffected — it only records a serial
+  number locally and never touches the network.
+- **Limitation:** a printer never opened while online (so never prefetched)
+  has no cached data to fall back to; the technician sees a clear message
+  asking them to connect once and reopen it, rather than a raw fetch error.
 
 ## Configuration (all optional)
 

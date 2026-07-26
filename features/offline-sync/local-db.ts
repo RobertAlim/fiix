@@ -4,6 +4,7 @@ import type {
 	PendingBlob,
 	AuditEntry,
 	MetaEntry,
+	RefCacheEntry,
 } from "./types";
 
 /**
@@ -16,6 +17,11 @@ class FiixOfflineDB extends Dexie {
 	blobs!: EntityTable<PendingBlob, "id">;
 	auditLog!: EntityTable<AuditEntry, "id">;
 	meta!: EntityTable<MetaEntry, "key">;
+	// Cached reference data (client lists, per-printer lookups, dropdowns) so
+	// the Maintenance page can render fully offline instead of hitting the
+	// network for things that rarely change. See features/offline-sync/
+	// reference-cache.ts for the read/write API.
+	refCache!: EntityTable<RefCacheEntry, "key">;
 
 	constructor() {
 		super("fiix-offline");
@@ -24,6 +30,13 @@ class FiixOfflineDB extends Dexie {
 			blobs: "id, reportUuid, uploaded",
 			auditLog: "++id, reportUuid, at",
 			meta: "key",
+		});
+		this.version(2).stores({
+			pendingReports: "uuid, status, nextRetryAt, createdAt",
+			blobs: "id, reportUuid, uploaded",
+			auditLog: "++id, reportUuid, at",
+			meta: "key",
+			refCache: "key, updatedAt",
 		});
 	}
 }

@@ -16,6 +16,31 @@ function backoffDelay(retryCount: number): number {
 	return schedule[Math.min(retryCount - 1, schedule.length - 1)];
 }
 
+/**
+ * fetch() wrapped to give a diagnosable error when the request never
+ * completes at all — a bare "Failed to fetch" from the browser can mean
+ * offline, DNS failure, or (most commonly for the R2 PUT, which is
+ * cross-origin) a CORS policy that doesn't allow this origin. HTTP error
+ * statuses (403, 500, ...) are NOT rewritten here — those already produce a
+ * real response and are handled by each call site's own `.ok` check.
+ */
+async function fetchOrExplain(
+	url: string,
+	init: RequestInit,
+	label: string
+): Promise<Response> {
+	try {
+		return await fetch(url, init);
+	} catch (err) {
+		const detail = err instanceof Error ? err.message : String(err);
+		throw new Error(
+			`Network request failed for ${label}: ${detail}. If this is a cross-origin ` +
+				`request (e.g. direct upload to R2), verify the bucket's CORS policy ` +
+				`allows this origin; otherwise check connectivity.`
+		);
+	}
+}
+
 async function setStatus(
 	uuid: string,
 	status: PendingReport["status"],
@@ -30,25 +55,33 @@ async function setStatus(
 
 /** Presign-then-PUT one blob to Cloudflare R2, then mark it uploaded. */
 async function uploadBlob(entry: PendingBlob): Promise<void> {
-	const presignRes = await fetch("/api/get-upload-url", {
-		method: "POST",
-		headers: { "Content-Type": "application/json" },
-		body: JSON.stringify({
-			key: entry.key,
-			contentType: entry.contentType,
-			bucketName: entry.bucket,
-		}),
-	});
+	const presignRes = await fetchOrExplain(
+		"/api/get-upload-url",
+		{
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				key: entry.key,
+				contentType: entry.contentType,
+				bucketName: entry.bucket,
+			}),
+		},
+		"presign request"
+	);
 	if (!presignRes.ok) {
 		throw new Error(`Presign failed (${presignRes.status}) for ${entry.kind}`);
 	}
 	const { url } = await presignRes.json();
 
-	const putRes = await fetch(url, {
-		method: "PUT",
-		headers: { "Content-Type": entry.contentType },
-		body: entry.blob,
-	});
+	const putRes = await fetchOrExplain(
+		url,
+		{
+			method: "PUT",
+			headers: { "Content-Type": entry.contentType },
+			body: entry.blob,
+		},
+		"R2 upload (cross-origin — check the bucket's CORS policy allows this origin)"
+	);
 	if (!putRes.ok) {
 		throw new Error(`R2 upload failed (${putRes.status}) for ${entry.kind}`);
 	}
@@ -89,17 +122,21 @@ async function syncOne(report: PendingReport): Promise<void> {
 			detail: e.detail,
 			occurredAt: new Date(e.at).toISOString(),
 		}));
-		const res = await fetch("/api/maintain", {
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({
-				...report.payload,
-				clientUuid: report.uuid,
-				gps: report.gps,
-				geocode: report.geocode,
-				auditTrail: trail,
-			}),
-		});
+		const res = await fetchOrExplain(
+			"/api/maintain",
+			{
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					...report.payload,
+					clientUuid: report.uuid,
+					gps: report.gps,
+					geocode: report.geocode,
+					auditTrail: trail,
+				}),
+			},
+			"report upload (same-origin — check server reachability)"
+		);
 		if (!res.ok) {
 			const text = await res.text().catch(() => "");
 			throw new Error(`Report upload failed (${res.status}): ${text.slice(0, 300)}`);

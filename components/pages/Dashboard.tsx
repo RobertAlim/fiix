@@ -243,7 +243,7 @@ export default function DashboardPage({
 
 			{/* Chart + Itinerary */}
 			<div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-				<Card className="rounded-2xl border shadow-sm lg:col-span-2">
+				<Card className="min-w-0 rounded-2xl border shadow-sm lg:col-span-2">
 					<CardHeader>
 						<CardTitle className="text-base font-semibold">
 							Maintenance Completed — Last 7 Days
@@ -279,7 +279,7 @@ export default function DashboardPage({
 					</CardContent>
 				</Card>
 
-				<Card className="rounded-2xl border shadow-sm">
+				<Card className="min-w-0 rounded-2xl border shadow-sm">
 					<CardHeader>
 						<CardTitle className="text-base font-semibold">
 							{users.role === "Technician" ? "Your Itinerary Today" : "Overview"}

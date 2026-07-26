@@ -7,6 +7,20 @@ export { useConnectivity } from "./use-connectivity";
 export { checkGpsPermission } from "./gps";
 export { detectSupport } from "./support";
 export { OFFLINE_SYNC_CONFIG } from "./config";
+export {
+	cachedJsonFetch,
+	fetchClientsCached,
+	fetchPartsCached,
+	fetchStatusCached,
+	fetchMaintainLookupCached,
+	prefetchItineraryData,
+	OfflineCacheMissError,
+} from "./reference-cache";
+export type {
+	CachedClient,
+	DropdownItem,
+	MaintainLookup,
+} from "./reference-cache";
 export type {
 	SyncStatus,
 	PendingReport,

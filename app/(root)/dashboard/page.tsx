@@ -37,6 +37,10 @@ import { SignOutBtn } from "@/components/auth/sign-out-button";
 import { canAccessModule, ModuleKey } from "@/lib/permissions";
 import { OfflineSyncProvider } from "@/features/offline-sync/OfflineSyncProvider";
 import { SyncStatusIndicator } from "@/components/SyncStatusIndicator";
+import {
+	fetchPartsCached,
+	fetchStatusCached,
+} from "@/features/offline-sync";
 
 const MaintenancePage = dynamic(() => import("@/components/pages/Maintenance"));
 const TaskTrackerPage = dynamic(() => import("@/components/pages/TaskTracker"));
@@ -102,19 +106,11 @@ export default function DashboardPage() {
 		queries: [
 			{
 				queryKey: ["parts"],
-				queryFn: async () => {
-					const res = await fetch("/api/dropdown/parts");
-					if (!res.ok) throw new Error("Failed to fetch parts");
-					return res.json();
-				},
+				queryFn: () => fetchPartsCached(),
 			},
 			{
 				queryKey: ["status"],
-				queryFn: async () => {
-					const res = await fetch("/api/dropdown/status");
-					if (!res.ok) throw new Error("Failed to fetch status");
-					return res.json();
-				},
+				queryFn: () => fetchStatusCached(),
 			},
 		],
 	});

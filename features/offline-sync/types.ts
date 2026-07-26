@@ -67,6 +67,15 @@ export interface MetaEntry {
 	value: string | number;
 }
 
+/** One cached reference-data response (client list, per-printer maintain
+ * lookup, dropdown options, ...), stored as its raw JSON so any endpoint
+ * shape can be cached without a schema per data type. */
+export interface RefCacheEntry {
+	key: string;
+	json: string;
+	updatedAt: number;
+}
+
 /** Typed failure reasons surfaced to the UI by the save pipeline. */
 export type SaveFailureCode =
 	| "unsupported-browser"

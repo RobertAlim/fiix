@@ -17,7 +17,15 @@ import {
 	TableHeader,
 	TableRow,
 } from "@/components/ui/table";
-import { ChevronDown, ChevronRight, ThumbsUp, Signature } from "lucide-react";
+import {
+	ChevronDown,
+	ChevronRight,
+	ThumbsUp,
+	Signature,
+	CheckCircle2,
+	CloudDownload,
+	WifiOff,
+} from "lucide-react";
 import {
 	Collapsible,
 	CollapsibleContent,
@@ -26,6 +34,10 @@ import {
 import { Button } from "@/components/ui/button";
 import { useSchedules, Schedule } from "@/hooks/use-schedules"; // Adjust path
 import { format } from "date-fns";
+import {
+	prefetchItineraryData,
+	useConnectivity,
+} from "@/features/offline-sync";
 
 import {
 	Card,
@@ -63,6 +75,33 @@ export function SchedulesDataTable({
 		scheduledAt,
 	});
 	const [expanded, setExpanded] = React.useState<ExpandedState>({});
+	const { online } = useConnectivity();
+	const [prefetchState, setPrefetchState] = React.useState<
+		"idle" | "caching" | "cached" | "offline"
+	>("idle");
+
+	// Warm the offline cache (per-printer maintenance context + client/parts/
+	// status reference lists) as soon as the itinerary is known, so a
+	// technician who loses connectivity later can still open every assigned
+	// printer's report. Best-effort and silent about individual failures —
+	// prefetchItineraryData already swallows per-item errors.
+	React.useEffect(() => {
+		if (!online) {
+			setPrefetchState("offline");
+			return;
+		}
+		const details = (schedulesData ?? []).flatMap((s) => s.scheduleDetails);
+		if (details.length === 0) return;
+
+		let cancelled = false;
+		setPrefetchState("caching");
+		prefetchItineraryData(details).then(() => {
+			if (!cancelled) setPrefetchState("cached");
+		});
+		return () => {
+			cancelled = true;
+		};
+	}, [schedulesData, online]);
 
 	const columns: ColumnDef<Schedule>[] = [
 		{
@@ -154,7 +193,29 @@ export function SchedulesDataTable({
 	if (isError) return <div>Error loading schedules.</div>;
 
 	return (
-		<div className="rounded-md border">
+		<div className="min-w-0 rounded-md border">
+			{prefetchState !== "idle" && (
+				<div className="flex items-center gap-1.5 border-b bg-muted/40 px-3 py-1.5 text-xs text-muted-foreground">
+					{prefetchState === "caching" && (
+						<>
+							<CloudDownload className="h-3.5 w-3.5 animate-pulse" />
+							Caching today&apos;s itinerary for offline use…
+						</>
+					)}
+					{prefetchState === "cached" && (
+						<>
+							<CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
+							Available offline
+						</>
+					)}
+					{prefetchState === "offline" && (
+						<>
+							<WifiOff className="h-3.5 w-3.5 text-yellow-500" />
+							Offline — showing cached itinerary
+						</>
+					)}
+				</div>
+			)}
 			<Table>
 				<TableHeader>
 					{table.getHeaderGroups().map((headerGroup) => (
@@ -209,36 +270,32 @@ export function SchedulesDataTable({
 															Schedule Details:
 														</h4>
 
-														<div
-															className={`${
-																table.getRowModel().rows.length === 0 ? "" : ""
-															} grid grid-cols-2 md:grid-cols-4 mb-2`}
-														>
-															<div className="flex space-x-4">
-																<span className="font-medium">Legend:</span>
-																<div className="flex flex-col items-center space-x-1">
-																	<Badge variant={"secondary"}>RM</Badge>
-																	<span className="text-xs">
-																		Regular Maintenance
-																	</span>
-																</div>
+														<div className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-2">
+															<span className="font-medium">Legend:</span>
+															<div className="flex flex-col items-center gap-0.5">
+																<Badge variant={"secondary"}>RM</Badge>
+																<span className="text-xs whitespace-nowrap">
+																	Regular Maintenance
+																</span>
+															</div>
 
-																<div className="flex flex-col items-center space-x-1">
-																	<Badge variant={"destructive"}>RU</Badge>
-																	<span className="text-xs">
-																		Replacement (Unit)
-																	</span>
-																</div>
-																<div className="flex flex-col items-center space-x-1">
-																	<Badge variant={"destructive"}>RP</Badge>
-																	<span className="text-xs">
-																		Replacement (Parts)
-																	</span>
-																</div>
-																<div className="flex flex-col items-center space-x-1">
-																	<Badge variant={"default"}>PO</Badge>
-																	<span className="text-xs">Pulled Out</span>
-																</div>
+															<div className="flex flex-col items-center gap-0.5">
+																<Badge variant={"destructive"}>RU</Badge>
+																<span className="text-xs whitespace-nowrap">
+																	Replacement (Unit)
+																</span>
+															</div>
+															<div className="flex flex-col items-center gap-0.5">
+																<Badge variant={"destructive"}>RP</Badge>
+																<span className="text-xs whitespace-nowrap">
+																	Replacement (Parts)
+																</span>
+															</div>
+															<div className="flex flex-col items-center gap-0.5">
+																<Badge variant={"default"}>PO</Badge>
+																<span className="text-xs whitespace-nowrap">
+																	Pulled Out
+																</span>
 															</div>
 														</div>
 														{row.original.scheduleDetails.length > 0 ? (
@@ -280,8 +337,8 @@ export function SchedulesDataTable({
 																			}
 																		>
 																			<CardHeader>
-																				<CardTitle className="flex justify-between items-center text-base">
-																					<span>
+																				<CardTitle className="flex flex-wrap items-center justify-between gap-2 text-base">
+																					<span className="min-w-0 break-all">
 																						Printer:{" "}
 																						{detail.printer?.serialNo || "N/A"}
 																					</span>
@@ -329,7 +386,7 @@ export function SchedulesDataTable({
 																					)}
 																				</CardTitle>
 																				<CardDescription className="text-xs text-gray-500 dark:text-gray-400">
-																					<div className="flex flex-1 justify-between">
+																					<div className="flex flex-1 flex-wrap justify-between gap-x-2 gap-y-1">
 																						<span>Detail ID: {detail.id}</span>
 																						<div>
 																							{detail.isMaintained && ( // Only show if maintained

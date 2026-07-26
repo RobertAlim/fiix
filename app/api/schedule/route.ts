@@ -73,6 +73,26 @@ export async function POST(req: NextRequest) {
 			);
 		}
 
+		// A printer submitted twice in the same request would otherwise create
+		// two identical scheduleDetails rows for one schedule.
+		if (added?.length > 0) {
+			const seen = new Set<number>();
+			const dupes = new Set<number>();
+			for (const p of added) {
+				if (seen.has(p.printerId)) dupes.add(p.printerId);
+				seen.add(p.printerId);
+			}
+			if (dupes.size > 0) {
+				return NextResponse.json(
+					{
+						message:
+							"The same printer was selected more than once for this schedule.",
+					},
+					{ status: 400 }
+				);
+			}
+		}
+
 		if (actions === "Add Schedule") {
 			// scheduleDate arrives over JSON as whatever the client sent — never
 			// trust it's already a valid Date-parseable value. Coerce and
@@ -139,13 +159,19 @@ export async function POST(req: NextRequest) {
 			// happens to click Update again — same duplicate-guard as the
 			// update path below.
 			if (added.length > 0) {
+				// A printer can only be in one place at a time, so it can never be
+				// scheduled twice for the same date — regardless of client. Checked
+				// across ALL schedules for this date, not just this client's.
 				const conflicting = await db
-					.select({ printerId: scheduleDetails.printerId })
+					.select({
+						printerId: scheduleDetails.printerId,
+						serialNo: printers.serialNo,
+					})
 					.from(scheduleDetails)
 					.innerJoin(schedules, eq(schedules.id, scheduleDetails.scheduleId))
+					.innerJoin(printers, eq(printers.id, scheduleDetails.printerId))
 					.where(
 						and(
-							eq(schedules.clientId, Number(clientId)),
 							eq(schedules.scheduledAt, dateToSave),
 							inArray(
 								scheduleDetails.printerId,
@@ -156,9 +182,12 @@ export async function POST(req: NextRequest) {
 					);
 
 				if (conflicting.length > 0) {
+					const serials = conflicting.map((c) => c.serialNo).join(", ");
 					return NextResponse.json(
 						{
-							message: `${conflicting.length} printer(s) are already scheduled for this client on this date under a different schedule.`,
+							message: `Printer(s) ${serials} ${
+								conflicting.length === 1 ? "is" : "are"
+							} already scheduled for ${scheduledAtStr} on a different schedule.`,
 						},
 						{ status: 409 }
 					);
@@ -187,19 +216,20 @@ export async function POST(req: NextRequest) {
 
 			// --- 3. Prepare and Insert associated printers ---
 			if (added.length > 0) {
-				// Prevent the same printer from ending up on two different
-				// schedule rows for the same company + date (e.g. a schedule
-				// created for a different technician on the same client/date/
-				// location before this one). Without this, the same printer
-				// could get duplicate scheduleDetails entries across schedules
-				// that all share the same client + date.
+				// A printer can only be in one place at a time, so it can never be
+				// scheduled twice for the same date — regardless of client. Checked
+				// across ALL schedules for this date (excluding this schedule
+				// itself, so re-saving its own existing printers isn't a conflict).
 				const conflicting = await db
-					.select({ printerId: scheduleDetails.printerId })
+					.select({
+						printerId: scheduleDetails.printerId,
+						serialNo: printers.serialNo,
+					})
 					.from(scheduleDetails)
 					.innerJoin(schedules, eq(schedules.id, scheduleDetails.scheduleId))
+					.innerJoin(printers, eq(printers.id, scheduleDetails.printerId))
 					.where(
 						and(
-							eq(schedules.clientId, Number(clientId)),
 							eq(schedules.scheduledAt, updatedSchedule.scheduledAt),
 							inArray(
 								scheduleDetails.printerId,
@@ -210,9 +240,16 @@ export async function POST(req: NextRequest) {
 					);
 
 				if (conflicting.length > 0) {
+					const serials = conflicting.map((c) => c.serialNo).join(", ");
+					const dateLabel = format(
+						new Date(updatedSchedule.scheduledAt),
+						"yyyy-MM-dd"
+					);
 					return NextResponse.json(
 						{
-							message: `${conflicting.length} printer(s) are already scheduled for this client on this date under a different schedule.`,
+							message: `Printer(s) ${serials} ${
+								conflicting.length === 1 ? "is" : "are"
+							} already scheduled for ${dateLabel} on a different schedule.`,
 						},
 						{ status: 409 }
 					);

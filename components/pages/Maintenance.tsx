@@ -8,7 +8,6 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { ComboBoxResponsive, ComboboxItem } from "@/components/ui/combobox";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { fetchData } from "@/lib/fetchData";
 import {
 	Dialog,
 	DialogContent,
@@ -26,6 +25,7 @@ import {
 	PlusIcon,
 	CheckIcon,
 	QrCode,
+	WifiOff,
 } from "lucide-react";
 
 import SignaturePad from "@/components/SignaturePad";
@@ -48,6 +48,10 @@ import { base64ToFile } from "@/lib/fileConverter";
 import {
 	saveMaintenanceReport,
 	type SaveFailureCode,
+	useConnectivity,
+	fetchClientsCached,
+	fetchMaintainLookupCached,
+	OfflineCacheMissError,
 } from "@/features/offline-sync";
 
 type item = {
@@ -56,7 +60,7 @@ type item = {
 };
 
 interface Client {
-	id: string;
+	id: number;
 	name: string;
 }
 
@@ -98,6 +102,7 @@ export default function MaintenancePage({
 		code: SaveFailureCode;
 		message: string;
 	} | null>(null);
+	const { online } = useConnectivity();
 	const [capturedBlob, setCapturedBlob] = useState<Blob | null>(null);
 	const [objectURL, setObjectURL] = useState<string | null>(null);
 	const router = useRouter();
@@ -191,7 +196,7 @@ export default function MaintenancePage({
 
 	const { data: clients } = useQuery<Client[]>({
 		queryKey: ["clients"],
-		queryFn: () => fetchData<Client[]>(`/api/clients`),
+		queryFn: () => fetchClientsCached(),
 	});
 
 	const clientsComboboxData: ComboboxItem[] = useMemo(() => {
@@ -343,65 +348,126 @@ export default function MaintenancePage({
 		};
 	}, [objectURL, setValue]);
 
+	/** Fill the form from a maintain lookup result — shared by the online and
+	 * offline paths in onHandleScan so both populate identically. */
+	const applyMaintenanceData = (
+		maintenanceData: {
+			id: number;
+			deploymentId: number;
+			serialNo: string;
+			modelId: number;
+			model: string;
+			clientId: number;
+			client: string;
+			locationId: number;
+			location: string;
+			departmentId: number;
+			department: string;
+			replaceSerialNo?: string;
+		},
+		signatories: { value: string; label: string }[]
+	) => {
+		setValue("client", {
+			value: maintenanceData.clientId,
+			label: maintenanceData.client,
+		});
+		setValue("location", {
+			value: maintenanceData.locationId,
+			label: maintenanceData.location,
+		});
+		setValue("department", {
+			value: maintenanceData.departmentId,
+			label: maintenanceData.department,
+		});
+		setValue("model", {
+			value: maintenanceData.modelId,
+			label: maintenanceData.model,
+		});
+		setValue("serialNo", maintenanceData.serialNo);
+		setValue("replaceSerialNo", maintenanceData.replaceSerialNo || "");
+		setValue("printerId", maintenanceData.id);
+		setValue("deploymentId", maintenanceData.deploymentId);
+		setSignatory(signatories);
+	};
+
 	const onHandleScan = async (scannedSerialNo: string) => {
 		if (callingAction === "Replacement") {
 			setScanned(scannedSerialNo);
-		} else {
-			try {
-				const res = await fetch(`/api/maintain?serialNo=${scannedSerialNo}`);
-				const { maintenanceData, signatories, error } = await res.json();
+			return;
+		}
 
-				if (error === "Duplicate") {
+		// Offline: the server-side "already maintained today" duplicate check
+		// can't be verified without a connection, so skip straight to the
+		// cache warmed when the itinerary was last loaded online.
+		if (!online) {
+			try {
+				const { maintenanceData, signatories } =
+					await fetchMaintainLookupCached(scannedSerialNo);
+				applyMaintenanceData(maintenanceData, signatories);
+			} catch (err) {
+				if (err instanceof OfflineCacheMissError) {
 					showAppToast({
-						message: "Duplicate serial number not allowed",
-						description: "Record duplicate",
+						message: "This printer hasn't been cached for offline use yet.",
+						description:
+							"Connect to the internet once, open your itinerary, then try again.",
+						duration: 7000,
+						position: "top-center",
+						color: "warning",
+					});
+				} else {
+					showAppToast({
+						message: "An error occurred loading this printer's data offline.",
+						description: "Offline lookup failed",
+						duration: 5000,
+						position: "top-center",
+						color: "error",
+					});
+				}
+			}
+			return;
+		}
+
+		try {
+			const res = await fetch(`/api/maintain?serialNo=${scannedSerialNo}`);
+			const { maintenanceData, signatories, error } = await res.json();
+
+			if (error === "Duplicate") {
+				showAppToast({
+					message: "Duplicate serial number not allowed",
+					description: "Record duplicate",
+					duration: 5000,
+					position: "top-center",
+					color: "error", // This will influence the default icon color and potential border
+				});
+
+				return;
+			}
+
+			if (!res.ok || !maintenanceData) {
+				if (originMTId !== 0) {
+					showAppToast({
+						message: "No matching record found in the database.",
+						description: "Record not found",
 						duration: 5000,
 						position: "top-center",
 						color: "error", // This will influence the default icon color and potential border
 					});
-
-					return;
 				}
+				return;
+			}
 
-				if (!res.ok || !maintenanceData) {
-					if (originMTId !== 0) {
-						showAppToast({
-							message: "No matching record found in the database.",
-							description: "Record not found",
-							duration: 5000,
-							position: "top-center",
-							color: "error", // This will influence the default icon color and potential border
-						});
-					}
-					return;
-				}
-
-				setValue("client", {
-					value: maintenanceData.clientId,
-					label: maintenanceData.client,
-				});
-				setValue("location", {
-					value: maintenanceData.locationId,
-					label: maintenanceData.location,
-				});
-				setValue("department", {
-					value: maintenanceData.departmentId,
-					label: maintenanceData.department,
-				});
-				setValue("model", {
-					value: maintenanceData.modelId,
-					label: maintenanceData.model,
-				});
-				setValue("serialNo", maintenanceData.serialNo);
-				setValue("replaceSerialNo", maintenanceData.replaceSerialNo || "");
-				setValue("printerId", maintenanceData.id);
-				setValue("deploymentId", maintenanceData.deploymentId);
-				// Do something with `data` (e.g. update Zustand, UI, etc.)
-
-				setSignatory(signatories);
-			} catch (err) {
+			applyMaintenanceData(maintenanceData, signatories);
+		} catch (err) {
+			// We thought we were online but the request itself failed (e.g.
+			// connectivity dropped mid-request) — fall back to cache before
+			// surfacing an error, same as the offline path above.
+			try {
+				const { maintenanceData, signatories } =
+					await fetchMaintainLookupCached(scannedSerialNo);
+				applyMaintenanceData(maintenanceData, signatories);
+			} catch {
 				showAppToast({
-					message: "An error exist on scanning the serial no. " + err,
+					message: "An error occurred scanning the serial no. " + err,
 					description: "Scan error",
 					position: "top-center",
 					color: "error", // This will influence the default icon color and potential border
@@ -446,6 +512,13 @@ export default function MaintenancePage({
 
 	return (
 		<div className="lg:p-6 max-w-full mx-auto space-y-4">
+			{!online && (
+				<div className="flex items-center gap-2 rounded-lg border border-yellow-300 bg-yellow-50 px-4 py-2 text-sm text-yellow-800 dark:border-yellow-800 dark:bg-yellow-950 dark:text-yellow-200">
+					<WifiOff className="h-4 w-4 shrink-0" />
+					You&apos;re offline — using cached reference data. Reports save
+					locally and sync automatically once connection returns.
+				</div>
+			)}
 			<div className="lg:p-6 max-w-full mx-auto">
 				<form className="space-y-4">
 					<div className="rounded-2xl grid grid-cols-1 gap-4 p-[1px] bg-gradient-to-r from-red-400 via-green-500 to-blue-400">
@@ -1192,15 +1265,32 @@ export default function MaintenancePage({
 					</div>
 				</form>
 			</div>
-			{/* Floating QR Button */}
+			{/* Floating QR Button — disabled offline since scanning a NEW printer
+			    (not from the itinerary) needs a live lookup; re-enables the
+			    instant connectivity returns via useConnectivity. */}
 			<button
 				onClick={() => {
+					if (!online) return;
 					setQRModalOpen(true);
 					setCallingAction("Maintenance");
 				}}
-				className="fixed bottom-6 right-6 bg-blue-600 hover:bg-blue-700 text-white rounded-full p-4 shadow-lg z-50"
+				disabled={!online}
+				title={
+					online
+						? "Scan QR Code"
+						: "Scanning a new printer requires an internet connection"
+				}
+				className={`fixed bottom-6 right-6 rounded-full p-4 shadow-lg z-50 text-white ${
+					online
+						? "bg-blue-600 hover:bg-blue-700"
+						: "bg-gray-400 cursor-not-allowed opacity-70"
+				}`}
 			>
-				<QrCode className="w-6 h-6" />
+				{online ? (
+					<QrCode className="w-6 h-6" />
+				) : (
+					<WifiOff className="w-6 h-6" />
+				)}
 			</button>
 			<Dialog open={isQRModalOpen} onOpenChange={setQRModalOpen}>
 				<DialogContent className="max-w-2xl max-h-2xl overflow-auto">
