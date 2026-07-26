@@ -78,6 +78,45 @@ Nominatim's public instance is rate-limited (~1 req/s) and requires a
 descriptive User-Agent. Coordinates are always the source of truth; a failed
 geocode never blocks or loses a report.
 
+## Offline itinerary browsing & reference-data caching
+
+Beyond the report-save pipeline above, the app also has to work when a
+technician *opens* the Maintenance page with no connection — tapping an
+itinerary item, viewing client/signatory data, etc. This is handled by a
+second, separate cache (`features/offline-sync/reference-cache.ts`), distinct
+from the pending-report queue:
+
+- **`cachedJsonFetch(url, key)`** — the general-purpose primitive. Online: hits
+  the network and writes the result to IndexedDB (`refCache` table); offline,
+  or if the request itself fails, falls back to the last cached value.
+  Throws `OfflineCacheMissError` only when nothing has ever been cached for
+  that key, so callers can show a specific "connect once to cache this"
+  message instead of a generic network error.
+- **Prefetch** — `prefetchItineraryData()` runs automatically
+  (`TechnicianSchedules.tsx`) the moment a technician's itinerary loads while
+  online: one `/api/maintain?serialNo=` lookup per assigned printer (which
+  bundles client/location/department/model + that client's signatories in one
+  response), plus the clients list and the parts/status dropdowns. A small
+  status line ("Caching…" / "Available offline") shows progress.
+- **What's cached:** the itinerary list itself (`useSchedules`), per-printer
+  maintain lookups, the clients list, and the parts/status dropdowns used on
+  the Dashboard shell.
+- **Maintenance page behavior offline:** `onHandleScan` (which runs
+  automatically when a printer is opened, and again on a manual QR scan)
+  skips the network entirely when offline and reads straight from the cache.
+  The server-only "already maintained today" duplicate check can't be
+  verified without a connection and is skipped in that path — the server
+  still enforces it when the report syncs.
+- **QR scanner gating:** scanning a *new* printer not on the itinerary
+  requires the live lookup, so the floating scan button is disabled (dimmed,
+  with a `WifiOff` icon and tooltip) whenever `useConnectivity().online` is
+  false, and re-enables the instant connectivity returns. The inline
+  "Replace Service Unit" scan button is unaffected — it only records a serial
+  number locally and never touches the network.
+- **Limitation:** a printer never opened while online (so never prefetched)
+  has no cached data to fall back to; the technician sees a clear message
+  asking them to connect once and reopen it, rather than a raw fetch error.
+
 ## Configuration (all optional)
 
 | Variable | Default | Purpose |

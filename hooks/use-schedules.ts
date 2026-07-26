@@ -1,5 +1,6 @@
 // hooks/use-schedules.ts
 import { useQuery } from "@tanstack/react-query";
+import { cachedJsonFetch } from "@/features/offline-sync";
 
 // Existing interfaces...
 export interface Technician {
@@ -91,7 +92,7 @@ export const useSchedules = ({
 }: UseSchedulesProps) => {
 	return useQuery<Schedule[]>({
 		queryKey: ["schedules", { technicianId, scheduledAt }],
-		queryFn: async () => {
+		queryFn: () => {
 			const params = new URLSearchParams();
 			if (technicianId) {
 				params.append("technicianId", technicianId.toString());
@@ -99,12 +100,13 @@ export const useSchedules = ({
 			if (scheduledAt) {
 				params.append("scheduledAt", scheduledAt);
 			}
-
-			const res = await fetch(`/api/schedule?${params.toString()}`);
-			if (!res.ok) {
-				throw new Error("Failed to fetch schedules");
-			}
-			return res.json();
+			const qs = params.toString();
+			// Cached so the itinerary itself is still viewable offline — this is
+			// what the technician taps into the Maintenance page from.
+			return cachedJsonFetch<Schedule[]>(
+				`/api/schedule?${qs}`,
+				`schedules:${technicianId ?? "all"}:${scheduledAt ?? "any"}`
+			);
 		},
 	});
 };

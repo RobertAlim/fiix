@@ -5,7 +5,8 @@
 // the maintenance record being assigned.
 import { NextResponse } from "next/server";
 import { db } from "@/db";
-import { schedules, scheduleDetails } from "@/db/schema";
+import { schedules, scheduleDetails, printers } from "@/db/schema";
+import { eq, and } from "drizzle-orm";
 import { z } from "zod";
 import { requireRole } from "@/lib/require-role";
 
@@ -44,6 +45,31 @@ export async function POST(req: Request) {
 	} = parsed.data;
 
 	try {
+		// A printer can only be in one place at a time — check before creating
+		// anything, so a conflict never leaves behind an orphaned empty
+		// schedule row.
+		const [conflict] = await db
+			.select({ serialNo: printers.serialNo })
+			.from(scheduleDetails)
+			.innerJoin(schedules, eq(schedules.id, scheduleDetails.scheduleId))
+			.innerJoin(printers, eq(printers.id, scheduleDetails.printerId))
+			.where(
+				and(
+					eq(schedules.scheduledAt, scheduleDate),
+					eq(scheduleDetails.printerId, printerId)
+				)
+			)
+			.limit(1);
+
+		if (conflict) {
+			return NextResponse.json(
+				{
+					error: `Printer ${conflict.serialNo} is already scheduled for ${scheduleDate}.`,
+				},
+				{ status: 409 }
+			);
+		}
+
 		const [newSchedule] = await db
 			.insert(schedules)
 			.values({
