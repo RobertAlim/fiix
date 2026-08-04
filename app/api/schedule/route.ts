@@ -126,7 +126,15 @@ export async function POST(req: NextRequest) {
 
 			if (existing) {
 				return NextResponse.json(
-					{ error: "duplicate", existing },
+					{
+						error: "duplicate",
+						// The client's error handler only ever reads `.message` (see
+						// createMaintenanceSchedule in Schedule.tsx) — without this
+						// field it fell through to a generic "Failed to create
+						// schedule." toast, hiding the actual, actionable reason.
+						message: `A schedule already exists for this technician at this client/location on ${scheduledAtStr}. Edit that schedule instead of creating a new one, or pick a different date, technician, client, or location.`,
+						existing,
+					},
 					{ status: 409 }
 				);
 			}

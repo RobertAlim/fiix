@@ -56,10 +56,21 @@ export async function PATCH(req: Request) {
 
 	// A single CASE-based UPDATE keeps the reorder atomic — no window where
 	// a concurrent read could see a partially-renumbered day.
+	//
+	// The explicit ::integer cast on each THEN branch is required, not
+	// decorative: with nothing but parameter placeholders inside the CASE,
+	// Postgres has no literal to infer a type from and defaults them to
+	// text — which then fails to assign into the integer `sequence` column
+	// ("column is of type integer but expression is of type text").
+	// Verified against a real Postgres engine (pglite) to catch this before
+	// it reached the route, since it's the kind of runtime-only SQL error
+	// that neither tsc nor drizzle's own type checking catches — drizzle's
+	// `sql` template is just building a string; nothing statically verifies
+	// the query is well-typed against the actual database.
 	const caseExpr = sql.join(
 		[
 			sql`CASE "id"`,
-			...orderedScheduleIds.map((id, i) => sql`WHEN ${id} THEN ${i + 1}`),
+			...orderedScheduleIds.map((id, i) => sql`WHEN ${id} THEN ${i + 1}::integer`),
 			sql`END`,
 		],
 		sql` `

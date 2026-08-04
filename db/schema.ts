@@ -69,7 +69,7 @@ export const users = pgTable("users", {
 	middleName: varchar("middleName", { length: 20 }),
 	contactNo: varchar("contactNo", { length: 11 }),
 	birthday: date("birthday"),
-	email: varchar("email", { length: 50 }).notNull(),
+	email: varchar("email", { length: 50 }).notNull().unique(),
 	role: varchar("role", { length: 15 }),
 	isActive: boolean("isActive").default(false),
 	clerkId: text("clerkId").notNull(),

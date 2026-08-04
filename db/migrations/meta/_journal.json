@@ -344,6 +344,13 @@
       "when": 1785845571003,
       "tag": "0049_sms_sent_idempotency",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1785852193100,
+      "tag": "0050_users_email_unique",
+      "breakpoints": true
     }
   ]
 }

@@ -192,6 +192,14 @@ export default function SchedulePage() {
 	const [isEditing, setIsEditing] = useState(false);
 	const [isAdding, setIsAdding] = useState(false);
 	const [isShowDetails, setIsShowDetails] = useState(false);
+	// True while handleCardClick's printer-details fetch for the clicked
+	// schedule is in flight. Distinct from overallLoading (which only covers
+	// the reference lists — clients/locations/technicians/priorities/open
+	// issues) — this covers the per-schedule fetch that only happens after a
+	// card is clicked, so the Save/Open Issues buttons stay disabled through
+	// that window too, not just the initial page load.
+	const [isLoadingScheduleDetails, setIsLoadingScheduleDetails] =
+		useState(false);
 	const [immediatePrinters, setImmediatePrinters] = useState<
 		Printer[] | undefined
 	>(undefined);
@@ -884,6 +892,7 @@ export default function SchedulePage() {
 			setSelectedPriorityId(String(clickedSchedule.priorityId));
 			setNotes(clickedSchedule.notes || "");
 			setScheduleDate(new Date(clickedSchedule.scheduleAt));
+			setIsLoadingScheduleDetails(true);
 
 			const fullQueryKey = [
 				"printers",
@@ -924,6 +933,8 @@ export default function SchedulePage() {
 					position: "top-right",
 					color: "error",
 				});
+			} finally {
+				setIsLoadingScheduleDetails(false);
 			}
 		},
 		[queryClient]
@@ -1439,7 +1450,12 @@ export default function SchedulePage() {
 							{/* Sheet component (unrelated to the primary issue, but kept for completeness) */}
 							<Sheet>
 								<SheetTrigger asChild>
-									<Button variant="outline">Open Issues</Button>
+									<Button
+										variant="outline"
+										disabled={isLoadingScheduleDetails || isLoadingOpenIssues}
+									>
+										Open Issues
+									</Button>
 								</SheetTrigger>
 								<SheetContent className="w-[540px] md:w-[400px] flex flex-col">
 									<SheetHeader>
@@ -1495,7 +1511,14 @@ export default function SchedulePage() {
 								variant="outline"
 								className="ml-2"
 								onClick={handleSchedule}
-								// disabled={!isEditing || !isAdding} // Disable if scheduleData has items and in editing mode
+								// Disabled until every piece of data this form depends on —
+								// the reference lists (clients/locations/technicians/
+								// priorities/open issues) AND, when a schedule card was
+								// clicked, that schedule's own printer details — has
+								// finished loading. Saving against partially-loaded data
+								// was possible before this: the button had no disabled
+								// logic active at all.
+								disabled={overallLoading || isLoadingScheduleDetails}
 							>
 								{existingSchedule ? "Update" : "Save"}
 							</Button>

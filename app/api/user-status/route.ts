@@ -4,8 +4,7 @@
 // parameter — so one user cannot look up another user's record (IDOR fix).
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { getUserStatus } from "@/lib/user-status";
-import { db } from "@/db";
-import { users } from "@/db/schema";
+import createUser from "@/app/api/actions/user-action";
 import { NextResponse } from "next/server";
 
 export async function GET() {
@@ -23,6 +22,18 @@ export async function GET() {
 		// tunnel, a delivery failure, a race on first login — provision the
 		// row here from the live Clerk session instead of leaving the user
 		// stuck with no DB record and no way to proceed past the landing page.
+		//
+		// Routed through the same createUser() the webhook uses (not a raw
+		// insert here) so there's exactly one place that decides "new person
+		// vs. same person, new Clerk id" — by email, not clerkId. This is
+		// also why the plain insert this used to do is gone: Fiix's custom
+		// OTP/ticket sign-in can issue a fresh Clerk user id for someone who
+		// already has a row, and getUserStatus (clerkId-only) legitimately
+		// finds nothing for that new id — this branch existing is not itself
+		// the bug. A blind insert here duplicated that person before the
+		// users.email unique constraint existed, and now correctly fails
+		// against it instead — createUser's email lookup is what actually
+		// resolves that back to their existing row.
 		const clerkUser = await currentUser();
 
 		if (clerkUser) {
@@ -32,18 +43,15 @@ export async function GET() {
 				)?.emailAddress ?? clerkUser.emailAddresses[0]?.emailAddress;
 
 			if (email) {
-				try {
-					await db.insert(users).values({
-						clerkId: userId,
-						email,
-						firstName: clerkUser.firstName ?? "",
-						lastName: clerkUser.lastName ?? "",
-						isActive: false,
-					});
-				} catch (err) {
-					// Most likely a concurrent request already inserted this row
-					// (no unique constraint on clerkId yet — see AUDIT.md Tier 2).
-					console.error("Auto-provision insert failed:", err);
+				const result = await createUser({
+					clerkId: userId,
+					email,
+					firstName: clerkUser.firstName ?? "",
+					lastName: clerkUser.lastName ?? "",
+					isActive: false,
+				});
+				if (!result.success) {
+					console.error("Auto-provision failed:", result.error);
 				}
 				user = await getUserStatus(userId);
 			}
