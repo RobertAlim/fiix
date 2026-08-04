@@ -5,15 +5,11 @@ import { db } from "@/db";
 import { smsRecipients } from "@/db/schema";
 import { asc, ilike, eq } from "drizzle-orm";
 import { requireRole } from "@/lib/require-role";
-
-// PH mobile numbers: 09XXXXXXXXX or +639XXXXXXXXX — same pattern the OTP
-// route already validates against, so a number that passes here is also one
-// Semaphore will actually accept when Time In fires the notification.
-const PH_MOBILE = /^(09\d{9}|\+639\d{9})$/;
+import { normalizePhMobile } from "@/lib/sms";
 
 const bodySchema = z.object({
 	label: z.string().trim().min(1).max(100),
-	mobileNumber: z.string().trim().regex(PH_MOBILE, "Invalid Philippine mobile number"),
+	mobileNumber: z.string().trim(),
 	isActive: z.boolean().optional(),
 });
 
@@ -44,10 +40,22 @@ export async function POST(req: Request) {
 		);
 	}
 
+	// Canonicalize before storing: "09171234567" and "+639171234567" are the
+	// same phone. Storing whichever form the admin happened to type would let
+	// the same number in twice under different spellings — which is exactly
+	// how one Time In turns into duplicate texts to one person.
+	const mobileNumber = normalizePhMobile(parsed.data.mobileNumber);
+	if (!mobileNumber) {
+		return NextResponse.json(
+			{ error: "Invalid Philippine mobile number." },
+			{ status: 400 }
+		);
+	}
+
 	const [existing] = await db
 		.select({ id: smsRecipients.id })
 		.from(smsRecipients)
-		.where(eq(smsRecipients.mobileNumber, parsed.data.mobileNumber))
+		.where(eq(smsRecipients.mobileNumber, mobileNumber))
 		.limit(1);
 	if (existing) {
 		return NextResponse.json(
@@ -60,7 +68,7 @@ export async function POST(req: Request) {
 		.insert(smsRecipients)
 		.values({
 			label: parsed.data.label,
-			mobileNumber: parsed.data.mobileNumber,
+			mobileNumber,
 			isActive: parsed.data.isActive ?? true,
 		})
 		.returning();

@@ -47,15 +47,51 @@ interface AttendanceStatus {
 	itinerary: ItineraryStop[];
 	firstStop: ItineraryStop | null;
 	geofence: { latitude: number; longitude: number; radiusMeters: number } | null;
+	tomorrowItinerary: ItineraryStop[];
+}
+
+/** Milliseconds until the next 00:01 Asia/Manila. Scheduling off this rather
+ * than a flat "every N minutes" interval means the reset happens right at
+ * the boundary the spec calls out, not up to N minutes late. */
+function msUntilNextPhResetMinute(): number {
+	const nowParts = new Intl.DateTimeFormat("en-US", {
+		timeZone: "Asia/Manila",
+		hour12: false,
+		year: "numeric",
+		month: "2-digit",
+		day: "2-digit",
+		hour: "2-digit",
+		minute: "2-digit",
+		second: "2-digit",
+	}).formatToParts(new Date());
+	const get = (t: string) => Number(nowParts.find((p) => p.type === t)?.value ?? 0);
+	// Treats the Manila wall-clock components as if they were UTC — a
+	// standard trick for zone-aware math without a date library. It only
+	// works for computing a DIFFERENCE between two timestamps built the same
+	// way (the fixed +8 offset cancels out); the absolute value of
+	// `nowManila` itself is not a real, usable timestamp.
+	const nowManila = new Date(
+		Date.UTC(get("year"), get("month") - 1, get("day"), get("hour"), get("minute"), get("second"))
+	);
+	const todayReset = new Date(nowManila);
+	todayReset.setUTCHours(0, 1, 0, 0);
+	const target =
+		nowManila.getTime() >= todayReset.getTime()
+			? new Date(todayReset.getTime() + 24 * 60 * 60 * 1000)
+			: todayReset;
+	return Math.max(1000, target.getTime() - nowManila.getTime());
 }
 
 export function AttendanceGate({
 	isTechnician,
+	firstName,
 	children,
 }: {
 	isTechnician: boolean;
+	firstName?: string;
 	children: React.ReactNode;
 }) {
+	const queryClient = useQueryClient();
 	const {
 		data: status,
 		isLoading,
@@ -66,7 +102,23 @@ export function AttendanceGate({
 		queryFn: () => fetchData<AttendanceStatus>("/api/attendance/status"),
 		enabled: isTechnician,
 		staleTime: 0,
+		// Safety net alongside the exact-time timer below, in case the
+		// device slept through a setTimeout (mobile browsers routinely
+		// throttle or drop timers in a backgrounded tab).
+		refetchInterval: 5 * 60 * 1000,
 	});
+
+	// Reschedules itself for the following day after each firing, so a
+	// technician who leaves the End Shift screen open overnight gets bounced
+	// back to Time In right at 00:01 Manila time without needing to reopen
+	// the app.
+	useEffect(() => {
+		if (!isTechnician) return;
+		const timer = setTimeout(() => {
+			queryClient.invalidateQueries({ queryKey: ["attendance-status"] });
+		}, msUntilNextPhResetMinute());
+		return () => clearTimeout(timer);
+	}, [isTechnician, queryClient, status]);
 
 	if (!isTechnician) return <>{children}</>;
 
@@ -101,21 +153,35 @@ export function AttendanceGate({
 	}
 
 	if (status.session && status.session.timeOut) {
-		return <ShiftCompleteScreen timeOut={status.session.timeOut} />;
+		return (
+			<ShiftCompleteScreen
+				timeOut={status.session.timeOut}
+				firstName={firstName}
+				tomorrowItinerary={status.tomorrowItinerary}
+			/>
+		);
 	}
 
 	return <TimeInGate status={status} />;
 }
 
-function ShiftCompleteScreen({ timeOut }: { timeOut: string }) {
+function ShiftCompleteScreen({
+	timeOut,
+	firstName,
+	tomorrowItinerary,
+}: {
+	timeOut: string;
+	firstName?: string;
+	tomorrowItinerary: ItineraryStop[];
+}) {
 	const timeStr = new Date(timeOut).toLocaleTimeString("en-US", {
 		timeZone: "Asia/Manila",
 		hour: "2-digit",
 		minute: "2-digit",
 	});
 	return (
-		<div className="flex min-h-[60vh] items-center justify-center p-4">
-			<Card className="w-full max-w-md rounded-2xl border shadow-sm">
+		<div className="mx-auto flex max-w-2xl flex-col gap-6 p-4 py-8">
+			<Card className="rounded-2xl border shadow-sm">
 				<CardContent className="flex flex-col items-center gap-3 p-8 text-center">
 					<CalendarCheck2 className="h-8 w-8 text-success" />
 					<p className="font-medium">Shift complete</p>
@@ -124,6 +190,43 @@ function ShiftCompleteScreen({ timeOut }: { timeOut: string }) {
 					</p>
 				</CardContent>
 			</Card>
+
+			{tomorrowItinerary.length > 0 && (
+				<div className="space-y-3">
+					<p className="text-sm text-muted-foreground">
+						Hi{firstName ? ` ${firstName}` : ""}, here is your tentative
+						itinerary for tomorrow.
+					</p>
+					<div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+						{tomorrowItinerary.map((stop, idx) => (
+							<Card key={stop.id} className="rounded-xl border shadow-none">
+								<CardContent className="flex items-start gap-3 p-4">
+									<div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold">
+										{stop.sequence ?? idx + 1}
+									</div>
+									<div className="min-w-0">
+										<p className="truncate font-medium">{stop.client}</p>
+										<p className="truncate text-xs text-muted-foreground">
+											{stop.location}
+										</p>
+										{stop.notes && (
+											<p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
+												{stop.notes}
+											</p>
+										)}
+									</div>
+								</CardContent>
+							</Card>
+						))}
+					</div>
+					{/* "Tentative" per the spec — the Scheduler can still reorder or
+					    reassign before the technician actually times in tomorrow,
+					    so this is a preview, not a commitment. */}
+					<p className="text-center text-xs text-muted-foreground">
+						This itinerary is tentative and may change before tomorrow.
+					</p>
+				</div>
+			)}
 		</div>
 	);
 }

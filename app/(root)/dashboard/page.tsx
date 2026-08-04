@@ -267,7 +267,7 @@ export default function DashboardPage() {
 
 	return (
 		<OfflineSyncProvider>
-		<AttendanceGate isTechnician={isTechnician}>
+		<AttendanceGate isTechnician={isTechnician} firstName={users?.firstName}>
 		<div className="min-h-screen flex bg-background">
 			{/* Desktop sidebar */}
 			<aside

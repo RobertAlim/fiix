@@ -4,6 +4,24 @@
 // account rather than duplicating the fetch call.
 import { env } from "@/lib/env";
 
+/**
+ * Canonicalizes a PH mobile number to 09XXXXXXXXX.
+ *
+ * "09171234567" and "+639171234567" are the same physical number but don't
+ * compare equal as strings — if both ever end up stored as separate
+ * recipients (or the same person's number gets entered twice in different
+ * formats), that phone gets every Time In notification twice. Normalizing
+ * before both the uniqueness check (recipient CRUD) and before sending
+ * (dedup here) closes that gap at its source rather than just at send time.
+ * Returns null for anything that isn't a valid PH mobile number.
+ */
+export function normalizePhMobile(raw: string): string | null {
+	const trimmed = raw.trim();
+	if (/^09\d{9}$/.test(trimmed)) return trimmed;
+	if (/^\+639\d{9}$/.test(trimmed)) return `0${trimmed.slice(3)}`;
+	return null;
+}
+
 export async function sendSms(
 	number: string,
 	message: string
@@ -30,15 +48,25 @@ export async function sendSms(
 }
 
 /**
- * Sends to every active recipient. Failures are collected rather than
- * thrown — one bad number should not stop the others (or fail the Time In
- * request itself, which must succeed regardless of SMS delivery).
+ * Sends to every active recipient. Numbers are normalized and deduplicated
+ * first — two recipient rows (or one row saved twice in different formats)
+ * pointing at the same physical phone must still produce exactly one text,
+ * not one per row. Failures are collected rather than thrown — one bad
+ * number should not stop the others (or fail the Time In request itself,
+ * which must succeed regardless of SMS delivery).
  */
 export async function sendSmsToRecipients(
 	numbers: string[],
 	message: string
 ): Promise<{ sent: number; failed: number }> {
-	const results = await Promise.all(numbers.map((n) => sendSms(n, message)));
+	const uniqueNumbers = [
+		...new Set(
+			numbers
+				.map((n) => normalizePhMobile(n))
+				.filter((n): n is string => n != null)
+		),
+	];
+	const results = await Promise.all(uniqueNumbers.map((n) => sendSms(n, message)));
 	const sent = results.filter((r) => r.ok).length;
 	return { sent, failed: results.length - sent };
 }

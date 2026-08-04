@@ -25,6 +25,18 @@ interface Technician {
 	name: string;
 }
 
+// Module-level so it's the SAME array reference on every render. The bug
+// this fixes: `const { data: schedules = [] } = useSchedules(...)` looks
+// harmless, but a `= []` default is a NEW array literal every time `data`
+// is undefined (loading, or before a technician/date is picked) — and the
+// effect below depends on `schedules` by reference. A fresh reference each
+// render means the effect re-fires every render, calls setOrder, triggers a
+// re-render, and repeats forever ("Maximum update depth exceeded"). Falling
+// back to this shared constant instead keeps the reference stable across
+// renders whenever there's genuinely no data, so the effect only fires when
+// the schedules actually change.
+const EMPTY_SCHEDULES: never[] = [];
+
 export function ItinerarySequenceManager() {
 	const queryClient = useQueryClient();
 	const [technicianId, setTechnicianId] = useState<string | null>(null);
@@ -44,13 +56,14 @@ export function ItinerarySequenceManager() {
 
 	const scheduledAt = date ? format(date, "yyyy-MM-dd") : undefined;
 	const {
-		data: schedules = [],
+		data: schedulesData,
 		isLoading,
 		isFetching,
 	} = useSchedules({
 		technicianId: technicianId ? Number(technicianId) : undefined,
 		scheduledAt,
 	});
+	const schedules = schedulesData ?? EMPTY_SCHEDULES;
 
 	// Local, reorderable copy of the day's schedule ids. Reset whenever the
 	// underlying data changes (new technician/date picked, or a save just

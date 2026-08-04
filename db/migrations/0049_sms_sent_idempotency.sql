@@ -1,0 +1,1 @@
+ALTER TABLE "technicianAttendance" ADD COLUMN "smsSentAt" timestamp with time zone;

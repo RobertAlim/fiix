@@ -21,6 +21,7 @@ export async function GET() {
 	const technicianId = auth.user.id;
 
 	const phToday = sql<string>`(now() AT TIME ZONE 'Asia/Manila')::date`;
+	const phTomorrow = sql<string>`((now() AT TIME ZONE 'Asia/Manila')::date + 1)`;
 
 	const [session] = await db
 		.select({
@@ -80,6 +81,35 @@ export async function GET() {
 				.limit(1)
 		: [];
 
+	// Only worth fetching once the technician has actually finished today —
+	// it's what the End Shift screen shows, not something needed pre-Time In.
+	const tomorrowItinerary = session?.timeOut
+		? await db
+				.select({
+					id: schedules.id,
+					clientId: schedules.clientId,
+					client: clients.name,
+					locationId: schedules.locationId,
+					location: locations.name,
+					sequence: schedules.sequence,
+					notes: schedules.notes,
+				})
+				.from(schedules)
+				.innerJoin(clients, eq(clients.id, schedules.clientId))
+				.innerJoin(locations, eq(locations.id, schedules.locationId))
+				.where(
+					and(
+						eq(schedules.technicianId, technicianId),
+						eq(schedules.scheduledAt, phTomorrow)
+					)
+				)
+				.orderBy(
+					sql`CASE WHEN ${schedules.sequence} IS NULL THEN 1 ELSE 0 END`,
+					asc(schedules.sequence),
+					asc(schedules.id)
+				)
+		: [];
+
 	return NextResponse.json({
 		session: session ?? null,
 		itinerary,
@@ -87,5 +117,6 @@ export async function GET() {
 		// Null means "no geofence configured for this location" — the client
 		// treats that as an admin setup gap, not as "technician is far away".
 		geofence: geofence ?? null,
+		tomorrowItinerary,
 	});
 }

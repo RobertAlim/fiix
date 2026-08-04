@@ -451,6 +451,14 @@ export const technicianAttendance = pgTable(
 			(): AnyPgColumn => schedules.id
 		),
 		timeOut: timestamp("timeOut", { withTimezone: true }),
+		/** Set the moment the Time In SMS batch is claimed for sending — not
+		 * just after it succeeds. Acts as a single-flight lock: whichever
+		 * request wins this compare-and-set is the only one that ever calls
+		 * Semaphore for this session, even if the route were somehow invoked
+		 * more than once for the same successful Time In (a client retry
+		 * after a lost response, for instance). See app/api/attendance/time-in.
+		 */
+		smsSentAt: timestamp("smsSentAt", { withTimezone: true }),
 		createdAt: timestamp("createdAt").notNull().default(sql`now()`),
 	},
 	(table) => [

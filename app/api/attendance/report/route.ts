@@ -1,24 +1,22 @@
 // app/api/attendance/report/route.ts
 // Downloadable Excel (.xlsx) of technician time logs, filtered by
 // technician, month, and payroll cutoff (A: 1–15, B: 16–end of month).
-import { db } from "@/db";
-import { technicianAttendance, users } from "@/db/schema";
-import { eq, and, gte, lte, asc } from "drizzle-orm";
+// Query logic lives in lib/server/attendance-report-query.ts, shared with
+// the JSON route the on-screen "Generate" grid uses — the two must never
+// disagree about what a given set of filters returns.
 import { NextResponse } from "next/server";
 import { requireRole } from "@/lib/require-role";
 import ExcelJS from "exceljs";
 import {
-	cutoffDayRange,
 	renderedMinutes,
 	formatRenderedDuration,
 	formatItineraryDate,
 	formatClockTime,
-	type PayrollCutoff,
 } from "@/lib/attendance";
-
-function pad2(n: number) {
-	return String(n).padStart(2, "0");
-}
+import {
+	parseAttendanceReportParams,
+	fetchAttendanceReportRows,
+} from "@/lib/server/attendance-report-query";
 
 export async function GET(req: Request) {
 	// Payroll data — restricted to Admin, unlike the operational reports
@@ -26,59 +24,13 @@ export async function GET(req: Request) {
 	const auth = await requireRole(["Admin"]);
 	if (auth.error) return auth.error;
 
-	const params = new URL(req.url).searchParams;
-	const technicianIdParam = params.get("technicianId");
-	const monthParam = params.get("month"); // "YYYY-MM"
-	const cutoffParam = params.get("cutoff"); // "A" | "B" | null (whole month)
-
-	const monthMatch = monthParam?.match(/^(\d{4})-(\d{2})$/);
-	if (!monthMatch) {
-		return NextResponse.json(
-			{ error: "month is required, in YYYY-MM format." },
-			{ status: 400 }
-		);
+	const parsed = parseAttendanceReportParams(new URL(req.url).searchParams);
+	if (!parsed.ok) {
+		return NextResponse.json({ error: parsed.error }, { status: 400 });
 	}
-	const year = Number(monthMatch[1]);
-	const monthIndex0 = Number(monthMatch[2]) - 1;
+	const { params, rangeStart, rangeEnd } = parsed;
 
-	if (cutoffParam && cutoffParam !== "A" && cutoffParam !== "B") {
-		return NextResponse.json(
-			{ error: 'cutoff must be "A" or "B" when provided.' },
-			{ status: 400 }
-		);
-	}
-	const cutoff = (cutoffParam as PayrollCutoff | null) ?? null;
-
-	const { start: startDay, end: endDay } = cutoff
-		? cutoffDayRange(year, monthIndex0, cutoff)
-		: { start: 1, end: new Date(year, monthIndex0 + 1, 0).getDate() };
-
-	const rangeStart = `${year}-${pad2(monthIndex0 + 1)}-${pad2(startDay)}`;
-	const rangeEnd = `${year}-${pad2(monthIndex0 + 1)}-${pad2(endDay)}`;
-
-	const technicianId = technicianIdParam ? Number(technicianIdParam) : null;
-	if (technicianIdParam && (!technicianId || technicianId <= 0)) {
-		return NextResponse.json({ error: "Invalid technicianId." }, { status: 400 });
-	}
-
-	const conditions = [
-		gte(technicianAttendance.workDate, rangeStart),
-		lte(technicianAttendance.workDate, rangeEnd),
-	];
-	if (technicianId) conditions.push(eq(technicianAttendance.technicianId, technicianId));
-
-	const rows = await db
-		.select({
-			technicianFirstName: users.firstName,
-			technicianLastName: users.lastName,
-			workDate: technicianAttendance.workDate,
-			timeIn: technicianAttendance.timeIn,
-			timeOut: technicianAttendance.timeOut,
-		})
-		.from(technicianAttendance)
-		.innerJoin(users, eq(users.id, technicianAttendance.technicianId))
-		.where(and(...conditions))
-		.orderBy(asc(users.lastName), asc(technicianAttendance.workDate));
+	const rows = await fetchAttendanceReportRows(rangeStart, rangeEnd, params.technicianId);
 
 	const workbook = new ExcelJS.Workbook();
 	workbook.creator = "Fiix";
@@ -111,8 +63,8 @@ export async function GET(req: Request) {
 
 	const buffer = await workbook.xlsx.writeBuffer();
 
-	const cutoffLabel = cutoff ? `_cutoff-${cutoff}` : "";
-	const filename = `attendance_${monthParam}${cutoffLabel}.xlsx`;
+	const cutoffLabel = params.cutoff ? `_cutoff-${params.cutoff}` : "";
+	const filename = `attendance_${params.month}${cutoffLabel}.xlsx`;
 
 	return new NextResponse(buffer, {
 		status: 200,

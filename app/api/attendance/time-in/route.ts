@@ -7,7 +7,7 @@ import {
 	smsRecipients,
 	users,
 } from "@/db/schema";
-import { eq, and, asc, sql } from "drizzle-orm";
+import { eq, and, asc, sql, isNull } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireRole } from "@/lib/require-role";
@@ -138,28 +138,46 @@ export async function POST(req: Request) {
 	// SMS is best-effort: a delivery failure must never undo an already
 	// successful Time In, so this runs after the insert and its result never
 	// changes the response status.
-	const [technician] = await db
-		.select({ firstName: users.firstName, lastName: users.lastName })
-		.from(users)
-		.where(eq(users.id, technicianId))
-		.limit(1);
-
-	const recipients = await db
-		.select({ mobileNumber: smsRecipients.mobileNumber })
-		.from(smsRecipients)
-		.where(eq(smsRecipients.isActive, true));
+	//
+	// The claim below is a single-flight lock, not just a "did we already
+	// send" check: only the request whose UPDATE actually flips smsSentAt
+	// from null goes on to call Semaphore. That makes the send exactly-once
+	// for this session even if this route were somehow invoked more than
+	// once for the same successful Time In — e.g. a client retry after a
+	// response was lost in transit — which the unique-session insert alone
+	// doesn't fully rule out for a step that happens *after* the insert.
+	const [claimed] = await db
+		.update(technicianAttendance)
+		.set({ smsSentAt: new Date() })
+		.where(
+			and(eq(technicianAttendance.id, session.id), isNull(technicianAttendance.smsSentAt))
+		)
+		.returning({ id: technicianAttendance.id });
 
 	let smsResult: { sent: number; failed: number } | null = null;
-	if (recipients.length > 0 && technician) {
-		const timeStr = new Date().toLocaleTimeString("en-US", {
-			timeZone: "Asia/Manila",
-			hour: "2-digit",
-			minute: "2-digit",
-		});
-		smsResult = await sendSmsToRecipients(
-			recipients.map((r) => r.mobileNumber),
-			`${technician.firstName} ${technician.lastName} has timed in at ${timeStr}.`
-		);
+	if (claimed) {
+		const [technician] = await db
+			.select({ firstName: users.firstName, lastName: users.lastName })
+			.from(users)
+			.where(eq(users.id, technicianId))
+			.limit(1);
+
+		const recipients = await db
+			.select({ mobileNumber: smsRecipients.mobileNumber })
+			.from(smsRecipients)
+			.where(eq(smsRecipients.isActive, true));
+
+		if (recipients.length > 0 && technician) {
+			const timeStr = new Date().toLocaleTimeString("en-US", {
+				timeZone: "Asia/Manila",
+				hour: "2-digit",
+				minute: "2-digit",
+			});
+			smsResult = await sendSmsToRecipients(
+				recipients.map((r) => r.mobileNumber),
+				`${technician.firstName} ${technician.lastName} has timed in at ${timeStr}.`
+			);
+		}
 	}
 
 	return NextResponse.json({ session, sms: smsResult }, { status: 201 });

@@ -4,8 +4,16 @@ import React, { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import {
+	Table,
+	TableHeader,
+	TableRow,
+	TableHead,
+	TableBody,
+	TableCell,
+} from "@/components/ui/table";
 import { ComboBoxResponsive, ComboboxItem } from "@/components/ui/combobox";
-import { Download, FileSpreadsheet, Loader2 } from "lucide-react";
+import { Download, FileSpreadsheet, Loader2, PlayCircle } from "lucide-react";
 import { fetchData } from "@/lib/fetchData";
 import { apiPath } from "@/lib/base-path";
 import { showAppToast } from "@/components/ui/apptoast";
@@ -13,6 +21,15 @@ import { showAppToast } from "@/components/ui/apptoast";
 interface Technician {
 	id: number;
 	name: string;
+}
+
+interface ReportRow {
+	technicianId: number;
+	technician: string;
+	itineraryDate: string;
+	timeIn: string;
+	timeOut: string;
+	hoursRendered: string;
 }
 
 const CUTOFF_OPTIONS: ComboboxItem[] = [
@@ -34,11 +51,30 @@ function currentPhMonth(): string {
 	return `${year}-${month}`;
 }
 
+interface ReportFilters {
+	technicianId: string | null;
+	month: string;
+	cutoff: string;
+}
+
+function buildQueryString(f: ReportFilters): string {
+	const qs = new URLSearchParams({ month: f.month });
+	if (f.technicianId) qs.set("technicianId", f.technicianId);
+	if (f.cutoff) qs.set("cutoff", f.cutoff);
+	return qs.toString();
+}
+
 export default function AttendanceReportPage() {
 	const [technicianId, setTechnicianId] = useState<string | null>(null);
 	const [month, setMonth] = useState(currentPhMonth());
 	const [cutoff, setCutoff] = useState<string | null>("");
 	const [isDownloading, setIsDownloading] = useState(false);
+
+	// The filters actually used for the last Generate — kept separate from
+	// the live filter inputs above so editing a dropdown after generating
+	// doesn't silently change what Download exports. Download always exports
+	// what's on screen, not whatever the filters currently say.
+	const [generatedFilters, setGeneratedFilters] = useState<ReportFilters | null>(null);
 
 	const { data: technicians = [] } = useQuery<Technician[]>({
 		queryKey: ["technicians"],
@@ -51,22 +87,37 @@ export default function AttendanceReportPage() {
 		...technicians.map((t) => ({ value: String(t.id), label: t.name })),
 	];
 
-	const handleDownload = async () => {
+	const {
+		data: reportData,
+		isFetching: isGenerating,
+	} = useQuery<{ rows: ReportRow[] }>({
+		queryKey: ["attendance-report-data", generatedFilters],
+		queryFn: () =>
+			fetchData<{ rows: ReportRow[] }>(
+				`/api/attendance/report/data?${buildQueryString(generatedFilters!)}`
+			),
+		// Only fires once Generate has been clicked, and re-fires whenever
+		// generatedFilters changes — no manual refetch() needed (calling
+		// refetch() right after setGeneratedFilters would race the state
+		// update and reuse the query key from the render that just passed).
+		enabled: generatedFilters !== null,
+	});
+
+	const handleGenerate = () => {
 		if (!month) {
-			showAppToast({
-				message: "Pick a month first",
-				position: "top-right",
-				color: "error",
-			});
+			showAppToast({ message: "Pick a month first", position: "top-right", color: "error" });
 			return;
 		}
+		setGeneratedFilters({ technicianId, month, cutoff: cutoff ?? "" });
+	};
+
+	const handleDownload = async () => {
+		if (!generatedFilters) return;
 		setIsDownloading(true);
 		try {
-			const qs = new URLSearchParams({ month });
-			if (technicianId) qs.set("technicianId", technicianId);
-			if (cutoff) qs.set("cutoff", cutoff);
-
-			const res = await fetch(apiPath(`/api/attendance/report?${qs.toString()}`));
+			const res = await fetch(
+				apiPath(`/api/attendance/report?${buildQueryString(generatedFilters)}`)
+			);
 			if (!res.ok) {
 				const data = await res.json().catch(() => ({}));
 				throw new Error(data.error || "Failed to generate report.");
@@ -75,7 +126,9 @@ export default function AttendanceReportPage() {
 			const url = URL.createObjectURL(blob);
 			const a = document.createElement("a");
 			a.href = url;
-			a.download = `attendance_${month}${cutoff ? `_cutoff-${cutoff}` : ""}.xlsx`;
+			a.download = `attendance_${generatedFilters.month}${
+				generatedFilters.cutoff ? `_cutoff-${generatedFilters.cutoff}` : ""
+			}.xlsx`;
 			document.body.appendChild(a);
 			a.click();
 			a.remove();
@@ -91,6 +144,8 @@ export default function AttendanceReportPage() {
 			setIsDownloading(false);
 		}
 	};
+
+	const rows = reportData?.rows ?? [];
 
 	return (
 		<Card className="rounded-2xl border shadow-sm">
@@ -137,14 +192,70 @@ export default function AttendanceReportPage() {
 					</div>
 				</div>
 
-				<Button onClick={handleDownload} disabled={isDownloading} className="gap-2">
-					{isDownloading ? (
-						<Loader2 className="h-4 w-4 animate-spin" />
-					) : (
-						<Download className="h-4 w-4" />
-					)}
-					{isDownloading ? "Generating…" : "Download Excel"}
-				</Button>
+				<div className="flex flex-wrap gap-2">
+					<Button onClick={handleGenerate} disabled={isGenerating} className="gap-2">
+						{isGenerating ? (
+							<Loader2 className="h-4 w-4 animate-spin" />
+						) : (
+							<PlayCircle className="h-4 w-4" />
+						)}
+						{isGenerating ? "Generating…" : "Generate"}
+					</Button>
+					<Button
+						variant="outline"
+						onClick={handleDownload}
+						disabled={!generatedFilters || isDownloading}
+						className="gap-2"
+					>
+						{isDownloading ? (
+							<Loader2 className="h-4 w-4 animate-spin" />
+						) : (
+							<Download className="h-4 w-4" />
+						)}
+						{isDownloading ? "Preparing…" : "Download Excel"}
+					</Button>
+				</div>
+
+				{generatedFilters && (
+					<div className="overflow-x-auto rounded-lg border">
+						<Table>
+							<TableHeader>
+								<TableRow>
+									<TableHead>Technician</TableHead>
+									<TableHead>Itinerary Date</TableHead>
+									<TableHead>Time In</TableHead>
+									<TableHead>Time Out</TableHead>
+									<TableHead>Hours Rendered</TableHead>
+								</TableRow>
+							</TableHeader>
+							<TableBody>
+								{isGenerating ? (
+									<TableRow>
+										<TableCell colSpan={5} className="text-center text-sm text-muted-foreground">
+											Loading…
+										</TableCell>
+									</TableRow>
+								) : rows.length === 0 ? (
+									<TableRow>
+										<TableCell colSpan={5} className="text-center text-sm text-muted-foreground">
+											No attendance records for these filters.
+										</TableCell>
+									</TableRow>
+								) : (
+									rows.map((r, i) => (
+										<TableRow key={`${r.technicianId}-${r.itineraryDate}-${i}`}>
+											<TableCell>{r.technician}</TableCell>
+											<TableCell>{r.itineraryDate}</TableCell>
+											<TableCell>{r.timeIn}</TableCell>
+											<TableCell>{r.timeOut}</TableCell>
+											<TableCell>{r.hoursRendered}</TableCell>
+										</TableRow>
+									))
+								)}
+							</TableBody>
+						</Table>
+					</div>
+				)}
 			</CardContent>
 		</Card>
 	);

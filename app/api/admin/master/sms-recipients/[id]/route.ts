@@ -5,12 +5,11 @@ import { db } from "@/db";
 import { smsRecipients } from "@/db/schema";
 import { eq, and, ne } from "drizzle-orm";
 import { requireRole } from "@/lib/require-role";
-
-const PH_MOBILE = /^(09\d{9}|\+639\d{9})$/;
+import { normalizePhMobile } from "@/lib/sms";
 
 const bodySchema = z.object({
 	label: z.string().trim().min(1).max(100).optional(),
-	mobileNumber: z.string().trim().regex(PH_MOBILE, "Invalid Philippine mobile number").optional(),
+	mobileNumber: z.string().trim().optional(),
 	isActive: z.boolean().optional(),
 });
 
@@ -37,16 +36,19 @@ export async function PATCH(
 		);
 	}
 
+	let mobileNumber: string | undefined;
 	if (parsed.data.mobileNumber) {
+		mobileNumber = normalizePhMobile(parsed.data.mobileNumber) ?? undefined;
+		if (!mobileNumber) {
+			return NextResponse.json(
+				{ error: "Invalid Philippine mobile number." },
+				{ status: 400 }
+			);
+		}
 		const [dupe] = await db
 			.select({ id: smsRecipients.id })
 			.from(smsRecipients)
-			.where(
-				and(
-					eq(smsRecipients.mobileNumber, parsed.data.mobileNumber),
-					ne(smsRecipients.id, id)
-				)
-			)
+			.where(and(eq(smsRecipients.mobileNumber, mobileNumber), ne(smsRecipients.id, id)))
 			.limit(1);
 		if (dupe) {
 			return NextResponse.json(
@@ -58,7 +60,7 @@ export async function PATCH(
 
 	const [row] = await db
 		.update(smsRecipients)
-		.set(parsed.data)
+		.set({ ...parsed.data, ...(mobileNumber ? { mobileNumber } : {}) })
 		.where(eq(smsRecipients.id, id))
 		.returning();
 
