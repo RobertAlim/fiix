@@ -408,6 +408,7 @@ export async function GET(req: Request) {
 					notes: schedules.notes,
 					maintainAll: schedules.maintainAll,
 					scheduledAt: schedules.scheduledAt,
+					sequence: schedules.sequence,
 					createdAt: schedules.createdAt,
 					technicianFirstName: users.firstName,
 					technicianLastName: users.lastName,
@@ -473,6 +474,7 @@ export async function GET(req: Request) {
 				notes: s.notes,
 				maintainAll: s.maintainAll,
 				scheduledAt: s.scheduledAt,
+				sequence: s.sequence,
 				createdAt: s.createdAt,
 				technician: { firstName: s.technicianFirstName, lastName: s.technicianLastName },
 				client: { name: s.clientName },
@@ -501,6 +503,16 @@ export async function GET(req: Request) {
 						: null,
 				})),
 			}));
+
+			// Itinerary order: assigned sequence first (ascending), unsequenced
+			// schedules after — sorted by id so their relative order is at least
+			// stable across requests rather than depending on join order.
+			fetchedSchedules.sort((a, b) => {
+				if (a.sequence != null && b.sequence != null) return a.sequence - b.sequence;
+				if (a.sequence != null) return -1;
+				if (b.sequence != null) return 1;
+				return a.id - b.id;
+			});
 
 			return NextResponse.json(fetchedSchedules);
 		} catch (error) {

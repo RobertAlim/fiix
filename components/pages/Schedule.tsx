@@ -68,6 +68,7 @@ import { OpenIssueComponent } from "../OpenIssueComponents";
 import { LoadingSpinnerModal } from "../ui/loading-modal";
 import { PrinterStatusCard } from "../PrinterStatusCard";
 import PendingMaintenancePanel from "./PendingMaintenancePanel";
+import { ItinerarySequenceManager } from "../ItinerarySequenceManager";
 import { ScheduleCard } from "../ScheduleCard";
 import { apiPath } from "@/lib/base-path";
 
@@ -1299,6 +1300,8 @@ export default function SchedulePage() {
 	return (
 		<div className="space-y-6">
 			<PendingMaintenancePanel />
+
+			<ItinerarySequenceManager />
 
 			<Card className="rounded-2xl border shadow-sm">
 				<CardContent className="p-6 space-y-4">

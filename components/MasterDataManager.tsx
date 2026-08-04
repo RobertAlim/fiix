@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import {
 	Dialog,
 	DialogContent,
@@ -48,7 +49,7 @@ import { fetchData } from "@/lib/fetchData";
 import { apiPath } from "@/lib/base-path";
 import { showAppToast } from "@/components/ui/apptoast";
 
-export type FieldType = "text" | "number" | "date" | "select";
+export type FieldType = "text" | "number" | "date" | "select" | "boolean";
 export type DataRow = Record<string, unknown>;
 
 export interface FieldConfig {
@@ -65,6 +66,9 @@ export interface FieldConfig {
 	placeholder?: string;
 	// If true, this field is only editable at create time (e.g. priorities.id).
 	immutable?: boolean;
+	/** Initial value (as a form-state string) when creating a new record.
+	 * Mainly for "boolean" fields, e.g. defaulting isActive to "true". */
+	defaultValue?: string;
 }
 
 export interface ColumnConfig {
@@ -238,7 +242,11 @@ export function MasterDataManager({
 
 	const openCreate = () => {
 		setEditingRow(null);
-		setFormValues({});
+		const defaults: Record<string, string> = {};
+		fields.forEach((f) => {
+			if (f.defaultValue != null) defaults[f.name] = f.defaultValue;
+		});
+		setFormValues(defaults);
 		setIsFormOpen(true);
 	};
 
@@ -261,6 +269,8 @@ export function MasterDataManager({
 				const raw = formValues[f.name] ?? "";
 				if (f.type === "number" || f.type === "select") {
 					body[f.name] = raw === "" ? undefined : Number(raw);
+				} else if (f.type === "boolean") {
+					body[f.name] = raw === "true";
 				} else {
 					body[f.name] = raw;
 				}
@@ -540,6 +550,26 @@ export function MasterDataManager({
 					<div className="grid gap-4 py-2">
 						{fields.map((f) => {
 							const disabled = !!(editingRow && f.immutable);
+							if (f.type === "boolean") {
+								return (
+									<div
+										key={f.name}
+										className="flex items-center justify-between rounded-lg border px-3 py-2"
+									>
+										<label className="text-sm font-medium">{f.label}</label>
+										<Switch
+											checked={formValues[f.name] === "true"}
+											disabled={disabled}
+											onCheckedChange={(checked) =>
+												setFormValues((prev) => ({
+													...prev,
+													[f.name]: checked ? "true" : "false",
+												}))
+											}
+										/>
+									</div>
+								);
+							}
 							if (f.type === "select") {
 								return (
 									<div key={f.name} className="space-y-1">

@@ -13,7 +13,10 @@ export type ModuleKey =
 	| "schedule"
 	| "roleAssignment"
 	| "dataImport"
-	| "printers";
+	| "printers"
+	| "locationGeofences"
+	| "smsRecipients"
+	| "attendanceReport";
 
 export const MODULE_ACCESS: Record<Role, ModuleKey[]> = {
 	Admin: [
@@ -25,6 +28,9 @@ export const MODULE_ACCESS: Record<Role, ModuleKey[]> = {
 		"roleAssignment",
 		"dataImport",
 		"printers",
+		"locationGeofences",
+		"smsRecipients",
+		"attendanceReport",
 	],
 	Technician: ["dashboard", "maintenance"],
 	Scheduler: ["dashboard", "taskTracker", "report", "schedule"],

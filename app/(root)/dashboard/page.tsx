@@ -27,6 +27,9 @@ import {
 	ShieldCheck,
 	Lock,
 	DatabaseZap,
+	MapPin,
+	MessageSquare,
+	FileSpreadsheet,
 } from "lucide-react";
 import { useUserStore } from "@/state/userStore";
 import { useDBUser } from "@/hooks/use-db-user";
@@ -36,6 +39,8 @@ import { canAccessModule, ModuleKey } from "@/lib/permissions";
 import { OfflineSyncProvider } from "@/features/offline-sync/OfflineSyncProvider";
 import { SyncStatusIndicator } from "@/components/SyncStatusIndicator";
 import { OpenIssuesBell } from "@/components/OpenIssuesBell";
+import { AttendanceGate } from "@/components/TimeInScreen";
+import { TimeOutButton } from "@/components/TimeOutButton";
 import {
 	fetchPartsCached,
 	fetchStatusCached,
@@ -51,6 +56,13 @@ const RoleAssignmentPage = dynamic(
 );
 const DataImportPage = dynamic(() => import("@/components/pages/DataImport"));
 const PrintersPage = dynamic(() => import("@/components/pages/Printers"));
+const LocationGeofencesPage = dynamic(
+	() => import("@/components/pages/LocationGeofences")
+);
+const SmsRecipientsPage = dynamic(() => import("@/components/pages/SmsRecipients"));
+const AttendanceReportPage = dynamic(
+	() => import("@/components/pages/AttendanceReport")
+);
 
 type PageKey = ModuleKey;
 
@@ -63,6 +75,9 @@ const ALL_NAV_ITEMS: { key: PageKey; label: string; icon: React.ElementType }[] 
 	{ key: "roleAssignment", label: "Role Assignment", icon: ShieldCheck },
 	{ key: "dataImport", label: "Data Import", icon: DatabaseZap },
 	{ key: "printers", label: "Printers", icon: Printer },
+	{ key: "locationGeofences", label: "Client Locations", icon: MapPin },
+	{ key: "smsRecipients", label: "SMS Recipients", icon: MessageSquare },
+	{ key: "attendanceReport", label: "Attendance Report", icon: FileSpreadsheet },
 ];
 
 const PAGE_TITLES: Record<PageKey, string> = {
@@ -74,6 +89,9 @@ const PAGE_TITLES: Record<PageKey, string> = {
 	roleAssignment: "Role Assignment",
 	dataImport: "Data Import",
 	printers: "Printers",
+	locationGeofences: "Client Locations",
+	smsRecipients: "SMS Recipients",
+	attendanceReport: "Attendance Report",
 };
 
 function NotAuthorized() {
@@ -130,6 +148,8 @@ export default function DashboardPage() {
 		() => ALL_NAV_ITEMS.filter((item) => canAccessModule(users?.role, item.key)),
 		[users?.role]
 	);
+
+	const isTechnician = users?.role === "Technician";
 
 	// If the user's current tab is no longer permitted (e.g. role changed
 	// mid-session), fall back to Dashboard rather than showing a blocked page.
@@ -204,6 +224,12 @@ export default function DashboardPage() {
 				return <DataImportPage />;
 			case "printers":
 				return <PrintersPage />;
+			case "locationGeofences":
+				return <LocationGeofencesPage />;
+			case "smsRecipients":
+				return <SmsRecipientsPage />;
+			case "attendanceReport":
+				return <AttendanceReportPage />;
 			default:
 				return <div>Page not found!</div>;
 		}
@@ -241,6 +267,7 @@ export default function DashboardPage() {
 
 	return (
 		<OfflineSyncProvider>
+		<AttendanceGate isTechnician={isTechnician}>
 		<div className="min-h-screen flex bg-background">
 			{/* Desktop sidebar */}
 			<aside
@@ -325,6 +352,7 @@ export default function DashboardPage() {
 						<OpenIssuesBell
 							enabled={canAccessModule(users?.role, "schedule")}
 						/>
+						{isTechnician && <TimeOutButton />}
 						<div className="flex items-center gap-2 pl-2 md:border-l">
 							<Avatar className="h-8 w-8">
 								<AvatarFallback className="bg-primary text-primary-foreground text-xs">
@@ -349,6 +377,7 @@ export default function DashboardPage() {
 				</main>
 			</div>
 		</div>
+		</AttendanceGate>
 		</OfflineSyncProvider>
 	);
 }

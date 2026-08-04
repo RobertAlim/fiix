@@ -73,6 +73,9 @@ export interface Schedule {
 	signPath: string;
 	maintainAll: boolean;
 	scheduledAt: string;
+	/** Visit order within the technician's day, set by the Scheduler. Null
+	 * for schedules created before sequencing existed or never reordered. */
+	sequence: number | null;
 	createdAt: string;
 	scheduleDetails: ScheduleDetail[];
 	technician: Technician;

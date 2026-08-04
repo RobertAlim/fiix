@@ -6,6 +6,7 @@ import {
 	real,
 	pgTable,
 	pgView,
+	uniqueIndex,
 	serial,
 	text,
 	date,
@@ -115,6 +116,10 @@ export const schedules = pgTable("schedules", {
 	notes: text("notes"),
 	maintainAll: boolean("maintainAll").default(false),
 	scheduledAt: date("scheduledAt").notNull(),
+	/** Visit order within one technician's day, set by the Scheduler.
+	 * Nullable so existing rows (and schedules created before this feature)
+	 * don't need a backfill — a null sorts after any assigned sequence. */
+	sequence: integer("sequence"),
 	createdAt: timestamp("createdAt")
 		.notNull()
 		.default(sql`now()`),
@@ -398,3 +403,77 @@ export const maintenanceSyncEvents = pgTable("maintenance_sync_events", {
 
 export type MaintenanceLocation = InferSelectModel<typeof maintenanceLocation>;
 export type NewMaintenanceLocation = InferInsertModel<typeof maintenanceLocation>;
+
+// ATTENDANCE / GEOFENCING / SMS ***********************************************************************
+
+/**
+ * Per-location geofence configuration used to gate a technician's Time In.
+ * One row per `locations` entry — a client with several branches configures
+ * each branch separately, since "close enough" is meaningless without
+ * knowing which branch is first on the itinerary that day.
+ */
+export const locationGeofences = pgTable("locationGeofences", {
+	id: serial("id").primaryKey(),
+	locationId: integer("locationId")
+		.notNull()
+		.unique()
+		.references(() => locations.id, { onDelete: "cascade" }),
+	latitude: doublePrecision("latitude").notNull(),
+	longitude: doublePrecision("longitude").notNull(),
+	/** Allowed distance from the pin, in meters. */
+	radiusMeters: integer("radiusMeters").notNull().default(150),
+	createdAt: timestamp("createdAt").notNull().default(sql`now()`),
+	updatedAt: timestamp("updatedAt").notNull().default(sql`now()`),
+});
+
+/**
+ * A technician's single workday attendance record: one row per
+ * (technician, work date), created on Time In and closed on Time Out.
+ * The unique constraint is what makes "already timed in today" a database
+ * fact rather than something the client has to infer.
+ */
+export const technicianAttendance = pgTable(
+	"technicianAttendance",
+	{
+		id: serial("id").primaryKey(),
+		technicianId: integer("technicianId")
+			.notNull()
+			.references(() => users.id),
+		/** Calendar date in Asia/Manila the shift belongs to — not the raw
+		 * timestamp, since a shift starting at 11:58 PM shouldn't file under
+		 * the next day. */
+		workDate: date("workDate").notNull(),
+		timeIn: timestamp("timeIn", { withTimezone: true }).notNull(),
+		timeInLatitude: doublePrecision("timeInLatitude").notNull(),
+		timeInLongitude: doublePrecision("timeInLongitude").notNull(),
+		/** The schedule the geofence check was validated against, for audit. */
+		firstScheduleId: integer("firstScheduleId").references(
+			(): AnyPgColumn => schedules.id
+		),
+		timeOut: timestamp("timeOut", { withTimezone: true }),
+		createdAt: timestamp("createdAt").notNull().default(sql`now()`),
+	},
+	(table) => [
+		// One session per technician per day — this is what actually stops a
+		// double Time In, not just client-side gating. A racing double-click
+		// hits this constraint instead of creating two open sessions.
+		uniqueIndex("technicianAttendance_technician_workDate_idx").on(
+			table.technicianId,
+			table.workDate
+		),
+	]
+);
+
+/** Recipients who get an SMS whenever any technician times in. Not
+ * per-technician — the spec calls for a single managed distribution list. */
+export const smsRecipients = pgTable("smsRecipients", {
+	id: serial("id").primaryKey(),
+	label: varchar("label", { length: 100 }).notNull(),
+	mobileNumber: varchar("mobileNumber", { length: 13 }).notNull().unique(),
+	isActive: boolean("isActive").notNull().default(true),
+	createdAt: timestamp("createdAt").notNull().default(sql`now()`),
+});
+
+export type LocationGeofence = InferSelectModel<typeof locationGeofences>;
+export type TechnicianAttendance = InferSelectModel<typeof technicianAttendance>;
+export type SmsRecipient = InferSelectModel<typeof smsRecipients>;
