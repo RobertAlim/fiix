@@ -69,6 +69,7 @@ import { LoadingSpinnerModal } from "../ui/loading-modal";
 import { PrinterStatusCard } from "../PrinterStatusCard";
 import PendingMaintenancePanel from "./PendingMaintenancePanel";
 import { ScheduleCard } from "../ScheduleCard";
+import { apiPath } from "@/lib/base-path";
 
 export type Maintenance = {
 	id: number;
@@ -135,7 +136,7 @@ interface ScheduleMaintenanceResponse {
 const createMaintenanceSchedule = async (
 	payload: ScheduleMaintenancePayload
 ): Promise<ScheduleMaintenanceResponse> => {
-	const response = await fetch("/api/schedule", {
+	const response = await fetch(apiPath("/api/schedule"), {
 		method: "POST",
 		headers: {
 			"Content-Type": "application/json",
@@ -561,7 +562,7 @@ export default function SchedulePage() {
 
 	React.useEffect(() => {
 		async function fetchTime() {
-			const res = await fetch("/api/ph-time");
+			const res = await fetch(apiPath("/api/ph-time"));
 			const data = await res.json();
 			setCurrentDate(data.time);
 		}

@@ -3,6 +3,13 @@ import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import heroImage from "@/assets/hero-image.png";
 import Link from "next/link";
+import { SignInButton, SignedIn, SignedOut } from "@clerk/nextjs";
+
+// Required because this page uses SignedIn/SignedOut, which need real
+// per-request auth state — without this, Next.js tries to statically
+// pre-render the page at build time (outside any request/middleware
+// context), and Clerk throws.
+export const dynamic = "force-dynamic";
 
 const LandingPage = () => {
 	return (
@@ -20,10 +27,23 @@ const LandingPage = () => {
 								Ink Refilling Station.
 							</p>
 						</div>
+						{/* Uses Clerk's Account Portal (hosted) sign-in — the embedded
+						    <SignIn/> widget on /sign-in does not render correctly in
+						    this Next.js 15 + basePath + catch-all-route combination;
+						    Account Portal is Clerk's own infra and is unaffected. */}
 						<div className="flex flex-col gap-2 min-[400px]:flex-row">
-							<Button size="lg" className="px-8" asChild>
-								<Link href="/sign-in">Get Started</Link>
-							</Button>
+							<SignedOut>
+								<SignInButton mode="redirect">
+									<Button size="lg" className="px-8">
+										Get Started
+									</Button>
+								</SignInButton>
+							</SignedOut>
+							<SignedIn>
+								<Button size="lg" className="px-8" asChild>
+									<Link href="/dashboard">Go to Dashboard</Link>
+								</Button>
+							</SignedIn>
 							<Button size="lg" variant="outline" className="px-8">
 								Learn More
 							</Button>

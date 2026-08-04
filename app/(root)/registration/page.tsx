@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
+import { apiPath } from "@/lib/base-path";
 
 const RegistrationPage = () => {
 	const [middleName, setMiddleName] = useState("");
@@ -17,7 +18,7 @@ const RegistrationPage = () => {
 	const router = useRouter();
 
 	const sendOtp = async () => {
-		const res = await fetch("/api/send-otp", {
+		const res = await fetch(apiPath("/api/send-otp"), {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify({ phone: contactNo }),
@@ -32,7 +33,7 @@ const RegistrationPage = () => {
 	};
 
 	const verifyAndSave = async () => {
-		const res = await fetch("/api/verify-otp", {
+		const res = await fetch(apiPath("/api/verify-otp"), {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify({ phone: contactNo, otp: otpCode }),
@@ -45,7 +46,7 @@ const RegistrationPage = () => {
 		}
 		// alert("Verify and Save is Here!!!");
 
-		const saveRes = await fetch("/api/save-profile", {
+		const saveRes = await fetch(apiPath("/api/save-profile"), {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify({ middleName, birthday, contactNo }),

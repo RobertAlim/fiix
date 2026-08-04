@@ -25,6 +25,13 @@ const withPWA = withPWAInit({
 	dest: "public",
 	// Service worker only matters in production; in dev it fights HMR.
 	disable: process.env.NODE_ENV === "development",
+	// The default start_url caching feature generates a cacheWillUpdate
+	// callback that throws "_async_to_generator is not defined" at runtime
+	// — a real bug in next-pwa's own bundled code, confirmed harmless to
+	// page rendering (it's a fire-and-forget background cache write) but
+	// disabled here to stop it firing at all, since it's not needed —
+	// IndexedDB, not this cache, is what makes offline report data work.
+	cacheStartUrl: false,
 	register: true,
 	// Bundles worker/index.ts (Background Sync handler) into the generated SW.
 	customWorkerSrc: "worker",
@@ -78,7 +85,21 @@ const withPWA = withPWAInit({
 	},
 });
 
+// Multi-zone deployment under fruitbeanink.com: fruitbeanweb owns the
+// domain root and rewrites /fiix/* to this app. Locally NEXT_PUBLIC_BASE_PATH
+// is unset, so basePath/assetPrefix are undefined and the app behaves exactly
+// as before (served at root). In production set NEXT_PUBLIC_BASE_PATH=/fiix.
+const basePath = process.env.NEXT_PUBLIC_BASE_PATH || undefined;
+
+// Prefer serving static assets straight from this app's own deployment host
+// (set NEXT_PUBLIC_ASSET_PREFIX to it once known) so they don't double-hop
+// through fruitbeanweb's rewrite proxy. Falls back to basePath, which still
+// works, just proxied.
+const assetPrefix = process.env.NEXT_PUBLIC_ASSET_PREFIX || basePath;
+
 const nextConfig: NextConfig = {
+	basePath,
+	assetPrefix,
 	async headers() {
 		return [
 			{

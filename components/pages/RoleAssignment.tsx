@@ -15,6 +15,7 @@ import { ShieldCheck } from "lucide-react";
 import { fetchData } from "@/lib/fetchData";
 import { showAppToast } from "@/components/ui/apptoast";
 import { ROLES, Role } from "@/lib/permissions";
+import { apiPath } from "@/lib/base-path";
 
 interface AdminUserRow {
 	id: number;
@@ -43,7 +44,7 @@ export default function RoleAssignmentPage() {
 			isActive?: boolean;
 		}) => {
 			const { id, ...body } = payload;
-			const res = await fetch(`/api/admin/users/${id}`, {
+			const res = await fetch(apiPath(`/api/admin/users/${id}`), {
 				method: "PATCH",
 				headers: { "Content-Type": "application/json" },
 				body: JSON.stringify(body),

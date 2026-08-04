@@ -17,6 +17,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton"; // shadcn/ui Skeleton for loading state
 import { useQuery } from "@tanstack/react-query"; // Import useQuery
 import { ArrowUpDown, ChevronDown, MoreHorizontal } from "lucide-react";
+import { apiPath } from "@/lib/base-path";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -260,7 +261,7 @@ export default function ReportPage() {
 	const { data, isLoading, isError, error } = useQuery<Maintenance[], Error>({
 		queryKey: ["maintenanceData"], // Unique key for this query
 		queryFn: async () => {
-			const response = await fetch("/api/maintain-report");
+			const response = await fetch(apiPath("/api/maintain-report"));
 			if (!response.ok) {
 				throw new Error(`Failed to fetch data: ${response.statusText}`);
 			}

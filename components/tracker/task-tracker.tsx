@@ -27,9 +27,10 @@ import { cn } from "@/lib/utils";
 import type { ScheduleTrackerRow, ScheduleDetailRow } from "@/types/tracker";
 import { formatDateManila, formatTimeToAmPm } from "@/lib/formatDate";
 import { Loader2 } from "lucide-react";
+import { apiPath } from "@/lib/base-path";
 
 async function fetchJSON<T>(url: string): Promise<T> {
-	const res = await fetch(url);
+	const res = await fetch(apiPath(url));
 	if (!res.ok) throw new Error(await res.text());
 	return res.json() as Promise<T>;
 }

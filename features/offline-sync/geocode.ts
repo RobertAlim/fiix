@@ -1,4 +1,5 @@
 import type { GeocodeResult } from "@/validation/maintainSchema";
+import { apiPath } from "@/lib/base-path";
 
 /**
  * Resolve coordinates into a readable address via our own API (which proxies
@@ -15,7 +16,7 @@ export async function reverseGeocode(
 		const controller = new AbortController();
 		const timer = setTimeout(() => controller.abort(), timeoutMs);
 		const res = await fetch(
-			`/api/reverse-geocode?lat=${latitude}&lng=${longitude}`,
+			apiPath(`/api/reverse-geocode?lat=${latitude}&lng=${longitude}`),
 			{ signal: controller.signal }
 		);
 		clearTimeout(timer);

@@ -12,6 +12,7 @@ import {
 	Loader2,
 } from "lucide-react";
 import { showAppToast } from "@/components/ui/apptoast";
+import { apiPath } from "@/lib/base-path";
 
 interface ImportRowError {
 	row: number;
@@ -64,7 +65,7 @@ export function ImportCsvCard({
 
 		try {
 			const csvText = await file.text();
-			const res = await fetch(endpoint, {
+			const res = await fetch(apiPath(endpoint), {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
 				body: JSON.stringify({ csv: csvText }),

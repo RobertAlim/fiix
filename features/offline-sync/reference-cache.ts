@@ -1,4 +1,5 @@
 import { getOfflineDB } from "./local-db";
+import { apiPath } from "@/lib/base-path";
 
 /** Thrown when data is requested offline (or after a failed fetch) and
  * nothing has ever been cached for that key — callers use this to show a
@@ -46,10 +47,11 @@ export async function cachedJsonFetch<T>(
 	cacheKey: string
 ): Promise<T> {
 	const online = typeof navigator === "undefined" || navigator.onLine;
+	const resolvedUrl = apiPath(url);
 
 	if (online) {
 		try {
-			const res = await fetch(url);
+			const res = await fetch(resolvedUrl);
 			if (res.ok) {
 				const data = (await res.json()) as T;
 				await writeCache(cacheKey, data);

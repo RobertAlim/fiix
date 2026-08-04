@@ -34,6 +34,7 @@ import { v4 as uuidv4 } from "uuid";
 import { base64ToFile } from "@/lib/fileConverter";
 import { showAppToast } from "../ui/apptoast";
 import { OfflineSyncWidgets } from "@/components/OfflineSyncWidgets";
+import { apiPath } from "@/lib/base-path";
 
 interface DashboardRealPageProps {
 	onCardClick: (args: {
@@ -113,7 +114,7 @@ export default function DashboardPage({
 	const { data: stats, isLoading: statsLoading } = useQuery<DashboardStats>({
 		queryKey: ["dashboard-stats"],
 		queryFn: async () => {
-			const res = await fetch("/api/dashboard-stats");
+			const res = await fetch(apiPath("/api/dashboard-stats"));
 			if (!res.ok) throw new Error("Failed to fetch dashboard stats");
 			return res.json();
 		},
@@ -141,7 +142,7 @@ export default function DashboardPage({
 		const uuidSignFileName = `${uuidv4()}.png`;
 		const contentType = "image/png";
 
-		const getUrlRespSign = await fetch("/api/get-upload-url", {
+		const getUrlRespSign = await fetch(apiPath("/api/get-upload-url"), {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify({
@@ -179,7 +180,7 @@ export default function DashboardPage({
 		};
 
 		try {
-			const res = await fetch("/api/maintain", {
+			const res = await fetch(apiPath("/api/maintain"), {
 				method: "PATCH",
 				headers: {
 					"Content-Type": "application/json",

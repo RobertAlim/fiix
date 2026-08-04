@@ -1,5 +1,6 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
+import { apiPath } from "@/lib/base-path";
 
 const isPublicRoute = createRouteMatcher([
 	"/sign-in(.*)",
@@ -41,8 +42,8 @@ export default clerkMiddleware(async (auth, req) => {
 			try {
 				// Identity is taken from the forwarded Clerk session cookie —
 				// the route no longer accepts a userId parameter.
-				const res = await fetch(`${req.nextUrl.origin}/api/user-status`, {
-					headers: req.headers,
+				const res = await fetch(`${req.nextUrl.origin}${apiPath("/api/user-status")}`, {
+					headers: { cookie: req.headers.get("cookie") ?? "" },
 				});
 
 				if (
@@ -66,12 +67,14 @@ export default clerkMiddleware(async (auth, req) => {
 					}
 
 					// Active with a role assigned.
-					const response =
-						currentPath === "/"
-							? NextResponse.redirect(
-									new URL("/dashboard", req.nextUrl.origin)
-							  )
-							: NextResponse.next();
+					let response: NextResponse;
+					if (currentPath === "/") {
+						const dashboardUrl = req.nextUrl.clone();
+						dashboardUrl.pathname = "/dashboard";
+						response = NextResponse.redirect(dashboardUrl);
+					} else {
+						response = NextResponse.next();
+					}
 					response.cookies.set(ACTIVE_COOKIE, "1", {
 						maxAge: ACTIVE_COOKIE_MAX_AGE,
 						httpOnly: true,
@@ -96,6 +99,13 @@ export default clerkMiddleware(async (auth, req) => {
 
 export const config = {
 	matcher: [
+		// The general catch-all pattern below, once Next.js compiles it
+		// together with basePath, requires a "/" immediately after the
+		// basePath — meaning the bare basePath root itself (just "/fiix",
+		// no trailing slash or further path) never matches it and
+		// middleware silently never ran there. This explicit entry closes
+		// that gap (confirmed by direct testing).
+		"/",
 		// Skip Next.js internals and all static files, unless found in search params
 		"/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",
 		// Always run for API routes

@@ -29,6 +29,7 @@ import {
 import { ComboBoxResponsive, ComboboxItem } from "@/components/ui/combobox";
 import { Plus, Pencil, Trash2, Search } from "lucide-react";
 import { fetchData } from "@/lib/fetchData";
+import { apiPath } from "@/lib/base-path";
 import { showAppToast } from "@/components/ui/apptoast";
 
 export type FieldType = "text" | "number" | "date" | "select";
@@ -153,7 +154,7 @@ export function MasterDataManager({
 				? itemEndpoint(editingRow[idField] as number | string)
 				: listEndpoint;
 			const method = editingRow ? "PATCH" : "POST";
-			const res = await fetch(url, {
+			const res = await fetch(apiPath(url), {
 				method,
 				headers: { "Content-Type": "application/json" },
 				body: JSON.stringify(body),
@@ -185,7 +186,7 @@ export function MasterDataManager({
 
 	const { mutate: deleteRecordMutation, isPending: isDeleting } = useMutation({
 		mutationFn: async (row: DataRow) => {
-			const res = await fetch(itemEndpoint(row[idField] as number | string), {
+			const res = await fetch(apiPath(itemEndpoint(row[idField] as number | string)), {
 				method: "DELETE",
 			});
 			if (!res.ok) {

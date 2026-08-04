@@ -25,6 +25,7 @@ import {
 import { AlertTriangle, CalendarCheck2, Clock3 } from "lucide-react";
 import { fetchData } from "@/lib/fetchData";
 import { showAppToast } from "@/components/ui/apptoast";
+import { apiPath } from "@/lib/base-path";
 
 interface PendingMaintenanceItem {
 	id: number; // maintain.id
@@ -229,7 +230,7 @@ function AssignScheduleModal({
 			if (!item || !technicianId || !priorityId || !scheduleDate) {
 				throw new Error("Missing required fields");
 			}
-			const res = await fetch("/api/schedule/assign", {
+			const res = await fetch(apiPath("/api/schedule/assign"), {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
 				body: JSON.stringify({

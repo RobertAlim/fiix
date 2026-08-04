@@ -32,6 +32,7 @@ import SignaturePad from "@/components/SignaturePad";
 import { useUserStore } from "@/state/userStore";
 import { format } from "date-fns";
 import { showAppToast } from "../ui/apptoast";
+import { apiPath } from "@/lib/base-path";
 
 import { ScanQRCodeModalContent } from "@/components/ScanQRCodeModalContent";
 
@@ -114,7 +115,7 @@ export default function MaintenancePage({
 				firstName: string;
 				lastName: string;
 			}) => {
-				const response = await fetch(`/api/signatories`, {
+				const response = await fetch(apiPath(`/api/signatories`), {
 					method: "POST",
 					headers: {
 						"Content-Type": "application/json",
@@ -430,7 +431,7 @@ export default function MaintenancePage({
 		}
 
 		try {
-			const res = await fetch(`/api/maintain?serialNo=${scannedSerialNo}`);
+			const res = await fetch(apiPath(`/api/maintain?serialNo=${scannedSerialNo}`));
 			const { maintenanceData, signatories, error } = await res.json();
 
 			if (error === "Duplicate") {

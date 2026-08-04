@@ -7,6 +7,7 @@ import { getOfflineDB, META_KEYS } from "./local-db";
 import { OFFLINE_SYNC_CONFIG } from "./config";
 import { audit, getAuditTrail } from "./audit";
 import type { PendingReport, PendingBlob } from "./types";
+import { apiPath } from "@/lib/base-path";
 
 const isOnline = () =>
 	typeof navigator === "undefined" || navigator.onLine !== false;
@@ -56,7 +57,7 @@ async function setStatus(
 /** Presign-then-PUT one blob to Cloudflare R2, then mark it uploaded. */
 async function uploadBlob(entry: PendingBlob): Promise<void> {
 	const presignRes = await fetchOrExplain(
-		"/api/get-upload-url",
+		apiPath("/api/get-upload-url"),
 		{
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
@@ -123,7 +124,7 @@ async function syncOne(report: PendingReport): Promise<void> {
 			occurredAt: new Date(e.at).toISOString(),
 		}));
 		const res = await fetchOrExplain(
-			"/api/maintain",
+			apiPath("/api/maintain"),
 			{
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
@@ -149,7 +150,7 @@ async function syncOne(report: PendingReport): Promise<void> {
 
 	// 4. Link the schedule detail (safe to repeat — it's an idempotent update).
 	if (report.schedDetailsId > 0) {
-		const schedRes = await fetch("/api/sched-details", {
+		const schedRes = await fetch(apiPath("/api/sched-details"), {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify({ schedDetailsId: report.schedDetailsId, mtId }),
@@ -161,7 +162,7 @@ async function syncOne(report: PendingReport): Promise<void> {
 
 	// 5. Deferred reverse-geocode (when the device was offline at capture).
 	if (report.needsGeocode) {
-		const geoRes = await fetch("/api/maintenance-location/geocode", {
+		const geoRes = await fetch(apiPath("/api/maintenance-location/geocode"), {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify({ clientUuid: report.uuid }),
