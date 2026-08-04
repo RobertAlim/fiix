@@ -1,6 +1,7 @@
 // app/api/schedule/assign/route.ts
 // Creates a schedule for a single pending maintenance item in one call —
-// used by the "Assign" flow on the Pending Maintenance panel. Requires
+// used by the "Assign" and "Reschedule" flows on the Pending Maintenance
+// panel. Requires
 // technician, date, priority, and notes; client/location/printer come from
 // the maintenance record being assigned.
 import { NextResponse } from "next/server";
@@ -11,12 +12,14 @@ import { z } from "zod";
 import { requireRole } from "@/lib/require-role";
 
 const bodySchema = z.object({
-	maintainId: z.number().int().positive(),
+	// Optional: a missed ROUTINE schedule being rescheduled has no originating
+	// maintenance record to point back at, unlike an issue-driven assignment.
+	maintainId: z.number().int().positive().nullable().optional(),
 	printerId: z.number().int().positive(),
 	technicianId: z.number().int().positive(),
 	clientId: z.number().int().positive(),
 	locationId: z.number().int().positive(),
-	priority: z.number().int().positive(),
+	priority: z.number().int().nonnegative(),
 	notes: z.string().trim().max(2000).optional(),
 	scheduleDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "scheduleDate must be YYYY-MM-DD"),
 });
@@ -93,7 +96,7 @@ export async function POST(req: Request) {
 		await db.insert(scheduleDetails).values({
 			scheduleId: newSchedule.id,
 			printerId,
-			originMTId: maintainId,
+			originMTId: maintainId ?? null,
 			isMaintained: false,
 		});
 

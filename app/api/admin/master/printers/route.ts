@@ -10,7 +10,7 @@ import {
 	departments,
 	models,
 } from "@/db/schema";
-import { asc, eq, and, ilike } from "drizzle-orm";
+import { asc, eq, and, ilike, sql, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 
 // A "printer" in this schema is really two rows: the printers table (just
@@ -27,14 +27,52 @@ const bodySchema = z.object({
 	deploymentDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Deployment date must be YYYY-MM-DD"),
 });
 
+// Page size is capped server-side so a hand-edited ?pageSize= can't be used
+// to pull the entire deployment table in one request.
+const DEFAULT_PAGE_SIZE = 25;
+const MAX_PAGE_SIZE = 100;
+
 export async function GET(req: Request) {
 	const auth = await requireRole(["Admin"]);
 	if (auth.error) return auth.error;
 
-	const search = new URL(req.url).searchParams.get("search");
+	const params = new URL(req.url).searchParams;
 	const currentClient = alias(clients, "current_client");
 
-	const rows = await db
+	// `search` is the legacy single-box parameter (serial number only). It is
+	// still honoured so any other caller keeps working; the Printers module
+	// now sends the named filters below instead.
+	const serialNo = params.get("serialNo") ?? params.get("search");
+	const client = params.get("client");
+	const location = params.get("location");
+	const department = params.get("department");
+	const model = params.get("model");
+
+	const filters: SQL[] = [];
+	if (serialNo?.trim()) filters.push(ilike(printers.serialNo, `%${serialNo.trim()}%`));
+	if (client?.trim()) filters.push(ilike(currentClient.name, `%${client.trim()}%`));
+	if (location?.trim()) filters.push(ilike(locations.name, `%${location.trim()}%`));
+	if (department?.trim()) filters.push(ilike(departments.name, `%${department.trim()}%`));
+	if (model?.trim()) filters.push(ilike(models.name, `%${model.trim()}%`));
+
+	const where = filters.length ? and(...filters) : undefined;
+
+	const requestedSize = Number(params.get("pageSize"));
+	const pageSize =
+		Number.isFinite(requestedSize) && requestedSize > 0
+			? Math.min(Math.floor(requestedSize), MAX_PAGE_SIZE)
+			: DEFAULT_PAGE_SIZE;
+	const requestedPage = Number(params.get("page"));
+	const page =
+		Number.isFinite(requestedPage) && requestedPage > 0
+			? Math.floor(requestedPage)
+			: 1;
+
+	// The joins are repeated verbatim between the page query and the count
+	// query because the filters can target any joined table (client, location,
+	// department, model) — counting off `printers` alone would over-report as
+	// soon as one of those filters is active.
+	const rowsQuery = db
 		.select({
 			id: printers.id,
 			serialNo: printers.serialNo,
@@ -66,10 +104,36 @@ export async function GET(req: Request) {
 		.leftJoin(locations, eq(locations.id, deployments.locationId))
 		.leftJoin(departments, eq(departments.id, deployments.departmentId))
 		.leftJoin(models, eq(models.id, deployments.modelId))
-		.where(search ? ilike(printers.serialNo, `%${search}%`) : undefined)
-		.orderBy(asc(printers.serialNo));
+		.where(where)
+		.orderBy(asc(printers.serialNo))
+		.limit(pageSize)
+		.offset((page - 1) * pageSize);
 
-	return NextResponse.json(rows);
+	const countQuery = db
+		.select({ value: sql<number>`count(*)::int` })
+		.from(printers)
+		.innerJoin(clients, eq(clients.id, printers.deployedClient))
+		.leftJoin(
+			deployments,
+			and(eq(deployments.printerId, printers.id), eq(deployments.deployedHere, true))
+		)
+		.leftJoin(currentClient, eq(currentClient.id, deployments.clientId))
+		.leftJoin(locations, eq(locations.id, deployments.locationId))
+		.leftJoin(departments, eq(departments.id, deployments.departmentId))
+		.leftJoin(models, eq(models.id, deployments.modelId))
+		.where(where);
+
+	const [rows, [count]] = await Promise.all([rowsQuery, countQuery]);
+
+	// Envelope shape ({ rows, total }) is what tells MasterDataManager to
+	// switch into server-driven pagination. Endpoints that still return a
+	// bare array keep paginating client-side.
+	return NextResponse.json({
+		rows,
+		total: count?.value ?? 0,
+		page,
+		pageSize,
+	});
 }
 
 export async function POST(req: Request) {

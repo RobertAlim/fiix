@@ -8,6 +8,7 @@ import {
 	useReactTable,
 	ExpandedState,
 	getExpandedRowModel,
+	getPaginationRowModel,
 } from "@tanstack/react-table";
 import {
 	Table,
@@ -186,6 +187,8 @@ export function SchedulesDataTable({
 		onExpandedChange: setExpanded,
 		getCoreRowModel: getCoreRowModel(),
 		getExpandedRowModel: getExpandedRowModel(),
+		getPaginationRowModel: getPaginationRowModel(),
+		initialState: { pagination: { pageSize: 10 } },
 		getRowCanExpand: () => true, // All rows can be expanded
 	});
 
@@ -491,6 +494,44 @@ export function SchedulesDataTable({
 					)}
 				</TableBody>
 			</Table>
+
+			<div className="flex flex-col gap-2 border-t px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
+				<p className="text-xs text-muted-foreground">
+					{table.getFilteredRowModel().rows.length === 0
+						? "No schedules"
+						: `Showing ${
+								table.getState().pagination.pageIndex *
+									table.getState().pagination.pageSize +
+								1
+						  }\u2013${Math.min(
+								(table.getState().pagination.pageIndex + 1) *
+									table.getState().pagination.pageSize,
+								table.getFilteredRowModel().rows.length
+						  )} of ${table.getFilteredRowModel().rows.length}`}
+				</p>
+				<div className="flex items-center gap-2">
+					<Button
+						variant="outline"
+						size="sm"
+						onClick={() => table.previousPage()}
+						disabled={!table.getCanPreviousPage()}
+					>
+						Previous
+					</Button>
+					<span className="text-xs text-muted-foreground">
+						Page {table.getState().pagination.pageIndex + 1} of{" "}
+						{table.getPageCount() || 1}
+					</span>
+					<Button
+						variant="outline"
+						size="sm"
+						onClick={() => table.nextPage()}
+						disabled={!table.getCanNextPage()}
+					>
+						Next
+					</Button>
+				</div>
+			</div>
 		</div>
 	);
 }

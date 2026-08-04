@@ -42,16 +42,32 @@ export default function PrintersPage() {
 					title="Printer"
 					listEndpoint="/api/admin/master/printers"
 					itemEndpoint={(id) => `/api/admin/master/printers/${id}`}
+					filters={[
+						{ param: "serialNo", label: "Serial No.", placeholder: "e.g. X1B2C3" },
+						{ param: "client", label: "Current Client" },
+						{ param: "location", label: "Location" },
+						{ param: "department", label: "Department" },
+						{ param: "model", label: "Model" },
+					]}
+					defaultPageSize={25}
 					columns={[
-						{ key: "serialNo", label: "Serial No." },
-						{ key: "originalClientName", label: "Original Client" },
-						{ key: "clientName", label: "Current Client" },
-						{ key: "locationName", label: "Location", render: (r) => (r.locationName ? String(r.locationName) : "—") },
-						{ key: "departmentName", label: "Department", render: (r) => (r.departmentName ? String(r.departmentName) : "—") },
-						{ key: "modelName", label: "Model", render: (r) => (r.modelName ? String(r.modelName) : "—") },
+						{ key: "serialNo", label: "Serial No.", minWidth: "min-w-[140px]" },
+						// Rarely needed day-to-day and the widest of the client
+						// columns — off by default, re-enable from the Columns menu.
+						{
+							key: "originalClientName",
+							label: "Original Client",
+							minWidth: "min-w-[180px]",
+							hiddenByDefault: true,
+						},
+						{ key: "clientName", label: "Current Client", minWidth: "min-w-[180px]" },
+						{ key: "locationName", label: "Location", minWidth: "min-w-[160px]", render: (r) => (r.locationName ? String(r.locationName) : "—") },
+						{ key: "departmentName", label: "Department", minWidth: "min-w-[160px]", render: (r) => (r.departmentName ? String(r.departmentName) : "—") },
+						{ key: "modelName", label: "Model", minWidth: "min-w-[150px]", render: (r) => (r.modelName ? String(r.modelName) : "—") },
 						{
 							key: "deploymentDate",
 							label: "Deployed",
+							minWidth: "min-w-[110px]",
 							render: (r) =>
 								r.deploymentDate
 									? format(new Date(String(r.deploymentDate)), "MM/dd/yyyy")

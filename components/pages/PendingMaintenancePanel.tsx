@@ -22,7 +22,13 @@ import {
 	DialogDescription,
 	DialogFooter,
 } from "@/components/ui/dialog";
-import { AlertTriangle, CalendarCheck2, Clock3 } from "lucide-react";
+import {
+	AlertTriangle,
+	CalendarCheck2,
+	Clock3,
+	CalendarX2,
+	UserCog,
+} from "lucide-react";
 import { fetchData } from "@/lib/fetchData";
 import { showAppToast } from "@/components/ui/apptoast";
 import { apiPath } from "@/lib/base-path";
@@ -45,6 +51,29 @@ interface PendingMaintenanceItem {
 	scheduledTechnicianName: string | null;
 }
 
+/** A schedule whose date has passed with the work never marked done. */
+interface MissedScheduleItem {
+	scheduleDetailsId: number;
+	scheduleId: number;
+	originMTId: number | null;
+	printerId: number;
+	serialNo: string;
+	model: string | null;
+	department: string | null;
+	clientId: number;
+	client: string;
+	locationId: number;
+	location: string;
+	technicianId: number;
+	technician: string;
+	priorityId: number | null;
+	priority: string | null;
+	notes: string | null;
+	scheduledAt: string;
+	scheduledDate: string;
+	daysOverdue: number;
+}
+
 interface Technician {
 	id: string;
 	name: string;
@@ -55,6 +84,31 @@ interface Priority {
 	name: string;
 }
 
+/**
+ * Both flows end up creating a schedule through the same endpoint, so the two
+ * card types are normalized into this shape before the modal sees them. The
+ * only real differences are the wording and whether the technician/priority
+ * start pre-filled.
+ */
+interface AssignTarget {
+	mode: "assign" | "reschedule";
+	maintainId: number | null;
+	printerId: number;
+	serialNo: string;
+	model: string | null;
+	clientId: number;
+	client: string;
+	locationId: number;
+	location: string;
+	/** Pre-selected in reschedule mode — "keep the same technician" is the
+	 * common case, and reassigning is just changing the dropdown. */
+	defaultTechnicianId?: string | null;
+	defaultPriorityId?: string | null;
+	defaultNotes?: string;
+	missedOn?: string;
+	daysOverdue?: number;
+}
+
 function daysSince(dateStr: string): number {
 	const created = new Date(dateStr);
 	const diffMs = Date.now() - created.getTime();
@@ -63,9 +117,7 @@ function daysSince(dateStr: string): number {
 
 export default function PendingMaintenancePanel() {
 	const queryClient = useQueryClient();
-	const [assignTarget, setAssignTarget] = useState<PendingMaintenanceItem | null>(
-		null
-	);
+	const [assignTarget, setAssignTarget] = useState<AssignTarget | null>(null);
 
 	const { data: pendingItems = [], isLoading } = useQuery<PendingMaintenanceItem[]>({
 		queryKey: ["pending-maintenance"],
@@ -85,6 +137,12 @@ export default function PendingMaintenancePanel() {
 		staleTime: 1000 * 60 * 5,
 	});
 
+	const { data: missedSchedules = [] } = useQuery<MissedScheduleItem[]>({
+		queryKey: ["missed-schedules"],
+		queryFn: () => fetchData<MissedScheduleItem[]>("/api/missed-schedules"),
+		staleTime: 1000 * 60,
+	});
+
 	const unscheduled = pendingItems.filter((i) => !i.isScheduled);
 
 	if (isLoading) {
@@ -98,6 +156,110 @@ export default function PendingMaintenancePanel() {
 	}
 
 	return (
+		<div className="space-y-4">
+		{missedSchedules.length > 0 && (
+			<Card className="rounded-2xl border border-destructive/40 shadow-sm">
+				<CardHeader className="flex flex-row items-center justify-between space-y-0">
+					<div>
+						<CardTitle className="flex items-center gap-2 text-base font-semibold">
+							<CalendarX2 className="h-5 w-5 text-destructive" />
+							Missed Schedules
+						</CardTitle>
+						<p className="text-sm text-muted-foreground">
+							Scheduled visits that passed without being completed. Reschedule
+							to put them back in a technician&apos;s itinerary.
+						</p>
+					</div>
+					<Badge variant="destructive">{missedSchedules.length} missed</Badge>
+				</CardHeader>
+				<CardContent>
+					<div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+						{missedSchedules.map((m) => (
+							<Card
+								key={m.scheduleDetailsId}
+								className="rounded-xl border shadow-none transition-shadow hover:shadow-sm"
+							>
+								<CardContent className="space-y-3 p-4">
+									<div className="flex items-start justify-between gap-2">
+										<div>
+											<p className="font-semibold leading-tight">{m.serialNo}</p>
+											<p className="text-xs text-muted-foreground">
+												{m.model ?? "—"}
+												{m.department ? ` · ${m.department}` : ""}
+											</p>
+										</div>
+										<Badge
+											variant="destructive"
+											className="shrink-0 gap-1 whitespace-nowrap"
+										>
+											<Clock3 className="h-3 w-3" />
+											{m.daysOverdue}d overdue
+										</Badge>
+									</div>
+
+									<div className="text-sm">
+										<p className="font-medium">{m.client}</p>
+										<p className="text-muted-foreground">{m.location}</p>
+									</div>
+
+									<div className="grid grid-cols-2 gap-2 rounded-lg bg-muted p-2 text-xs">
+										<div>
+											<p className="text-muted-foreground">Technician</p>
+											<p className="font-medium">{m.technician}</p>
+										</div>
+										<div>
+											<p className="text-muted-foreground">Scheduled</p>
+											<p className="font-medium">{m.scheduledDate}</p>
+										</div>
+										{m.priority && (
+											<div>
+												<p className="text-muted-foreground">Priority</p>
+												<p className="font-medium">{m.priority}</p>
+											</div>
+										)}
+									</div>
+
+									{m.notes && (
+										<p className="line-clamp-2 text-xs text-muted-foreground">
+											{m.notes}
+										</p>
+									)}
+
+									<div className="flex justify-end pt-1">
+										<Button
+											size="sm"
+											onClick={() =>
+												setAssignTarget({
+													mode: "reschedule",
+													maintainId: m.originMTId,
+													printerId: m.printerId,
+													serialNo: m.serialNo,
+													model: m.model,
+													clientId: m.clientId,
+													client: m.client,
+													locationId: m.locationId,
+													location: m.location,
+													defaultTechnicianId: String(m.technicianId),
+													defaultPriorityId:
+														m.priorityId != null ? String(m.priorityId) : null,
+													defaultNotes: m.notes ?? "",
+													missedOn: m.scheduledDate,
+													daysOverdue: m.daysOverdue,
+												})
+											}
+										>
+											<UserCog className="h-4 w-4" />
+											Reschedule
+										</Button>
+									</div>
+								</CardContent>
+							</Card>
+						))}
+					</div>
+				</CardContent>
+			</Card>
+		)}
+
 		<Card className="rounded-2xl border shadow-sm">
 			<CardHeader className="flex flex-row items-center justify-between space-y-0">
 				<div>
@@ -170,7 +332,22 @@ export default function PendingMaintenancePanel() {
 													: ""}
 											</Badge>
 										) : (
-											<Button size="sm" onClick={() => setAssignTarget(item)}>
+											<Button
+												size="sm"
+												onClick={() =>
+													setAssignTarget({
+														mode: "assign",
+														maintainId: item.id,
+														printerId: item.printerId,
+														serialNo: item.serialNo,
+														model: item.model,
+														clientId: item.clientId,
+														client: item.client,
+														locationId: item.locationId,
+														location: item.location,
+													})
+												}
+											>
 												Assign
 											</Button>
 										)}
@@ -189,12 +366,15 @@ export default function PendingMaintenancePanel() {
 				onClose={() => setAssignTarget(null)}
 				onAssigned={() => {
 					queryClient.invalidateQueries({ queryKey: ["pending-maintenance"] });
+					queryClient.invalidateQueries({ queryKey: ["missed-schedules"] });
+					queryClient.invalidateQueries({ queryKey: ["openIssues"] });
 					queryClient.invalidateQueries({ queryKey: ["printers"] });
 					queryClient.invalidateQueries({ queryKey: ["schedules"] });
 					setAssignTarget(null);
 				}}
 			/>
 		</Card>
+		</div>
 	);
 }
 
@@ -205,7 +385,7 @@ function AssignScheduleModal({
 	onClose,
 	onAssigned,
 }: {
-	item: PendingMaintenanceItem | null;
+	item: AssignTarget | null;
 	technicians: Technician[];
 	priorities: Priority[];
 	onClose: () => void;
@@ -215,6 +395,19 @@ function AssignScheduleModal({
 	const [priorityId, setPriorityId] = useState<string | null>(null);
 	const [scheduleDate, setScheduleDate] = useState<Date | undefined>(undefined);
 	const [notes, setNotes] = useState("");
+
+	const isReschedule = item?.mode === "reschedule";
+
+	// Pre-fill from the missed schedule so "keep the same technician" needs no
+	// interaction — the scheduler only has to pick a new date. Reassigning is
+	// just changing the dropdown from here.
+	React.useEffect(() => {
+		if (!item) return;
+		setTechnicianId(item.defaultTechnicianId ?? null);
+		setPriorityId(item.defaultPriorityId ?? null);
+		setNotes(item.defaultNotes ?? "");
+		setScheduleDate(undefined);
+	}, [item]);
 
 	const technicianOptions: ComboboxItem[] = technicians.map((t) => ({
 		value: String(t.id),
@@ -234,7 +427,7 @@ function AssignScheduleModal({
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
 				body: JSON.stringify({
-					maintainId: item.id,
+					maintainId: item.maintainId,
 					printerId: item.printerId,
 					technicianId: Number(technicianId),
 					clientId: item.clientId,
@@ -252,8 +445,10 @@ function AssignScheduleModal({
 		},
 		onSuccess: () => {
 			showAppToast({
-				message: "Schedule created",
-				description: `${item?.serialNo} has been assigned.`,
+				message: isReschedule ? "Schedule moved" : "Schedule created",
+				description: isReschedule
+					? `${item?.serialNo} has been rescheduled.`
+					: `${item?.serialNo} has been assigned.`,
 				position: "top-right",
 				color: "success",
 			});
@@ -291,9 +486,13 @@ function AssignScheduleModal({
 		>
 			<DialogContent>
 				<DialogHeader>
-					<DialogTitle>Assign Schedule</DialogTitle>
+					<DialogTitle>
+						{isReschedule ? "Reschedule Missed Visit" : "Assign Schedule"}
+					</DialogTitle>
 					<DialogDescription>
-						Complete the details below to schedule this maintenance request.
+						{isReschedule
+							? `Missed on ${item?.missedOn}. Pick a new date, and change the technician only if you're reassigning.`
+							: "Complete the details below to schedule this maintenance request."}
 					</DialogDescription>
 				</DialogHeader>
 
@@ -329,9 +528,13 @@ function AssignScheduleModal({
 
 						<div className="space-y-2">
 							<label className="text-sm font-medium">Schedule Date *</label>
+							{/* Scheduling looks forward: today and any future date are
+							    valid, past dates are not. */}
 							<DatePicker
 								onDateSelect={setScheduleDate}
 								selectedDate={scheduleDate}
+								allowFutureDates
+								minDate={new Date()}
 							/>
 						</div>
 
@@ -362,7 +565,13 @@ function AssignScheduleModal({
 						onClick={() => mutate()}
 						disabled={!canSubmit}
 					>
-						{isPending ? "Assigning…" : "Create Schedule"}
+						{isPending
+							? isReschedule
+								? "Rescheduling…"
+								: "Assigning…"
+							: isReschedule
+							? "Reschedule"
+							: "Create Schedule"}
 					</Button>
 				</DialogFooter>
 			</DialogContent>

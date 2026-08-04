@@ -22,9 +22,7 @@ import {
 	FileText,
 	CalendarCheck,
 	CircleUserRound,
-	LogOut,
 	ChevronLeft,
-	Bell,
 	Printer,
 	ShieldCheck,
 	Lock,
@@ -37,6 +35,7 @@ import { SignOutBtn } from "@/components/auth/sign-out-button";
 import { canAccessModule, ModuleKey } from "@/lib/permissions";
 import { OfflineSyncProvider } from "@/features/offline-sync/OfflineSyncProvider";
 import { SyncStatusIndicator } from "@/components/SyncStatusIndicator";
+import { OpenIssuesBell } from "@/components/OpenIssuesBell";
 import {
 	fetchPartsCached,
 	fetchStatusCached,
@@ -269,10 +268,7 @@ export default function DashboardPage() {
 						<CircleUserRound className="h-5 w-5 shrink-0" />
 						{!collapsed && <span>Profile</span>}
 					</Link>
-					<div className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-sidebar-foreground/80">
-						<LogOut className="h-5 w-5 shrink-0" />
-						{!collapsed && <SignOutBtn />}
-					</div>
+					<SignOutBtn collapsed={collapsed} />
 					<button
 						onClick={() => setCollapsed((c) => !c)}
 						className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl border border-sidebar-border px-3 py-2 text-xs font-medium text-sidebar-foreground/70 hover:bg-sidebar-accent"
@@ -324,9 +320,11 @@ export default function DashboardPage() {
 					<div className="flex items-center gap-2 md:gap-4">
 						<SyncStatusIndicator />
 						<ThemeToggle />
-						<button className="relative rounded-full p-2 hover:bg-accent">
-							<Bell className="h-5 w-5" />
-						</button>
+						{/* Only Admin/Scheduler can read /api/open-issues, so the bell
+						    is hidden for Technicians rather than showing an empty badge. */}
+						<OpenIssuesBell
+							enabled={canAccessModule(users?.role, "schedule")}
+						/>
 						<div className="flex items-center gap-2 pl-2 md:border-l">
 							<Avatar className="h-8 w-8">
 								<AvatarFallback className="bg-primary text-primary-foreground text-xs">
@@ -390,8 +388,7 @@ function SheetNav({
 				<CircleUserRound className="h-5 w-5 shrink-0" />
 				<span>Profile</span>
 			</Link>
-			<div className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-sidebar-foreground/80">
-				<LogOut className="h-5 w-5 shrink-0" />
+			<div className="pt-1">
 				<SignOutBtn />
 			</div>
 		</nav>

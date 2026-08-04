@@ -17,6 +17,15 @@ interface DatePickerProps {
 	onDateSelect: (date: Date | undefined) => void; // Callback function to return the selected date
 	selectedDate?: Date | undefined; // Optional prop to pre-set a date
 	disabled?: boolean;
+	/**
+	 * Allow dates beyond tomorrow. Off by default because most callers record
+	 * something that already happened (a maintenance visit) and a future date
+	 * there would be a data-entry error. Scheduling screens set this to true —
+	 * booking work weeks ahead is the entire point there.
+	 */
+	allowFutureDates?: boolean;
+	/** Earliest selectable date. Defaults to no lower bound. */
+	minDate?: Date;
 }
 
 const today = new Date();
@@ -29,6 +38,8 @@ export function DatePicker({
 	onDateSelect,
 	selectedDate,
 	disabled = false,
+	allowFutureDates = false,
+	minDate,
 }: DatePickerProps) {
 	const [open, setOpen] = React.useState(false);
 	// Initialize internal state with the selectedDate prop, if provided
@@ -64,9 +75,15 @@ export function DatePicker({
 							onDateSelect(selectedDateFromCalendar); // Call the callback to pass the date to the parent
 							setOpen(false); // Close the popover
 						}}
-						disabled={
-							(date) => date > tomorrow //|| date < new Date("1900-01-01")
-						}
+						disabled={(date) => {
+							if (!allowFutureDates && date > tomorrow) return true;
+							if (minDate) {
+								const floor = new Date(minDate);
+								floor.setHours(0, 0, 0, 0);
+								if (date < floor) return true;
+							}
+							return false;
+						}}
 					/>
 				</PopoverContent>
 			</Popover>
