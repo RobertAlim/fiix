@@ -100,7 +100,7 @@ export default function TaskTracker() {
 	}, [schedules, selectedId]);
 
 	const handleRowClick = (mtId: number) => {
-		const url = `/api/pdf?mtId=${mtId}`;
+		const url = apiPath(`/api/pdf?mtId=${mtId}`);
 		window.open(url, "_blank");
 	};
 

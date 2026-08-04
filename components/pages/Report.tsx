@@ -56,7 +56,7 @@ export type Maintenance = {
 };
 
 const handlePrintMaintenance = (mtId: number) => {
-	const url = `/api/pdf?mtId=${mtId}`;
+	const url = apiPath(`/api/pdf?mtId=${mtId}`);
 	window.open(url, "_blank");
 };
 
