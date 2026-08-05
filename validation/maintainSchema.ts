@@ -165,3 +165,24 @@ export const maintainSubmitSchema = maintainFormSchema.and(
 );
 
 export type MaintainSubmitData = z.infer<typeof maintainSubmitSchema>;
+
+// ---------------------------------------------------------------------------
+// Purge Maintenance (Admin-only historical backfill) submission envelope
+// ---------------------------------------------------------------------------
+
+/**
+ * What the Purge Maintenance form POSTs: the same core report fields as the
+ * normal technician submission, but with no GPS fix (there was none to
+ * capture — this is an after-the-fact desk entry) and an admin-chosen
+ * maintenanceDate instead of "now". No clientUuid either — this isn't part
+ * of the offline-sync pipeline, so there's nothing to replay/dedupe against.
+ */
+export const purgeMaintainSubmitSchema = maintainFormSchema.and(
+	z.object({
+		maintenanceDate: z
+			.string()
+			.regex(/^\d{4}-\d{2}-\d{2}$/, "maintenanceDate must be YYYY-MM-DD"),
+	})
+);
+
+export type PurgeMaintainSubmitData = z.infer<typeof purgeMaintainSubmitSchema>;

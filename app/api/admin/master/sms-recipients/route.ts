@@ -2,14 +2,18 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/db";
-import { smsRecipients } from "@/db/schema";
-import { asc, ilike, eq } from "drizzle-orm";
+import { smsRecipients, users } from "@/db/schema";
+import { asc, ilike, eq, or } from "drizzle-orm";
 import { requireRole } from "@/lib/require-role";
-import { normalizePhMobile } from "@/lib/sms";
+
+// Only these roles ever actually receive the Time In notification (see
+// app/api/attendance/time-in) — rejecting anyone else here at link-time
+// avoids a recipient that silently never gets a text and looks "linked"
+// in the UI while doing nothing.
+const NOTIFIABLE_ROLES = ["Admin", "Scheduler"];
 
 const bodySchema = z.object({
-	label: z.string().trim().min(1).max(100),
-	mobileNumber: z.string().trim(),
+	userId: z.number().int().positive(),
 	isActive: z.boolean().optional(),
 });
 
@@ -20,10 +24,24 @@ export async function GET(req: Request) {
 	const search = new URL(req.url).searchParams.get("search")?.trim();
 
 	const rows = await db
-		.select()
+		.select({
+			id: smsRecipients.id,
+			userId: smsRecipients.userId,
+			firstName: users.firstName,
+			lastName: users.lastName,
+			email: users.email,
+			role: users.role,
+			contactNo: users.contactNo,
+			isActive: smsRecipients.isActive,
+		})
 		.from(smsRecipients)
-		.where(search ? ilike(smsRecipients.label, `%${search}%`) : undefined)
-		.orderBy(asc(smsRecipients.label));
+		.innerJoin(users, eq(users.id, smsRecipients.userId))
+		.where(
+			search
+				? or(ilike(users.firstName, `%${search}%`), ilike(users.lastName, `%${search}%`))
+				: undefined
+		)
+		.orderBy(asc(users.lastName), asc(users.firstName));
 
 	return NextResponse.json(rows);
 }
@@ -40,14 +58,19 @@ export async function POST(req: Request) {
 		);
 	}
 
-	// Canonicalize before storing: "09171234567" and "+639171234567" are the
-	// same phone. Storing whichever form the admin happened to type would let
-	// the same number in twice under different spellings — which is exactly
-	// how one Time In turns into duplicate texts to one person.
-	const mobileNumber = normalizePhMobile(parsed.data.mobileNumber);
-	if (!mobileNumber) {
+	const [user] = await db
+		.select({ id: users.id, role: users.role })
+		.from(users)
+		.where(eq(users.id, parsed.data.userId))
+		.limit(1);
+	if (!user) {
+		return NextResponse.json({ error: "User not found." }, { status: 404 });
+	}
+	if (!user.role || !NOTIFIABLE_ROLES.includes(user.role)) {
 		return NextResponse.json(
-			{ error: "Invalid Philippine mobile number." },
+			{
+				error: `Only ${NOTIFIABLE_ROLES.join(" and ")} users receive Time In notifications — this user's role doesn't qualify.`,
+			},
 			{ status: 400 }
 		);
 	}
@@ -55,11 +78,11 @@ export async function POST(req: Request) {
 	const [existing] = await db
 		.select({ id: smsRecipients.id })
 		.from(smsRecipients)
-		.where(eq(smsRecipients.mobileNumber, mobileNumber))
+		.where(eq(smsRecipients.userId, parsed.data.userId))
 		.limit(1);
 	if (existing) {
 		return NextResponse.json(
-			{ error: "This mobile number is already on the recipient list." },
+			{ error: "This user is already on the recipient list." },
 			{ status: 409 }
 		);
 	}
@@ -67,8 +90,7 @@ export async function POST(req: Request) {
 	const [row] = await db
 		.insert(smsRecipients)
 		.values({
-			label: parsed.data.label,
-			mobileNumber,
+			userId: parsed.data.userId,
 			isActive: parsed.data.isActive ?? true,
 		})
 		.returning();

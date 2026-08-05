@@ -3,12 +3,30 @@
 // full ordered list of schedule ids for that (technician, date) rather than
 // a single move, so drag-and-drop reordering on the client can just POST its
 // current array — no separate "swap these two" protocol to keep in sync.
+//
+// Two business rules layered on top of the plain reorder:
+//  1. If the technician has already timed in TODAY, the first stop is
+//     locked — they may already be en route to it or on site, so silently
+//     bumping them to a different first stop is the kind of change that
+//     needs a phone call, not a background reorder. Only applies when
+//     scheduledAt is today; future/past days are unaffected.
+//  2. On every successful save, the assigned technician gets an SMS —
+//     "your itinerary has been set" for a future date, "has been updated"
+//     for today. This runs unconditionally, including when nothing in the
+//     order actually changed, by design: with the Scheduler UI's Save
+//     button always enabled (no more "nothing changed" gate), a deliberate
+//     re-click is the intended way to re-notify a technician.
 import { NextResponse } from "next/server";
 import { db } from "@/db";
-import { schedules } from "@/db/schema";
+import { schedules, users, technicianAttendance } from "@/db/schema";
 import { eq, and, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import { requireRole } from "@/lib/require-role";
+import {
+	phTodayDateString,
+	formatScheduleDayLabel,
+} from "@/lib/attendance";
+import { sendSmsToRecipients } from "@/lib/sms";
 
 const bodySchema = z.object({
 	technicianId: z.number().int().positive(),
@@ -33,8 +51,10 @@ export async function PATCH(req: Request) {
 	// Every id in the reorder must actually belong to this technician's day —
 	// otherwise a stale client array could silently move someone else's
 	// schedule (or a schedule from a different date) into this sequence.
+	// Also doubles as the "current order" read used by the first-stop lock
+	// below, so it's fetched with `sequence` rather than just `id`.
 	const owned = await db
-		.select({ id: schedules.id })
+		.select({ id: schedules.id, sequence: schedules.sequence })
 		.from(schedules)
 		.where(
 			and(
@@ -52,6 +72,43 @@ export async function PATCH(req: Request) {
 			},
 			{ status: 409 }
 		);
+	}
+
+	const isToday = scheduledAt === phTodayDateString();
+
+	if (isToday) {
+		const [session] = await db
+			.select({ id: technicianAttendance.id })
+			.from(technicianAttendance)
+			.where(
+				and(
+					eq(technicianAttendance.technicianId, technicianId),
+					eq(technicianAttendance.workDate, scheduledAt)
+				)
+			)
+			.limit(1);
+
+		if (session) {
+			// Same ordering rule used everywhere else the itinerary is
+			// displayed (schedule GET, attendance status): sequenced stops
+			// first ascending, unsequenced after by id.
+			const currentFirst = [...owned].sort((a, b) => {
+				if (a.sequence != null && b.sequence != null) return a.sequence - b.sequence;
+				if (a.sequence != null) return -1;
+				if (b.sequence != null) return 1;
+				return a.id - b.id;
+			})[0];
+
+			if (currentFirst && orderedScheduleIds[0] !== currentFirst.id) {
+				return NextResponse.json(
+					{
+						error:
+							"The technician has already timed in. Re-ordering the first itinerary is not allowed.",
+					},
+					{ status: 409 }
+				);
+			}
+		}
 	}
 
 	// A single CASE-based UPDATE keeps the reorder atomic — no window where
@@ -80,6 +137,34 @@ export async function PATCH(req: Request) {
 		.update(schedules)
 		.set({ sequence: caseExpr })
 		.where(inArray(schedules.id, orderedScheduleIds));
+
+	// Best-effort notification — a delivery failure must never fail the
+	// reorder itself, which already succeeded above. Skipped entirely for a
+	// past date: reordering history (allowed — the date picker has no lower
+	// bound, for correcting old records) shouldn't tell a technician their
+	// itinerary "has been set" for a day that's already over.
+	const isPast = scheduledAt < phTodayDateString();
+	if (!isPast) {
+		try {
+			const [technician] = await db
+				.select({ firstName: users.firstName, contactNo: users.contactNo })
+				.from(users)
+				.where(eq(users.id, technicianId))
+				.limit(1);
+
+			if (technician?.contactNo) {
+				const message = isToday
+					? `Hello ${technician.firstName}! Your itinerary has been updated. For more details, please visit your dashboard: https://www.fruitbeanink.com/fiix/dashboard`
+					: `Hello ${technician.firstName}! Your itinerary for ${formatScheduleDayLabel(
+							scheduledAt
+					  )} has been set. For more details, please visit your dashboard: https://www.fruitbeanink.com/fiix/dashboard`;
+
+				await sendSmsToRecipients([technician.contactNo], message);
+			}
+		} catch (err) {
+			console.error("Itinerary SMS notification failed:", err);
+		}
+	}
 
 	return NextResponse.json({ success: true });
 }

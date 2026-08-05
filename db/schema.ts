@@ -105,6 +105,17 @@ export const maintain = pgTable("maintain", {
 	// detect the replay and return the existing record instead of inserting a
 	// duplicate. Nullable because legacy rows predate offline support.
 	clientUuid: uuid("clientUuid").unique(),
+	/** True only for records created via the Admin-only Purge Maintenance
+	 * backfill tool, as opposed to a Technician's normal field workflow. No
+	 * maintenanceLocation row is ever created for these (there was no GPS
+	 * fix to capture), which is what the report print layout already keys
+	 * off of to omit "GPS Verified Location" — this column exists mainly so
+	 * the backfill's progress/completeness can be audited directly
+	 * (`SELECT count(*) FROM maintain WHERE "isBackfilled"`), independent of
+	 * that join. Purge Maintenance is a temporary migration tool; once
+	 * historical data is fully synchronized this column (and the module)
+	 * can be removed. */
+	isBackfilled: boolean("isBackfilled").notNull().default(false),
 });
 
 export const schedules = pgTable("schedules", {
@@ -474,10 +485,20 @@ export const technicianAttendance = pgTable(
 
 /** Recipients who get an SMS whenever any technician times in. Not
  * per-technician — the spec calls for a single managed distribution list. */
+/** Recipients who get an SMS whenever any technician times in. Linked to a
+ * `users` row rather than a free-typed name+number — the phone number is
+ * read live from users.contactNo at send time, so it can never drift out of
+ * sync with what's on that person's account, and there's nothing to type
+ * incorrectly here. Only Admin/Scheduler roles actually receive the
+ * notification (see app/api/attendance/time-in) even if a linked user's
+ * role changes later — this table just says "opted in", the role check at
+ * send time is what's authoritative. */
 export const smsRecipients = pgTable("smsRecipients", {
 	id: serial("id").primaryKey(),
-	label: varchar("label", { length: 100 }).notNull(),
-	mobileNumber: varchar("mobileNumber", { length: 13 }).notNull().unique(),
+	userId: integer("userId")
+		.notNull()
+		.unique()
+		.references(() => users.id, { onDelete: "cascade" }),
 	isActive: boolean("isActive").notNull().default(true),
 	createdAt: timestamp("createdAt").notNull().default(sql`now()`),
 });

@@ -43,6 +43,34 @@ export function formatRenderedDuration(totalMinutes: number): string {
 	return `${hrs} hr${hrs === 1 ? "" : "s"} ${remMins} min${remMins === 1 ? "" : "s"}`;
 }
 
+/** "Thursday, August 6" — deliberately no year, matching the itinerary-set
+ * SMS wording (a full date reads oddly in a text message; "Monday, July 12,
+ * 2026" is used elsewhere for the attendance report, which is a different
+ * audience/context). */
+export function formatScheduleDayLabel(dateStr: string): string {
+	// dateStr is a plain YYYY-MM-DD from the schedules table (no time
+	// component). Parsing as UTC noon avoids any local-timezone rollover
+	// that midnight parsing is prone to.
+	const d = new Date(`${dateStr}T12:00:00Z`);
+	return d.toLocaleDateString("en-US", {
+		timeZone: "Asia/Manila",
+		weekday: "long",
+		month: "long",
+		day: "numeric",
+	});
+}
+
+/** YYYY-MM-DD for "today" in Asia/Manila, computed without a DB round trip
+ * — the `en-CA` locale formats as ISO order, which is the trick used here. */
+export function phTodayDateString(): string {
+	return new Intl.DateTimeFormat("en-CA", {
+		timeZone: "Asia/Manila",
+		year: "numeric",
+		month: "2-digit",
+		day: "2-digit",
+	}).format(new Date());
+}
+
 const PH_DATE_OPTS: Intl.DateTimeFormatOptions = {
 	timeZone: "Asia/Manila",
 	weekday: "long",

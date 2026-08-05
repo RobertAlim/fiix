@@ -15,8 +15,10 @@ export default function SmsRecipientsPage() {
 					SMS Recipients
 				</CardTitle>
 				<p className="text-sm text-muted-foreground">
-					Everyone on this list with &quot;Active&quot; checked gets a text
-					whenever any Technician times in.
+					Admin and Scheduler users on this list with &quot;Active&quot;
+					checked get a text whenever any Technician times in. The
+					number sent to is whatever&apos;s on that person&apos;s account
+					— update it from their profile if it changes.
 				</p>
 			</CardHeader>
 			<CardContent>
@@ -24,10 +26,28 @@ export default function SmsRecipientsPage() {
 					title="Recipient"
 					listEndpoint="/api/admin/master/sms-recipients"
 					itemEndpoint={(id) => `/api/admin/master/sms-recipients/${id}`}
-					filters={[{ param: "search", label: "Label" }]}
+					filters={[{ param: "search", label: "Name" }]}
 					columns={[
-						{ key: "label", label: "Label", minWidth: "min-w-[160px]" },
-						{ key: "mobileNumber", label: "Mobile Number", minWidth: "min-w-[150px]" },
+						{
+							key: "firstName",
+							label: "Name",
+							minWidth: "min-w-[160px]",
+							render: (r) => `${r.firstName} ${r.lastName}`,
+						},
+						{ key: "role", label: "Role", minWidth: "min-w-[100px]" },
+						{
+							key: "contactNo",
+							label: "Mobile Number",
+							minWidth: "min-w-[140px]",
+							render: (r) =>
+								r.contactNo ? (
+									String(r.contactNo)
+								) : (
+									<span className="text-muted-foreground">
+										Not set on profile
+									</span>
+								),
+						},
 						{
 							key: "isActive",
 							label: "Status",
@@ -40,13 +60,20 @@ export default function SmsRecipientsPage() {
 						},
 					]}
 					fields={[
-						{ name: "label", label: "Label", type: "text", required: true, placeholder: "e.g. Ops Manager" },
 						{
-							name: "mobileNumber",
-							label: "Mobile Number",
-							type: "text",
+							name: "userId",
+							label: "User",
+							type: "select",
 							required: true,
-							placeholder: "09XXXXXXXXX",
+							immutable: true,
+							optionsEndpoint: "/api/admin/users?role=Admin,Scheduler",
+							optionsQueryKey: ["/api/admin/users?role=Admin,Scheduler"],
+							optionsMap: (r) => ({
+								value: String(r.id),
+								label: `${r.firstName} ${r.lastName} (${r.role})${
+									r.contactNo ? "" : " — no number on file"
+								}`,
+							}),
 						},
 						{
 							name: "isActive",
@@ -55,7 +82,7 @@ export default function SmsRecipientsPage() {
 							defaultValue: "true",
 						},
 					]}
-					displayName={(row) => String(row.label)}
+					displayName={(row) => `${row.firstName} ${row.lastName}`}
 				/>
 			</CardContent>
 		</Card>

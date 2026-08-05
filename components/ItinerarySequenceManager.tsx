@@ -13,16 +13,21 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ComboBoxResponsive, ComboboxItem } from "@/components/ui/combobox";
 import { DatePicker } from "@/components/ui/date-picker";
-import { ArrowUp, ArrowDown, ListOrdered, Loader2 } from "lucide-react";
+import { ArrowUp, ArrowDown, ListOrdered, Loader2, Lock } from "lucide-react";
 import { format } from "date-fns";
 import { fetchData } from "@/lib/fetchData";
 import { apiPath } from "@/lib/base-path";
 import { showAppToast } from "@/components/ui/apptoast";
 import { useSchedules } from "@/hooks/use-schedules";
+import { phTodayDateString } from "@/lib/attendance";
 
 interface Technician {
 	id: number;
 	name: string;
+}
+
+interface TechnicianStatus {
+	timedInToday: boolean;
 }
 
 // Module-level so it's the SAME array reference on every render. The bug
@@ -55,15 +60,28 @@ export function ItinerarySequenceManager() {
 	}));
 
 	const scheduledAt = date ? format(date, "yyyy-MM-dd") : undefined;
-	const {
-		data: schedulesData,
-		isLoading,
-		isFetching,
-	} = useSchedules({
+	const { data: schedulesData, isLoading } = useSchedules({
 		technicianId: technicianId ? Number(technicianId) : undefined,
 		scheduledAt,
 	});
 	const schedules = schedulesData ?? EMPTY_SCHEDULES;
+
+	// Only meaningful for today — reordering a past or future day is never
+	// restricted by whether the technician has timed in (they can't have,
+	// for a future day; it's moot for a past one).
+	const scheduledAtIsToday = scheduledAt === phTodayDateString();
+	const { data: technicianStatus } = useQuery<TechnicianStatus>({
+		queryKey: ["technician-status", technicianId],
+		queryFn: () =>
+			fetchData<TechnicianStatus>(
+				`/api/attendance/technician-status?technicianId=${technicianId}`
+			),
+		enabled: !!technicianId && scheduledAtIsToday,
+		// Short — this drives a UI lock the Scheduler needs to see update
+		// promptly right around when a technician actually times in.
+		staleTime: 30 * 1000,
+	});
+	const firstStopLocked = scheduledAtIsToday && !!technicianStatus?.timedInToday;
 
 	// Local, reorderable copy of the day's schedule ids. Reset whenever the
 	// underlying data changes (new technician/date picked, or a save just
@@ -78,6 +96,12 @@ export function ItinerarySequenceManager() {
 		.filter((s): s is (typeof schedules)[number] => !!s);
 
 	const move = (index: number, dir: -1 | 1) => {
+		// The first stop (index 0) can't be reordered out of, and nothing can
+		// be reordered into it, once the technician has timed in today —
+		// enforced here for immediate UI feedback, and again server-side in
+		// PATCH /api/schedule/sequence since this is a business rule, not
+		// just a UI nicety.
+		if (firstStopLocked && (index === 0 || index + dir === 0)) return;
 		setOrder((prev) => {
 			if (!prev) return prev;
 			const next = [...prev];
@@ -87,11 +111,6 @@ export function ItinerarySequenceManager() {
 			return next;
 		});
 	};
-
-	const isDirty =
-		!!order &&
-		order.length === schedules.length &&
-		order.some((id, i) => id !== schedules[i]?.id);
 
 	const handleSave = async () => {
 		if (!technicianId || !scheduledAt || !order || order.length === 0) return;
@@ -162,6 +181,14 @@ export function ItinerarySequenceManager() {
 					</div>
 				</div>
 
+				{firstStopLocked && (
+					<div className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-sm text-warning-foreground">
+						<Lock className="mt-0.5 h-4 w-4 shrink-0" />
+						The technician has already timed in. Re-ordering the first
+						itinerary is not allowed.
+					</div>
+				)}
+
 				{!technicianId || !date ? (
 					<p className="py-6 text-center text-sm text-muted-foreground">
 						Pick a technician and date to see their itinerary.
@@ -195,7 +222,7 @@ export function ItinerarySequenceManager() {
 										variant="outline"
 										size="icon"
 										className="h-8 w-8"
-										disabled={idx === 0}
+										disabled={idx === 0 || (firstStopLocked && idx === 1)}
 										onClick={() => move(idx, -1)}
 										aria-label="Move up"
 									>
@@ -205,7 +232,10 @@ export function ItinerarySequenceManager() {
 										variant="outline"
 										size="icon"
 										className="h-8 w-8"
-										disabled={idx === orderedSchedules.length - 1}
+										disabled={
+											idx === orderedSchedules.length - 1 ||
+											(firstStopLocked && idx === 0)
+										}
 										onClick={() => move(idx, 1)}
 										aria-label="Move down"
 									>
@@ -216,7 +246,15 @@ export function ItinerarySequenceManager() {
 						))}
 
 						<div className="flex justify-end pt-2">
-							<Button onClick={handleSave} disabled={!isDirty || isSaving || isFetching}>
+							{/* Always enabled (aside from the hard preconditions below) —
+						    a Scheduler re-clicking Save with no actual change is a
+						    deliberate action, not a mistake: it's how they re-notify
+						    a technician (see the automatic SMS in the sequence
+						    route) without having to touch the order first. */}
+						<Button
+							onClick={handleSave}
+							disabled={isSaving || !order || order.length === 0}
+						>
 								{isSaving ? (
 									<>
 										<Loader2 className="h-4 w-4 animate-spin" /> Saving…

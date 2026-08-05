@@ -3,13 +3,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/db";
 import { smsRecipients } from "@/db/schema";
-import { eq, and, ne } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { requireRole } from "@/lib/require-role";
-import { normalizePhMobile } from "@/lib/sms";
 
+// userId is intentionally not editable here — swapping which person a
+// recipient row represents is a delete-and-re-add, not an edit, so the
+// role/opt-in validation in POST always runs for a new linkage.
 const bodySchema = z.object({
-	label: z.string().trim().min(1).max(100).optional(),
-	mobileNumber: z.string().trim().optional(),
 	isActive: z.boolean().optional(),
 });
 
@@ -36,31 +36,9 @@ export async function PATCH(
 		);
 	}
 
-	let mobileNumber: string | undefined;
-	if (parsed.data.mobileNumber) {
-		mobileNumber = normalizePhMobile(parsed.data.mobileNumber) ?? undefined;
-		if (!mobileNumber) {
-			return NextResponse.json(
-				{ error: "Invalid Philippine mobile number." },
-				{ status: 400 }
-			);
-		}
-		const [dupe] = await db
-			.select({ id: smsRecipients.id })
-			.from(smsRecipients)
-			.where(and(eq(smsRecipients.mobileNumber, mobileNumber), ne(smsRecipients.id, id)))
-			.limit(1);
-		if (dupe) {
-			return NextResponse.json(
-				{ error: "This mobile number is already on the recipient list." },
-				{ status: 409 }
-			);
-		}
-	}
-
 	const [row] = await db
 		.update(smsRecipients)
-		.set({ ...parsed.data, ...(mobileNumber ? { mobileNumber } : {}) })
+		.set(parsed.data)
 		.where(eq(smsRecipients.id, id))
 		.returning();
 

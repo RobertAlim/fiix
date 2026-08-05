@@ -7,7 +7,7 @@ import {
 	smsRecipients,
 	users,
 } from "@/db/schema";
-import { eq, and, asc, sql, isNull } from "drizzle-orm";
+import { eq, and, asc, sql, isNull, inArray, isNotNull } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireRole } from "@/lib/require-role";
@@ -162,10 +162,22 @@ export async function POST(req: Request) {
 			.where(eq(users.id, technicianId))
 			.limit(1);
 
+		// Sourced from users.contactNo, not a manually-typed number — and
+		// filtered to Admin/Scheduler here even though smsRecipients only
+		// ever links those roles at creation time (see the sms-recipients
+		// POST route), because a linked user's role can change afterward.
+		// This is the authoritative check; linkage alone is not.
 		const recipients = await db
-			.select({ mobileNumber: smsRecipients.mobileNumber })
+			.select({ contactNo: users.contactNo })
 			.from(smsRecipients)
-			.where(eq(smsRecipients.isActive, true));
+			.innerJoin(users, eq(users.id, smsRecipients.userId))
+			.where(
+				and(
+					eq(smsRecipients.isActive, true),
+					inArray(users.role, ["Admin", "Scheduler"]),
+					isNotNull(users.contactNo)
+				)
+			);
 
 		if (recipients.length > 0 && technician) {
 			const timeStr = new Date().toLocaleTimeString("en-US", {
@@ -174,7 +186,9 @@ export async function POST(req: Request) {
 				minute: "2-digit",
 			});
 			smsResult = await sendSmsToRecipients(
-				recipients.map((r) => r.mobileNumber),
+				recipients
+					.map((r) => r.contactNo)
+					.filter((n): n is string => n != null),
 				`${technician.firstName} ${technician.lastName} has timed in at ${timeStr}.`
 			);
 		}

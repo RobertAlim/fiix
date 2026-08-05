@@ -7,6 +7,30 @@ import { toProperCase } from "@/lib/stringUtils";
 import { requireRole } from "@/lib/require-role";
 import { and, eq, sql } from "drizzle-orm";
 
+export async function GET(req: NextRequest) {
+	const authResult = await requireRole(["Admin", "Technician", "Scheduler"]);
+	if (authResult.error) return authResult.error;
+
+	const clientIdParam = new URL(req.url).searchParams.get("clientId");
+	const clientId = Number(clientIdParam);
+	if (!clientIdParam || !Number.isInteger(clientId) || clientId <= 0) {
+		return NextResponse.json({ error: "Invalid clientId." }, { status: 400 });
+	}
+
+	const rows = await db
+		.select({
+			id: signatories.id,
+			firstName: signatories.firstName,
+			lastName: signatories.lastName,
+		})
+		.from(signatories)
+		.where(eq(signatories.clientId, clientId));
+
+	return NextResponse.json(
+		rows.map((s) => ({ value: String(s.id), label: `${s.firstName} ${s.lastName}` }))
+	);
+}
+
 export async function POST(req: NextRequest) {
 	const authResult = await requireRole(["Admin", "Technician"]);
 	if (authResult.error) return authResult.error;

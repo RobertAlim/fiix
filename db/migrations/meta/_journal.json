@@ -351,6 +351,27 @@
       "when": 1785852193100,
       "tag": "0050_users_email_unique",
       "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1785887541838,
+      "tag": "0051_sms_recipients_add_user_link",
+      "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1785887553884,
+      "tag": "0052_sms_recipients_finalize_user_link",
+      "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1785892439741,
+      "tag": "0053_maintain_is_backfilled",
+      "breakpoints": true
     }
   ]
 }
