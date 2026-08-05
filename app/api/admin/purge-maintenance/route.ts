@@ -77,6 +77,17 @@ export async function POST(req: Request) {
 				originMTId: data.originMTId,
 				createdAt: backfilledCreatedAt,
 				isBackfilled: true,
+				// nozzlePath is the R2 object key for the captured maintenance
+				// photo (bucket "fiixnozzle") — the Admin uploads it directly
+				// before submitting (see components/pages/PurgeMaintenance.tsx),
+				// the same key convention the real technician flow uses. This
+				// alone is what makes it show up in the printed report: GET
+				// /api/pdf and MaintainReport.tsx already render whatever's in
+				// maintain.nozzlePath, unconditionally of how the record was
+				// created — no changes needed on that side. Optional here,
+				// unlike the technician flow — a historical backfill may not
+				// always have a photo to attach.
+				nozzlePath: data.nozzlePath || null,
 				// No clientUuid — this record never goes through offline-sync
 				// idempotency/replay handling, so there's nothing to key it by.
 			})

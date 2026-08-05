@@ -10,17 +10,30 @@
 //   3. The maintenance form itself, pre-filled from the picked printer
 //
 // Deliberately NOT the same component as the Technician-facing Maintenance
-// page: that one is built around QR scanning, mandatory GPS capture, camera
-// nozzle checks, and offline-first sync — none of which apply to an Admin
-// backfilling desk-side. It posts to a separate route (no GPS requirement)
-// and never creates a GPS row, which is what makes the printed report
-// correctly omit "GPS Verified Location" for these records.
+// page: that one is built around QR scanning, mandatory GPS capture, and
+// offline-first sync — none of which apply to an Admin backfilling
+// desk-side. It posts to a separate route (no GPS requirement) and never
+// creates a GPS row, which is what makes the printed report correctly omit
+// "GPS Verified Location" for these records.
+//
+// Image capture IS retained, unlike GPS: the maintenance photo (nozzle
+// check) is genuine supporting documentation for the historical record, not
+// something tied to being physically on-site the way GPS is. Uploaded
+// directly to R2 (presign + PUT, same bucket/key convention as the
+// technician flow) rather than through the offline-sync queue — this tool
+// is desktop/online-only, so there's no offline case to support. Once
+// maintain.nozzlePath is set, GET /api/pdf and MaintainReport.tsx already
+// render it unconditionally of how the record was created, so the photo
+// shows up in both the report preview and the printed PDF with no changes
+// needed on that side.
 import React, { useEffect, useMemo, useState } from "react";
 import { useForm, useWatch, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import Select from "react-select";
 import { format } from "date-fns";
+import { v4 as uuidv4 } from "uuid";
+import Image from "next/image";
 
 import {
 	Dialog,
@@ -37,11 +50,18 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { ComboBoxResponsive, ComboboxItem } from "@/components/ui/combobox";
 import { DatePicker } from "@/components/ui/date-picker";
-import { Loader2, Printer as PrinterIcon, ArrowLeft, History } from "lucide-react";
+import {
+	Loader2,
+	Printer as PrinterIcon,
+	ArrowLeft,
+	History,
+	CheckIcon,
+} from "lucide-react";
 
 import { fetchData } from "@/lib/fetchData";
 import { apiPath } from "@/lib/base-path";
 import { showAppToast } from "@/components/ui/apptoast";
+import { CameraCapture } from "@/components/CameraCapture";
 import {
 	maintainFormSchema,
 	type MaintainFormData,
@@ -88,6 +108,58 @@ export default function PurgeMaintenancePage({ onClose }: { onClose: () => void 
 
 	// Step 2 selection
 	const [selectedPrinter, setSelectedPrinter] = useState<PurgePrinter | null>(null);
+
+	// Step 3: captured maintenance photo (nozzle check) — optional here,
+	// unlike the mandatory version in the real Technician flow. Not every
+	// historical record being backfilled will have a photo available.
+	const [nozzleCheckOpen, setNozzleCheckOpen] = useState(false);
+	const [capturedBlob, setCapturedBlob] = useState<Blob | null>(null);
+	const [objectURL, setObjectURL] = useState<string | null>(null);
+	const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+
+	useEffect(() => {
+		if (capturedBlob) {
+			const url = URL.createObjectURL(capturedBlob);
+			setObjectURL(url);
+			return () => URL.revokeObjectURL(url);
+		}
+		setObjectURL(null);
+	}, [capturedBlob]);
+
+	const resetPhoto = () => {
+		setCapturedBlob(null);
+	};
+
+	/** Presign + PUT directly to R2 — same bucket/key convention the real
+	 * Technician flow uses (see features/offline-sync/sync-engine.ts), just
+	 * done synchronously here instead of through the offline queue, since
+	 * this tool has no offline case to support. Returns the R2 object key,
+	 * which is exactly what maintain.nozzlePath stores. */
+	const uploadNozzlePhoto = async (blob: Blob): Promise<string> => {
+		const key = `${uuidv4()}.png`;
+		const presignRes = await fetch(apiPath("/api/get-upload-url"), {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				key,
+				contentType: "image/png",
+				bucketName: "fiixnozzle",
+			}),
+		});
+		if (!presignRes.ok) {
+			throw new Error("Could not get an upload URL for the photo.");
+		}
+		const { url } = await presignRes.json();
+		const putRes = await fetch(url, {
+			method: "PUT",
+			headers: { "Content-Type": "image/png" },
+			body: blob,
+		});
+		if (!putRes.ok) {
+			throw new Error("Photo upload to storage failed.");
+		}
+		return key;
+	};
 
 	const handleClose = () => {
 		setOpen(false);
@@ -216,6 +288,7 @@ export default function PurgeMaintenancePage({ onClose }: { onClose: () => void 
 
 	const handleSelectPrinter = (printer: PurgePrinter) => {
 		setSelectedPrinter(printer);
+		resetPhoto();
 		const client = clients.find((c) => String(c.id) === clientId);
 		const location = locations.find((l) => String(l.id) === locationId);
 		resetForm({
@@ -270,7 +343,16 @@ export default function PurgeMaintenancePage({ onClose }: { onClose: () => void 
 	const onSubmit = async (data: MaintainFormData) => {
 		if (!scheduledAt) return;
 		try {
-			await submitRecord({ ...data, maintenanceDate: scheduledAt });
+			let nozzlePath: string | undefined;
+			if (capturedBlob) {
+				setIsUploadingPhoto(true);
+				try {
+					nozzlePath = await uploadNozzlePhoto(capturedBlob);
+				} finally {
+					setIsUploadingPhoto(false);
+				}
+			}
+			await submitRecord({ ...data, nozzlePath, maintenanceDate: scheduledAt });
 			showAppToast({
 				message: "Historical maintenance record saved",
 				description: selectedPrinter
@@ -284,6 +366,7 @@ export default function PurgeMaintenancePage({ onClose }: { onClose: () => void 
 			// visit at a time across several printers, so re-asking the
 			// header fields for every single printer would be tedious.
 			setSelectedPrinter(null);
+			resetPhoto();
 			setStep(2);
 			refetchPrinters();
 		} catch (err) {
@@ -568,6 +651,44 @@ export default function PurgeMaintenancePage({ onClose }: { onClose: () => void 
 						</div>
 
 						<div className="space-y-1">
+							<Label>Maintenance Photo</Label>
+							<div className="flex items-start gap-2">
+								<Button
+									type="button"
+									variant="secondary"
+									onClick={() => setNozzleCheckOpen(true)}
+									className="rounded-full p-1"
+								>
+									<CheckIcon className="h-5 w-5" />
+								</Button>
+								{capturedBlob && objectURL && (
+									<div className="flex flex-col items-start gap-1">
+										<Image
+											src={objectURL}
+											alt="Maintenance photo"
+											className="max-w-xs rounded-md border"
+											height={120}
+											width={250}
+										/>
+										<Button
+											type="button"
+											variant="ghost"
+											size="sm"
+											className="h-auto p-0 text-xs text-muted-foreground"
+											onClick={resetPhoto}
+										>
+											Remove photo
+										</Button>
+									</div>
+								)}
+							</div>
+							<p className="text-xs text-muted-foreground">
+								Optional — attach a photo if one&apos;s available for this
+								historical record.
+							</p>
+						</div>
+
+						<div className="space-y-1">
 							<Label>Signatory</Label>
 							<Controller
 								name="signatoryId"
@@ -598,8 +719,12 @@ export default function PurgeMaintenancePage({ onClose }: { onClose: () => void 
 							>
 								<ArrowLeft className="mr-1 h-4 w-4" /> Back to Printers
 							</Button>
-							<Button type="submit" disabled={isSaving}>
-								{isSaving ? (
+							<Button type="submit" disabled={isSaving || isUploadingPhoto}>
+								{isUploadingPhoto ? (
+									<>
+										<Loader2 className="h-4 w-4 animate-spin" /> Uploading photo…
+									</>
+								) : isSaving ? (
 									<>
 										<Loader2 className="h-4 w-4 animate-spin" /> Saving…
 									</>
@@ -635,6 +760,25 @@ export default function PurgeMaintenancePage({ onClose }: { onClose: () => void 
 					</DialogFooter>
 				)}
 			</DialogContent>
+
+			<Dialog open={nozzleCheckOpen} onOpenChange={setNozzleCheckOpen}>
+				<DialogContent className="max-w-md">
+					<DialogHeader>
+						<DialogTitle>Maintenance Photo</DialogTitle>
+					</DialogHeader>
+					<CameraCapture
+						capturedBlob={capturedBlob}
+						onCapture={(blob) => setCapturedBlob(blob)}
+						onRetake={resetPhoto}
+						onClose={() => setNozzleCheckOpen(false)}
+					/>
+					<DialogFooter>
+						<Button type="button" onClick={() => setNozzleCheckOpen(false)}>
+							Done
+						</Button>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
 		</Dialog>
 	);
 }
