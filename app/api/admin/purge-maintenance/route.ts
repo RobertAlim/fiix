@@ -36,22 +36,25 @@ export async function POST(req: Request) {
 	}
 	const data = parsed.data;
 
-	// userId here is the *selected Technician*, not the signed-in Admin —
-	// "Prepared By" on the backfilled record should read as the person who
-	// actually did the work, matching every other maintenance record.
-	const [technician] = await db
-		.select({ id: users.id, role: users.role })
-		.from(users)
-		.where(eq(users.id, data.userId))
-		.limit(1);
-	if (!technician || technician.role !== "Technician") {
-		return NextResponse.json(
-			{ error: "Selected user is not a Technician." },
-			{ status: 400 }
-		);
-	}
-
 	try {
+		// userId here is the *selected Technician*, not the signed-in Admin —
+		// "Prepared By" on the backfilled record should read as the person
+		// who actually did the work, matching every other maintenance
+		// record. Moved inside this try (previously outside it) so a
+		// transient DB error here also returns clean JSON instead of an
+		// unhandled rejection.
+		const [technician] = await db
+			.select({ id: users.id, role: users.role })
+			.from(users)
+			.where(eq(users.id, data.userId))
+			.limit(1);
+		if (!technician || technician.role !== "Technician") {
+			return NextResponse.json(
+				{ error: "Selected user is not a Technician." },
+				{ status: 400 }
+			);
+		}
+
 		// Backfilled record's date is the Admin's chosen date, stored at
 		// noon UTC so no timezone ever rolls it onto the adjacent day —
 		// same approach used for the itinerary-SMS date formatting.
@@ -75,6 +78,17 @@ export async function POST(req: Request) {
 				userId: data.userId,
 				signatoryId: data.signatoryId,
 				originMTId: data.originMTId,
+				// The production maintain.signPath column is NOT NULL even
+				// though there's no hand-drawn e-signature step in this
+				// desk-side backfill tool (unlike db/schema.ts, which declares
+				// it nullable — a real drift between the two worth noting).
+				// "Unsigned" is the app's existing sentinel for "no signature
+				// captured yet" (see features/offline-sync/save-maintenance-
+				// report.ts and the various signPath === "Unsigned" checks) —
+				// reusing it here satisfies the constraint and renders
+				// correctly: MaintainReport.tsx already skips the signature
+				// image whenever signPath is exactly "Unsigned".
+				signPath: data.signPath || "Unsigned",
 				createdAt: backfilledCreatedAt,
 				isBackfilled: true,
 				// nozzlePath is the R2 object key for the captured maintenance
@@ -140,6 +154,22 @@ export async function POST(req: Request) {
 		return NextResponse.json({ id: mtId }, { status: 201 });
 	} catch (err) {
 		console.error("Error creating backfilled maintenance record:", err);
-		return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+		// A missing-column/relation error here means a schema migration
+		// hasn't actually been applied to this database yet (this route
+		// depends on maintain.isBackfilled, added in migration 0053) —
+		// surfacing that distinctly means the next person hitting this
+		// doesn't need database log access to know what's wrong.
+		const message = err instanceof Error ? err.message : String(err);
+		const isSchemaMismatch = /column .* does not exist|relation .* does not exist/i.test(
+			message
+		);
+		return NextResponse.json(
+			{
+				error: isSchemaMismatch
+					? "Database schema is out of date for this feature — a pending migration hasn't been applied yet. Run `npm run db:migrate` and try again."
+					: "Internal Server Error",
+			},
+			{ status: 500 }
+		);
 	}
 }
