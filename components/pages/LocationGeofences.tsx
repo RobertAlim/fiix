@@ -4,10 +4,14 @@ import React from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { MasterDataManager } from "@/components/MasterDataManager";
 import { MapPin } from "lucide-react";
+import { LocationRoutePlanner } from "@/components/LocationRoutePlanner";
 
 export default function LocationGeofencesPage() {
 	return (
-		<Card className="rounded-2xl border shadow-sm">
+		<div className="space-y-6">
+			<LocationRoutePlanner />
+
+			<Card className="rounded-2xl border shadow-sm">
 			<CardHeader>
 				<CardTitle className="flex items-center gap-2 text-base font-semibold">
 					<MapPin className="h-5 w-5 text-primary" />
@@ -86,6 +90,7 @@ export default function LocationGeofencesPage() {
 					displayName={(row) => String(row.locationName)}
 				/>
 			</CardContent>
-		</Card>
+			</Card>
+		</div>
 	);
 }

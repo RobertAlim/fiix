@@ -215,6 +215,9 @@ export const maintenanceHistoryColumns: ColumnDef<MaintenanceHistory>[] = [
 			return (
 				<div>
 					{date.toLocaleString("en-US", {
+						// Without this the cell renders in the device's own
+						// timezone, which is only coincidentally correct.
+						timeZone: "Asia/Manila",
 						month: "2-digit",
 						day: "2-digit",
 						year: "numeric",

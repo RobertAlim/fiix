@@ -13,13 +13,25 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ComboBoxResponsive, ComboboxItem } from "@/components/ui/combobox";
 import { DatePicker } from "@/components/ui/date-picker";
-import { ArrowUp, ArrowDown, ListOrdered, Loader2, Lock } from "lucide-react";
+import {
+	ArrowUp,
+	ArrowDown,
+	ListOrdered,
+	Loader2,
+	Lock,
+	Navigation,
+} from "lucide-react";
 import { format } from "date-fns";
 import { fetchData } from "@/lib/fetchData";
 import { apiPath } from "@/lib/base-path";
 import { showAppToast } from "@/components/ui/apptoast";
 import { useSchedules } from "@/hooks/use-schedules";
 import { phTodayDateString } from "@/lib/attendance";
+import {
+	hasCoordinates,
+	openGoogleMapsDirections,
+	type LatLng,
+} from "@/lib/maps";
 
 interface Technician {
 	id: number;
@@ -28,6 +40,13 @@ interface Technician {
 
 interface TechnicianStatus {
 	timedInToday: boolean;
+}
+
+/** One row of /api/location-coordinates — the geofence pin for a client
+ * location. Only ever used to build a Maps link; deliberately never
+ * rendered, since raw latitude/longitude is noise to a Scheduler. */
+interface LocationCoordinate extends LatLng {
+	locationId: number;
 }
 
 // Module-level so it's the SAME array reference on every render. The bug
@@ -41,6 +60,8 @@ interface TechnicianStatus {
 // renders whenever there's genuinely no data, so the effect only fires when
 // the schedules actually change.
 const EMPTY_SCHEDULES: never[] = [];
+// Same stable-reference reasoning as above, for the coordinates query.
+const EMPTY_COORDINATES: LocationCoordinate[] = [];
 
 export function ItinerarySequenceManager() {
 	const queryClient = useQueryClient();
@@ -83,6 +104,29 @@ export function ItinerarySequenceManager() {
 	});
 	const firstStopLocked = scheduledAtIsToday && !!technicianStatus?.timedInToday;
 
+	// Geofence pins for every configured location, fetched once and looked
+	// up by locationId. Loaded unconditionally (not per row) because the
+	// table is small and one request beats one per stop; a location with no
+	// geofence configured simply isn't in the map, which is what disables
+	// its navigate button below.
+	const { data: coordinates = EMPTY_COORDINATES } = useQuery<
+		LocationCoordinate[]
+	>({
+		queryKey: ["location-coordinates"],
+		queryFn: () =>
+			fetchData<LocationCoordinate[]>("/api/location-coordinates"),
+		staleTime: 1000 * 60 * 10,
+	});
+	const coordsByLocationId = React.useMemo(() => {
+		const map = new Map<number, LatLng>();
+		for (const c of coordinates) {
+			if (hasCoordinates(c)) {
+				map.set(c.locationId, { latitude: c.latitude, longitude: c.longitude });
+			}
+		}
+		return map;
+	}, [coordinates]);
+
 	// Local, reorderable copy of the day's schedule ids. Reset whenever the
 	// underlying data changes (new technician/date picked, or a save just
 	// landed) so a stale local order can never drift from the server.
@@ -110,6 +154,22 @@ export function ItinerarySequenceManager() {
 			[next[index], next[target]] = [next[target], next[index]];
 			return next;
 		});
+	};
+
+	// Directions from the PREVIOUS stop to this one — the leg the technician
+	// is about to ride. That's why the first row never gets this control:
+	// there is no preceding stop to route from, and the technician's true
+	// starting point (home) isn't something the system knows.
+	const navigateFromPrevious = (index: number) => {
+		const from = orderedSchedules[index - 1];
+		const to = orderedSchedules[index];
+		if (!from || !to) return;
+
+		const origin = coordsByLocationId.get(from.locationId);
+		const destination = coordsByLocationId.get(to.locationId);
+		if (!origin || !destination) return;
+
+		openGoogleMapsDirections(origin, destination);
 	};
 
 	const handleSave = async () => {
@@ -218,6 +278,37 @@ export function ItinerarySequenceManager() {
 									</p>
 								</div>
 								<div className="flex shrink-0 gap-1">
+									{/* Route from the previous stop to this one. Absent on
+									    the first row by design (nothing to route from) and
+									    disabled when either end has no geofence pin
+									    configured, rather than opening a broken map. */}
+									{idx > 0 &&
+										(() => {
+											const prev = orderedSchedules[idx - 1];
+											const hasRoute =
+												!!prev &&
+												coordsByLocationId.has(prev.locationId) &&
+												coordsByLocationId.has(s.locationId);
+											return (
+												<Button
+													variant="outline"
+													size="icon"
+													className="h-8 w-8"
+													disabled={!hasRoute}
+													onClick={() => navigateFromPrevious(idx)}
+													aria-label={`Directions from ${
+														prev?.location?.name ?? "previous stop"
+													} to ${s.location?.name ?? "this stop"}`}
+													title={
+														hasRoute
+															? `Directions from ${prev?.location?.name} (motorcycle)`
+															: "No GPS pin set for one of these locations — add it under Client Locations."
+													}
+												>
+													<Navigation className="h-4 w-4 text-primary" />
+												</Button>
+											);
+										})()}
 									<Button
 										variant="outline"
 										size="icon"

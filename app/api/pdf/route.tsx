@@ -29,7 +29,7 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 // import { Readable } from "stream"; // Import Node.js Readable stream
 import { renderToStream } from "@react-pdf/renderer";
 import { Readable } from "node:stream"; // Node stream type + converter
-import { formatUtc } from "@/lib/formatDate";
+import { formatPhDateTime } from "@/lib/formatDate";
 import { requireRole } from "@/lib/require-role";
 
 export const runtime = "nodejs"; // react-pdf needs Node (pdfkit internals)
@@ -165,7 +165,11 @@ export async function GET(request: NextRequest) {
 			department: mt.department,
 			model: mt.model,
 			serialNo: mt.serialNo,
-			date: formatUtc(mt.date.toString()), // e.g., "2025-06-30"
+			// Philippine Standard Time. `maintain.createdAt` is a UTC
+			// wall-clock timestamp and this route renders on a UTC server,
+			// so anything that leans on the ambient timezone stamps the
+			// report 8 hours early. e.g. "09/26/2025 03:00 PM"
+			date: formatPhDateTime(mt.date),
 			workDone: [
 				mt.headClean && "Head Clean",
 				mt.inkFlush && "Ink Flushing",

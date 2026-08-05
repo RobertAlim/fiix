@@ -1,10 +1,61 @@
+/**
+ * Date/time formatting for Fiix. Every function here renders in Asia/Manila
+ * regardless of where the code runs, which matters in two different ways:
+ *
+ *  - Server-side (Vercel functions, PDF generation) the runtime clock is
+ *    UTC, so any formatter that leans on the ambient timezone renders 8
+ *    hours behind Philippine Standard Time. That is exactly what went wrong
+ *    on the maintenance report PDF.
+ *  - Client-side it happens to be right for a device set to Manila, but
+ *    silently wrong for one that isn't. Pinning the zone makes it correct
+ *    by construction instead of by luck.
+ *
+ * The `maintain.createdAt` / `scheduleDetails.maintainedDate` columns are
+ * Postgres `timestamp` WITHOUT time zone, storing UTC wall-clock (the
+ * session TimeZone is UTC on Neon). Drizzle's driver reads them back as
+ * real UTC instants, and JSON transport turns them into ISO-8601 strings
+ * ending in "Z" — so converting to Manila for display is a pure
+ * presentation concern, no stored value changes.
+ */
+
+export const PH_TIME_ZONE = "Asia/Manila";
+
+/**
+ * Normalizes anything date-shaped into a Date carrying the correct instant.
+ *
+ * The guard matters: a bare Postgres timestamp string with no zone marker
+ * ("2025-09-26 11:40:54.122624") is interpreted by the Date constructor as
+ * *local* time, which would re-introduce the exact drift this module
+ * exists to remove. Those get an explicit "Z" appended first, since UTC is
+ * what the column actually holds. Strings that already carry a zone (the
+ * usual "...Z" from JSON, or a +08:00 offset) are left alone.
+ */
+function toInstant(value: Date | string | number): Date {
+	if (value instanceof Date) return value;
+	if (typeof value === "number") return new Date(value);
+
+	const trimmed = value.trim();
+	const hasZone = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(trimmed);
+	const looksLikeBareTimestamp = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/.test(trimmed);
+
+	if (!hasZone && looksLikeBareTimestamp) {
+		return new Date(`${trimmed.replace(" ", "T")}Z`);
+	}
+	return new Date(trimmed);
+}
+
+function isValid(date: Date): boolean {
+	return !Number.isNaN(date.getTime());
+}
+
+/** "Sep 26, 2025" in Manila. Returns an em dash for missing input. */
 export function formatDateManila(dateIso: string | null | undefined) {
 	if (!dateIso) return "—";
 	try {
-		// Use toLocaleString for Asia/Manila
-		const d = new Date(dateIso);
+		const d = toInstant(dateIso);
+		if (!isValid(d)) return dateIso;
 		return d.toLocaleString("en-PH", {
-			timeZone: "Asia/Manila",
+			timeZone: PH_TIME_ZONE,
 			year: "numeric",
 			month: "short",
 			day: "2-digit",
@@ -15,92 +66,66 @@ export function formatDateManila(dateIso: string | null | undefined) {
 }
 
 /**
- * Converts a UTC datetime string (ISO 8601 format ending in 'Z') to the "MM/dd/yyyy hh:mm a" format.
- * * @param utcDateTimeString The UTC date string to convert (e.g., "2025-09-26T11:51:38.348Z").
- * @returns The formatted date and time string (e.g., "09/26/2025 11:51 AM").
- * @throws {Error} If the provided string is not a valid date.
+ * "MM/dd/yyyy hh:mm a" in Philippine Standard Time — the canonical
+ * date/time stamp used on the maintenance report (both the PDF and its
+ * on-screen preview).
+ *
+ * This replaces the previous `formatUtc`, which pulled the UTC components
+ * off the instant and rendered them verbatim. That was consistent, but it
+ * printed a report signed at 3:00 PM in Manila as 7:00 AM.
+ *
+ * @throws if the value can't be parsed as a date — a report stamped with a
+ * silently wrong or empty date is worse than a loud failure.
  */
-export function formatUtc(utcDateTimeString: string): string {
-	// 1. Create a Date object. The 'Z' ensures it's treated as UTC.
-	const date: Date = new Date(utcDateTimeString);
-
-	// Linting & TypeScript Safety: Check for an invalid date
-	if (isNaN(date.getTime())) {
-		throw new Error(`Invalid date string provided: ${utcDateTimeString}`);
+export function formatPhDateTime(value: Date | string | number): string {
+	const date = toInstant(value);
+	if (!isValid(date)) {
+		throw new Error(`Invalid date value provided: ${String(value)}`);
 	}
 
-	// 2. Extract Components (using UTC methods since the input is Z-time and we want the UTC time formatted)
-	// NOTE: When using standard Date methods (getMonth, getHours, etc.), they return values
-	// in the local timezone of the running machine. To strictly adhere to the UTC time
-	// specified by the 'Z' in the input string, we MUST use the UTC methods (getUTCMonth, getUTCHours, etc.).
+	const parts = new Intl.DateTimeFormat("en-US", {
+		timeZone: PH_TIME_ZONE,
+		year: "numeric",
+		month: "2-digit",
+		day: "2-digit",
+		hour: "2-digit",
+		minute: "2-digit",
+		hour12: true,
+	}).formatToParts(date);
 
-	// Date components (UTC)
-	const year: number = date.getUTCFullYear();
-	// getUTCMonth is 0-indexed, so we add 1
-	const month: number = date.getUTCMonth() + 1;
-	const day: number = date.getUTCDate();
+	const get = (type: Intl.DateTimeFormatPartTypes) =>
+		parts.find((p) => p.type === type)?.value ?? "";
 
-	// Time components (UTC)
-	const hours24: number = date.getUTCHours();
-	const minutes: number = date.getUTCMinutes();
-
-	// 3. Convert to 12-hour format and determine AM/PM
-	const ampm: string = hours24 >= 12 ? "PM" : "AM";
-
-	// Convert 24-hour hour (0-23) to 12-hour hour (1-12)
-	let hours12: number = hours24 % 12;
-	// The hour '0' should be '12' in 12-hour format
-	hours12 = hours12 === 0 ? 12 : hours12;
-
-	// 4. Pad single-digit numbers with a leading zero
-	// Helper function for padding to ensure type safety and avoid repetition
-	const pad = (num: number): string => String(num).padStart(2, "0");
-
-	const monthStr: string = pad(month);
-	const dayStr: string = pad(day);
-	const hoursStr: string = pad(hours12);
-	const minutesStr: string = pad(minutes);
-
-	// 5. Construct the final string "MM/dd/yyyy hh:mm a"
-	return `${monthStr}/${dayStr}/${year} ${hoursStr}:${minutesStr} ${ampm}`;
+	// Built from parts rather than a formatted string so the output shape is
+	// fixed ("09/26/2025 03:00 PM") and can't shift with an ICU/locale
+	// update — the PDF layout depends on this width.
+	return `${get("month")}/${get("day")}/${get("year")} ${get("hour")}:${get(
+		"minute"
+	)} ${get("dayPeriod").toUpperCase()}`;
 }
 
 /**
- * Converts a datetime string to a time string in the "hh:mm AM/PM" format.
- * @param datetimeString The datetime string to convert (e.g., "2025-09-26 11:40:54.122624").
- * @returns The formatted time string (e.g., "11:40 AM").
+ * "03:00 PM" in Philippine Standard Time.
+ *
+ * Previously read the hours/minutes off the ambient timezone, which is
+ * correct only on a device already set to Manila.
  */
 export function formatTimeToAmPm(datetimeString: string): string {
-	// 1. Create a Date object from the input string.
-	// NOTE: The Date constructor can usually parse this standard format.
-
 	if (!datetimeString || datetimeString.trim() === "") {
 		return datetimeString;
 	}
 
-	const date = new Date(datetimeString);
-
-	// Check for invalid date (e.g., if parsing failed)
-	if (isNaN(date.getTime())) {
+	const date = toInstant(datetimeString);
+	if (!isValid(date)) {
 		throw new Error(`Invalid datetime string provided: ${datetimeString}`);
 	}
 
-	// 2. Get the hours and minutes.
-	let hours = date.getHours();
-	const minutes = date.getMinutes();
-
-	// 3. Determine AM/PM and convert hours to 12-hour format.
-	const ampm = hours >= 12 ? "PM" : "AM";
-
-	// Convert 24-hour format to 12-hour format (0 becomes 12, 13-23 becomes 1-11)
-	hours = hours % 12;
-	// The hour '0' should be '12' in 12-hour format
-	hours = hours ? hours : 12;
-
-	// 4. Pad hours and minutes with a leading zero if they are less than 10.
-	const hoursStr = String(hours).padStart(2, "0");
-	const minutesStr = String(minutes).padStart(2, "0");
-
-	// 5. Combine and return the formatted string.
-	return `${hoursStr}:${minutesStr} ${ampm}`;
+	return date
+		.toLocaleTimeString("en-US", {
+			timeZone: PH_TIME_ZONE,
+			hour: "2-digit",
+			minute: "2-digit",
+			hour12: true,
+		})
+		.toUpperCase();
 }

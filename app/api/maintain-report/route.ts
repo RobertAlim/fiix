@@ -29,7 +29,11 @@ export async function GET() {
 			status: status.name,
 			technician: sql<string>`${users.firstName} || ' ' || ${users.lastName}`,
 			gpsLocation: maintenanceLocation.locationName,
-			date: sql<string>`to_char(${maintain.createdAt}, 'MM/DD/YYYY')`.as(
+			// createdAt is `timestamp` WITHOUT time zone holding UTC
+			// wall-clock, so it has to be re-anchored to UTC before being
+			// converted to Manila — a bare to_char() renders the UTC date,
+			// which rolls backwards a day for anything logged before 8 AM.
+			date: sql<string>`to_char(${maintain.createdAt} AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Manila', 'MM/DD/YYYY')`.as(
 				"date"
 			),
 		})

@@ -1,13 +1,22 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { MasterDataManager } from "@/components/MasterDataManager";
 import { ImportCsvModalButton } from "@/components/ImportCsvModalButton";
-import { Printer } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Printer, ArrowLeftRight } from "lucide-react";
 import { format } from "date-fns";
+import {
+	PrinterTransferDialog,
+	type TransferTarget,
+} from "@/components/PrinterTransferDialog";
 
 export default function PrintersPage() {
+	const [transferTarget, setTransferTarget] = useState<TransferTarget | null>(
+		null
+	);
+
 	return (
 		<Card className="rounded-2xl border shadow-sm">
 			<CardHeader>
@@ -112,8 +121,35 @@ export default function PrintersPage() {
 						{ name: "deploymentDate", label: "Deployment Date", type: "date", required: true },
 					]}
 					displayName={(row) => String(row.serialNo)}
+					rowActions={(row) => (
+						<Button
+							variant="ghost"
+							size="icon"
+							onClick={() =>
+								setTransferTarget({
+									id: Number(row.id),
+									serialNo: String(row.serialNo),
+									clientName: row.clientName ? String(row.clientName) : null,
+									locationName: row.locationName
+										? String(row.locationName)
+										: null,
+								})
+							}
+							aria-label={`Transfer ${String(row.serialNo)}`}
+							title="Transfer to another client / location"
+						>
+							<ArrowLeftRight className="h-4 w-4 text-primary" />
+						</Button>
+					)}
 				/>
 			</CardContent>
+
+			<PrinterTransferDialog
+				target={transferTarget}
+				onOpenChange={(open) => {
+					if (!open) setTransferTarget(null);
+				}}
+			/>
 		</Card>
 	);
 }

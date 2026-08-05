@@ -115,6 +115,11 @@ interface MasterDataManagerProps {
 	filters?: FilterConfig[];
 	/** Rows per page on first render. */
 	defaultPageSize?: number;
+	/** Extra per-row controls, rendered in the pinned Actions column ahead
+	 * of the built-in Edit/Delete buttons. Lets a module add an action that
+	 * isn't generic CRUD (e.g. transferring a printer) without every other
+	 * grid inheriting it. */
+	rowActions?: (row: DataRow) => React.ReactNode;
 }
 
 export function MasterDataManager({
@@ -130,6 +135,7 @@ export function MasterDataManager({
 	headerExtra,
 	filters,
 	defaultPageSize = 25,
+	rowActions,
 }: MasterDataManagerProps) {
 	const queryClient = useQueryClient();
 	const [search, setSearch] = useState("");
@@ -477,6 +483,7 @@ export function MasterDataManager({
 											</TableCell>
 										))}
 										<TableCell className="sticky right-0 z-10 bg-card text-right shadow-[-8px_0_8px_-8px_rgba(0,0,0,0.15)]">
+											{rowActions?.(row)}
 											<Button variant="ghost" size="icon" onClick={() => openEdit(row)}>
 												<Pencil className="h-4 w-4" />
 											</Button>
