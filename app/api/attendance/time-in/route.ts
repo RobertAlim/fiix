@@ -6,6 +6,7 @@ import {
 	locationGeofences,
 	smsRecipients,
 	users,
+	clients,
 } from "@/db/schema";
 import { eq, and, asc, sql, isNull, inArray, isNotNull } from "drizzle-orm";
 import { NextResponse } from "next/server";
@@ -39,8 +40,13 @@ export async function POST(req: Request) {
 	// trusting anything the client claims about which schedule or radius
 	// applies — the earlier /status call is advisory UI only.
 	const [firstStop] = await db
-		.select({ id: schedules.id, locationId: schedules.locationId })
+		.select({
+			id: schedules.id,
+			locationId: schedules.locationId,
+			clientName: clients.name,
+		})
 		.from(schedules)
+		.innerJoin(clients, eq(clients.id, schedules.clientId))
 		.where(
 			and(
 				eq(schedules.technicianId, technicianId),
@@ -189,7 +195,7 @@ export async function POST(req: Request) {
 				recipients
 					.map((r) => r.contactNo)
 					.filter((n): n is string => n != null),
-				`${technician.firstName} ${technician.lastName} has timed in at ${timeStr}.`
+				`${technician.firstName} ${technician.lastName} has timed in at ${firstStop.clientName} at ${timeStr}.`
 			);
 		}
 	}
