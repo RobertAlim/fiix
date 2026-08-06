@@ -28,9 +28,10 @@ export function TechnicianGpsStatusPanel() {
 	>({
 		queryKey: ["gps-locations"],
 		queryFn: () => fetchData<TechnicianGpsRow[]>("/api/gps/locations"),
-		// Same cadence GPS Monitoring itself refreshes at, so this panel and
-		// that page never show contradicting statuses for more than a beat.
-		refetchInterval: 15_000,
+		// A status flip (ON/OFF) is coarser and less time-critical than a
+		// moving pin on the map, so this polls a bit slower than the 5s
+		// live-position refresh GPS Monitoring itself uses.
+		refetchInterval: 10_000,
 	});
 
 	if (isLoading) return null;

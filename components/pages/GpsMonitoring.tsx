@@ -15,8 +15,14 @@ import { Button } from "@/components/ui/button";
 // Leaflet reads `window` at import time, so the map has to be client-only
 // and load after mount — a plain top-level import would break the SSR
 // pass Next.js does for this page.
+// Google Maps' own script touches `window` at load time (same reason the
+// earlier Leaflet version needed this), so this stays client-only and
+// deferred past the initial render.
 const GpsMonitoringMap = dynamic(
-	() => import("@/components/GpsMonitoringMap").then((m) => m.GpsMonitoringMap),
+	() =>
+		import("@/components/GpsMonitoringGoogleMap").then(
+			(m) => m.GpsMonitoringGoogleMap
+		),
 	{ ssr: false, loading: () => <MapLoadingPlaceholder /> }
 );
 
@@ -76,7 +82,10 @@ export default function GpsMonitoringPage() {
 		useQuery<TechnicianGpsRow[]>({
 			queryKey: ["gps-locations"],
 			queryFn: () => fetchData<TechnicianGpsRow[]>("/api/gps/locations"),
-			refetchInterval: 15_000,
+			// Matches GpsReporter's 5s ping cadence — anything slower here
+			// would mean the device is tracking in near-real-time but the
+			// Admin's screen isn't reflecting it that quickly.
+			refetchInterval: 5_000,
 		});
 
 	const technicianOptions: ComboboxItem[] = useMemo(
@@ -97,6 +106,10 @@ export default function GpsMonitoringPage() {
 		queryFn: () =>
 			fetchData<RoutePlan>(`/api/gps/route-plan?technicianId=${technicianId}`),
 		enabled: !!technicianId,
+		// Slower than the live-position poll above on purpose: the planned
+		// route only changes when a maintenance report is completed, not
+		// every 5 seconds, so refetching this at the same cadence would just
+		// be wasted requests.
 		refetchInterval: 15_000,
 	});
 
@@ -160,7 +173,7 @@ export default function GpsMonitoringPage() {
 					)}
 
 					{technicianId ? (
-						<div className="h-[480px] w-full overflow-hidden rounded-xl border">
+						<div className="relative z-0 h-[480px] w-full overflow-hidden rounded-xl border">
 							<GpsMonitoringMap
 								technician={technicianPoint}
 								origin={routePlan?.origin ?? null}

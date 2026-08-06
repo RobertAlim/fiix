@@ -20,7 +20,7 @@
 import { useEffect, useRef } from "react";
 import { apiPath } from "@/lib/base-path";
 
-const PING_INTERVAL_MS = 15_000;
+const PING_INTERVAL_MS = 5_000;
 
 async function sendPing(body: object) {
 	try {
@@ -76,7 +76,11 @@ export function GpsReporter({ active }: { active: boolean }) {
 				offSentRef.current = true;
 				sendPing({ enabled: false });
 			},
-			{ enableHighAccuracy: false, maximumAge: 10_000, timeout: 20_000 }
+			// maximumAge is kept just under PING_INTERVAL_MS so each 5s ping
+			// carries a fix from THIS cycle, not one recycled from the last —
+			// at the old 15s cadence a 10s cache was fine; at 5s it would
+			// have let the browser reuse the same position across 2+ pings.
+			{ enableHighAccuracy: false, maximumAge: 4_000, timeout: 20_000 }
 		);
 
 		return () => navigator.geolocation.clearWatch(watchId);

@@ -28,6 +28,7 @@ import {
 	Clock3,
 	CalendarX2,
 	UserCog,
+	ChevronDown,
 } from "lucide-react";
 import { fetchData } from "@/lib/fetchData";
 import { showAppToast } from "@/components/ui/apptoast";
@@ -107,6 +108,10 @@ interface AssignTarget {
 	defaultNotes?: string;
 	missedOn?: string;
 	daysOverdue?: number;
+	/** Reschedule mode only: the missed schedule being replaced. Sent to the
+	 * server as a back-pointer so the original stays on record as missed and
+	 * the two rows remain linked for audit. */
+	rescheduledFromScheduleId?: number;
 }
 
 function daysSince(dateStr: string): number {
@@ -118,6 +123,12 @@ function daysSince(dateStr: string): number {
 export default function PendingMaintenancePanel() {
 	const queryClient = useQueryClient();
 	const [assignTarget, setAssignTarget] = useState<AssignTarget | null>(null);
+	// Collapsed by default — the Missed Schedules grid can run to several
+	// rows and was pushing the rest of the Schedule page down before a user
+	// had even decided they needed to look at it. Per-session only (not
+	// persisted): opening it once to handle a backlog shouldn't leave it
+	// permanently expanded on every future visit.
+	const [isMissedOpen, setIsMissedOpen] = useState(false);
 
 	const { data: pendingItems = [], isLoading } = useQuery<PendingMaintenanceItem[]>({
 		queryKey: ["pending-maintenance"],
@@ -159,7 +170,19 @@ export default function PendingMaintenancePanel() {
 		<div className="space-y-4">
 		{missedSchedules.length > 0 && (
 			<Card className="rounded-2xl border border-destructive/40 shadow-sm">
-				<CardHeader className="flex flex-row items-center justify-between space-y-0">
+				<CardHeader
+					className="flex flex-row cursor-pointer items-center justify-between space-y-0"
+					onClick={() => setIsMissedOpen((open) => !open)}
+					role="button"
+					tabIndex={0}
+					aria-expanded={isMissedOpen}
+					onKeyDown={(e) => {
+						if (e.key === "Enter" || e.key === " ") {
+							e.preventDefault();
+							setIsMissedOpen((open) => !open);
+						}
+					}}
+				>
 					<div>
 						<CardTitle className="flex items-center gap-2 text-base font-semibold">
 							<CalendarX2 className="h-5 w-5 text-destructive" />
@@ -170,8 +193,16 @@ export default function PendingMaintenancePanel() {
 							to put them back in a technician&apos;s itinerary.
 						</p>
 					</div>
-					<Badge variant="destructive">{missedSchedules.length} missed</Badge>
+					<div className="flex items-center gap-2">
+						<Badge variant="destructive">{missedSchedules.length} missed</Badge>
+						<ChevronDown
+							className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${
+								isMissedOpen ? "rotate-180" : ""
+							}`}
+						/>
+					</div>
 				</CardHeader>
+				{isMissedOpen && (
 				<CardContent>
 					<div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
 						{missedSchedules.map((m) => (
@@ -232,6 +263,7 @@ export default function PendingMaintenancePanel() {
 												setAssignTarget({
 													mode: "reschedule",
 													maintainId: m.originMTId,
+													rescheduledFromScheduleId: m.scheduleId,
 													printerId: m.printerId,
 													serialNo: m.serialNo,
 													model: m.model,
@@ -257,6 +289,7 @@ export default function PendingMaintenancePanel() {
 						))}
 					</div>
 				</CardContent>
+				)}
 			</Card>
 		)}
 
@@ -435,6 +468,8 @@ function AssignScheduleModal({
 					priority: Number(priorityId),
 					notes,
 					scheduleDate: format(scheduleDate, "yyyy-MM-dd"),
+					rescheduledFromScheduleId:
+						item.rescheduledFromScheduleId ?? null,
 				}),
 			});
 			if (!res.ok) {
