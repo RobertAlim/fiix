@@ -69,7 +69,25 @@ export function GpsMonitoringMap({
 			center={[center.latitude, center.longitude]}
 			zoom={14}
 			scrollWheelZoom
-			style={{ height: "100%", width: "100%", borderRadius: "0.75rem" }}
+			// See app/globals.css for the .fiix-leaflet-map z-index rules this
+			// class name activates — belt-and-suspenders alongside the
+			// zIndex:0/stacking-context fix below.
+			className="fiix-leaflet-map"
+			// Leaflet's own CSS gives its zoom controls and panes z-index
+			// values up to 1000 — far above the z-50 this app's dropdowns and
+			// popovers use. Those values only matter WITHIN a stacking
+			// context, so pinning this container's own z-index to 0 here
+			// creates a new one: everything inside (controls, tiles, at
+			// whatever internal z-index) is now capped at "0" from the
+			// outside, and can never paint over page UI again, regardless
+			// of what z-index Leaflet assigns internally.
+			style={{
+				height: "100%",
+				width: "100%",
+				borderRadius: "0.75rem",
+				position: "relative",
+				zIndex: 0,
+			}}
 		>
 			<TileLayer
 				attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'

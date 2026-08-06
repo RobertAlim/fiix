@@ -324,3 +324,31 @@
 [data-sonner-toast][data-type="success"] {
 	@apply bg-green-600 text-white;
 }
+
+/* GPS Monitoring map (Leaflet) — z-index hardening.
+ *
+ * Leaflet's own stylesheet assigns its panes and controls z-index values
+ * up to 1000 (zoom buttons), 200-700 (tile/marker/popup panes) — all far
+ * above the z-50 this app's dropdowns and popovers use. The map
+ * container itself is already pinned to zIndex:0 with its own stacking
+ * context (see components/GpsMonitoringMap.tsx), which SHOULD contain
+ * all of this on its own. These rules are a second, independent
+ * guarantee: they cap Leaflet's internal z-index values directly, so
+ * even if the container-level fix were ever bypassed (a future style
+ * change, an unexpected ancestor stacking context, etc.) the technician
+ * dropdown — Popover on desktop, Drawer on mobile, both z-50 — still
+ * can't be covered by anything the map draws.
+ */
+.fiix-leaflet-map .leaflet-pane,
+.fiix-leaflet-map .leaflet-tile-pane,
+.fiix-leaflet-map .leaflet-overlay-pane,
+.fiix-leaflet-map .leaflet-shadow-pane,
+.fiix-leaflet-map .leaflet-marker-pane,
+.fiix-leaflet-map .leaflet-tooltip-pane,
+.fiix-leaflet-map .leaflet-popup-pane {
+	z-index: 0 !important;
+}
+.fiix-leaflet-map .leaflet-control-container .leaflet-top,
+.fiix-leaflet-map .leaflet-control-container .leaflet-bottom {
+	z-index: 10 !important;
+}
