@@ -173,7 +173,7 @@ export default function GpsMonitoringPage() {
 					)}
 
 					{technicianId ? (
-						<div className="relative z-0 h-[480px] w-full overflow-hidden rounded-xl border">
+						<div className="relative z-0 h-[720px] w-full overflow-hidden rounded-xl border">
 							<GpsMonitoringMap
 								technician={technicianPoint}
 								origin={routePlan?.origin ?? null}
