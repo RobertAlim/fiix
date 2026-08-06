@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/db";
 import { locationGeofences, locations, clients } from "@/db/schema";
-import { asc, eq, ilike, and } from "drizzle-orm";
+import { asc, eq, ilike, and, or } from "drizzle-orm";
 import { requireRole } from "@/lib/require-role";
 
 const bodySchema = z.object({
@@ -35,7 +35,12 @@ export async function GET(req: Request) {
 		.innerJoin(clients, eq(clients.id, locations.clientId))
 		.where(
 			search
-				? and(ilike(locations.name, `%${search}%`))
+				? and(
+						// Matches on EITHER field — a Scheduler searching "Acme"
+						// (a client with several branches) previously got zero
+						// results unless they knew the exact branch/location name.
+						or(ilike(locations.name, `%${search}%`), ilike(clients.name, `%${search}%`))
+					)
 				: undefined
 		)
 		.orderBy(asc(clients.name), asc(locations.name));

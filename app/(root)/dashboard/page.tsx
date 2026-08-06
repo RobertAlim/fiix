@@ -31,6 +31,7 @@ import {
 	MessageSquare,
 	FileSpreadsheet,
 	History,
+	Satellite,
 } from "lucide-react";
 import { useUserStore } from "@/state/userStore";
 import { useDBUser } from "@/hooks/use-db-user";
@@ -67,6 +68,9 @@ const AttendanceReportPage = dynamic(
 const PurgeMaintenancePage = dynamic(
 	() => import("@/components/pages/PurgeMaintenance")
 );
+const GpsMonitoringPage = dynamic(
+	() => import("@/components/pages/GpsMonitoring")
+);
 
 type PageKey = ModuleKey;
 
@@ -83,6 +87,7 @@ const ALL_NAV_ITEMS: { key: PageKey; label: string; icon: React.ElementType }[] 
 	{ key: "smsRecipients", label: "SMS Recipients", icon: MessageSquare },
 	{ key: "attendanceReport", label: "Attendance Report", icon: FileSpreadsheet },
 	{ key: "purgeMaintenance", label: "Purge Maintenance", icon: History },
+	{ key: "gpsMonitoring", label: "GPS Monitoring", icon: Satellite },
 ];
 
 const PAGE_TITLES: Record<PageKey, string> = {
@@ -98,6 +103,7 @@ const PAGE_TITLES: Record<PageKey, string> = {
 	smsRecipients: "SMS Recipients",
 	attendanceReport: "Attendance Report",
 	purgeMaintenance: "Purge Maintenance",
+	gpsMonitoring: "GPS Monitoring",
 };
 
 function NotAuthorized() {
@@ -238,6 +244,8 @@ export default function DashboardPage() {
 				return <AttendanceReportPage />;
 			case "purgeMaintenance":
 				return <PurgeMaintenancePage onClose={() => setActivePage("dashboard")} />;
+			case "gpsMonitoring":
+				return <GpsMonitoringPage />;
 			default:
 				return <div>Page not found!</div>;
 		}

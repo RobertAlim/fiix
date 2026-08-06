@@ -217,7 +217,12 @@ export default function DashboardPage({
 			</div>
 
 			{/* Offline sync & GPS status */}
-			<OfflineSyncWidgets />
+			{/* For a Technician this is their OWN device's queue/sync/GPS
+			    state — directly relevant to them. For Admin/Scheduler, none
+			    of those five cards describe anything real (they don't submit
+			    offline maintenance reports from this device), so they see
+			    the fleet-wide Technician GPS Status panel here instead. */}
+			<OfflineSyncWidgets showFleetGpsStatus={users?.role !== "Technician"} />
 
 			{/* Stat cards */}
 			<div className="grid grid-cols-2 gap-4 lg:grid-cols-4">

@@ -17,7 +17,8 @@ export type ModuleKey =
 	| "locationGeofences"
 	| "smsRecipients"
 	| "attendanceReport"
-	| "purgeMaintenance";
+	| "purgeMaintenance"
+	| "gpsMonitoring";
 
 export const MODULE_ACCESS: Record<Role, ModuleKey[]> = {
 	Admin: [
@@ -33,6 +34,7 @@ export const MODULE_ACCESS: Record<Role, ModuleKey[]> = {
 		"smsRecipients",
 		"attendanceReport",
 		"purgeMaintenance",
+		"gpsMonitoring",
 	],
 	Technician: ["dashboard", "maintenance"],
 	Scheduler: ["dashboard", "taskTracker", "report", "schedule"],

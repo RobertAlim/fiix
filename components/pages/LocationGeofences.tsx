@@ -28,7 +28,7 @@ export default function LocationGeofencesPage() {
 					title="Geofence"
 					listEndpoint="/api/admin/master/location-geofences"
 					itemEndpoint={(id) => `/api/admin/master/location-geofences/${id}`}
-					filters={[{ param: "search", label: "Location" }]}
+					filters={[{ param: "search", label: "Client or Location" }]}
 					columns={[
 						{ key: "clientName", label: "Client", minWidth: "min-w-[160px]" },
 						{ key: "locationName", label: "Location", minWidth: "min-w-[160px]" },

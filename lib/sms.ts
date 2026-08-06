@@ -3,6 +3,10 @@
 // so the Time In notification can send a plain message through the same
 // account rather than duplicating the fetch call.
 import { env } from "@/lib/env";
+import "server-only";
+import { db } from "@/db";
+import { smsRecipients, users } from "@/db/schema";
+import { eq, and, inArray, isNotNull } from "drizzle-orm";
 
 /**
  * Canonicalizes a PH mobile number to 09XXXXXXXXX.
@@ -69,4 +73,31 @@ export async function sendSmsToRecipients(
 	const results = await Promise.all(uniqueNumbers.map((n) => sendSms(n, message)));
 	const sent = results.filter((r) => r.ok).length;
 	return { sent, failed: results.length - sent };
+}
+
+/**
+ * Phone numbers for every active SMS recipient, sourced live from
+ * users.contactNo (not a manually-typed number) and filtered to
+ * Admin/Scheduler — extracted from app/api/attendance/time-in/route.ts's
+ * original inline query so the GPS-off alert doesn't grow a second,
+ * silently-divergent copy of the same rule. Filtered here even though
+ * smsRecipients only ever links those roles at creation time, because a
+ * linked user's role can change afterward; this is the authoritative
+ * check, not the linkage alone.
+ */
+export async function getActiveSmsRecipientNumbers(): Promise<string[]> {
+	const recipients = await db
+		.select({ contactNo: users.contactNo })
+		.from(smsRecipients)
+		.innerJoin(users, eq(users.id, smsRecipients.userId))
+		.where(
+			and(
+				eq(smsRecipients.isActive, true),
+				inArray(users.role, ["Admin", "Scheduler"]),
+				isNotNull(users.contactNo)
+			)
+		);
+	return recipients
+		.map((r) => r.contactNo)
+		.filter((n): n is string => n != null);
 }

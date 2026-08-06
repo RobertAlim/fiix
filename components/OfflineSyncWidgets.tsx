@@ -17,13 +17,24 @@ import {
 	checkGpsPermission,
 } from "@/features/offline-sync";
 import { cn } from "@/lib/utils";
+import { TechnicianGpsStatusPanel } from "@/components/TechnicianGpsStatusPanel";
 
 /**
  * Dashboard widget row for the offline-first pipeline: pending reports,
  * last sync, offline mode, queued uploads, and GPS status — so technicians
  * and admins can see queue health at a glance.
  */
-export function OfflineSyncWidgets() {
+export function OfflineSyncWidgets({
+	// The "Offline Mode" card below reports THIS device's own network
+	// state, which is meaningful for a Technician (it explains why their
+	// reports might be queued) but not for an Admin/Scheduler watching the
+	// fleet from a desk — they instead get the Technician GPS Status panel
+	// in that slot. Technicians keep seeing their own Offline Mode card
+	// unchanged.
+	showFleetGpsStatus = false,
+}: {
+	showFleetGpsStatus?: boolean;
+}) {
 	const sync = useOfflineSync();
 	const { online, effectiveType } = useConnectivity();
 	const [gpsPermission, setGpsPermission] = useState<string>("checking…");
@@ -39,6 +50,14 @@ export function OfflineSyncWidgets() {
 	}, []);
 
 	if (!sync.loaded) return null;
+
+	if (showFleetGpsStatus) {
+		return (
+			<div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-5">
+				<TechnicianGpsStatusPanel />
+			</div>
+		);
+	}
 
 	const lastReportWithGps = sync.reports.find((r) => r.gps);
 	const gpsDetail =

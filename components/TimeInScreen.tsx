@@ -33,6 +33,7 @@ import { fetchData } from "@/lib/fetchData";
 import { apiPath } from "@/lib/base-path";
 import { distanceMeters } from "@/lib/geofence";
 import { showAppToast } from "@/components/ui/apptoast";
+import { GpsReporter } from "@/components/GpsReporter";
 
 interface ItineraryStop {
 	id: number;
@@ -149,7 +150,12 @@ export function AttendanceGate({
 	}
 
 	if (status.session && !status.session.timeOut) {
-		return <>{children}</>;
+		return (
+			<>
+				<GpsReporter active={isTechnician} />
+				{children}
+			</>
+		);
 	}
 
 	if (status.session && status.session.timeOut) {

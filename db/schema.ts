@@ -131,6 +131,20 @@ export const schedules = pgTable("schedules", {
 	 * Nullable so existing rows (and schedules created before this feature)
 	 * don't need a backfill — a null sorts after any assigned sequence. */
 	sequence: integer("sequence"),
+	/** The schedule this one was created to replace, when it came from the
+	 * Reschedule action on a missed visit. Null for every normally-created
+	 * schedule.
+	 *
+	 * Rescheduling deliberately does NOT edit the original row: "missed" is
+	 * derived (scheduledAt in the past with work still unmaintained — see
+	 * app/api/missed-schedules), so mutating the original would erase the
+	 * fact that the visit was ever missed. A new row plus this back-pointer
+	 * keeps the original intact and makes the full chain walkable — a visit
+	 * rescheduled twice is A <- B <- C, and following the pointers back
+	 * yields the complete audit trail. */
+	rescheduledFromId: integer("rescheduledFromId").references(
+		(): AnyPgColumn => schedules.id
+	),
 	createdAt: timestamp("createdAt")
 		.notNull()
 		.default(sql`now()`),
@@ -506,3 +520,40 @@ export const smsRecipients = pgTable("smsRecipients", {
 export type LocationGeofence = InferSelectModel<typeof locationGeofences>;
 export type TechnicianAttendance = InferSelectModel<typeof technicianAttendance>;
 export type SmsRecipient = InferSelectModel<typeof smsRecipients>;
+
+/** One row per technician — the latest live GPS state, upserted on every
+ * ping from that technician's own device (see POST /api/gps/ping). Not a
+ * history table: GPS Monitoring only ever needs "where is this person
+ * right now", and a single upserted row is what both the Dashboard's
+ * status panel and the 15-second-refresh map read from, without a scan or
+ * a DISTINCT ON over a growing log. */
+export const technicianGpsStatus = pgTable("technicianGpsStatus", {
+	technicianId: integer("technicianId")
+		.primaryKey()
+		.references(() => users.id, { onDelete: "cascade" }),
+	/** Null exactly when gpsEnabled is false — there's no fix to report once
+	 * the browser/device denies or disables location. */
+	latitude: doublePrecision("latitude"),
+	longitude: doublePrecision("longitude"),
+	/** Meters, as reported by the Geolocation API. Informational only —
+	 * nothing currently gates on it — but cheap to keep since the browser
+	 * already provides it on every fix. */
+	accuracy: doublePrecision("accuracy"),
+	gpsEnabled: boolean("gpsEnabled").notNull().default(false),
+	/** When the device took this fix, distinct from updatedAt (when the
+	 * server received it) — the two can drift apart under a flaky
+	 * connection, and the map should show the technician's actual
+	 * last-known position, not a request arrival time. Null alongside a
+	 * false gpsEnabled. */
+	capturedAt: timestamp("capturedAt", { withTimezone: true }),
+	/** Set the moment a GPS-disabled alert SMS is sent for the CURRENT
+	 * off episode — cleared back to null the next time this technician
+	 * reports gpsEnabled: true. Prevents re-alerting every ~15s for as
+	 * long as GPS stays off; see POST /api/gps/ping. */
+	lastOffAlertAt: timestamp("lastOffAlertAt", { withTimezone: true }),
+	updatedAt: timestamp("updatedAt", { withTimezone: true })
+		.notNull()
+		.defaultNow()
+		.$onUpdate(() => new Date()),
+});
+export type TechnicianGpsStatus = InferSelectModel<typeof technicianGpsStatus>;
