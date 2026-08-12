@@ -33,7 +33,10 @@ interface ScheduleMaintenancePayload {
 	scheduleId?: number; // Optional, for updates
 	added: { printerId: number; mtId: number }[]; // Array of added printers
 	removed: { printerId: number; mtId: number }[]; // Array of removed printers
-	actions: string; // Action to be performed, e.g., "Add Schedule" or "Update Schedule"
+	// "Add Schedule" | "Update Schedule" | "Reschedule".
+	// "Reschedule" comes from the Reschedule action on a missed visit and is
+	// handled as a CREATE, not an update — see the branch below.
+	actions: string;
 }
 
 export async function POST(req: NextRequest) {
@@ -93,7 +96,13 @@ export async function POST(req: NextRequest) {
 			}
 		}
 
-		if (actions === "Add Schedule") {
+		// Reschedule creates a brand-new schedule just like "Add Schedule",
+		// with two differences handled inside the branch: the
+		// technician/client/location/date duplicate check is skipped, and the
+		// new row carries a back-pointer to the schedule it replaces.
+		const isReschedule = actions === "Reschedule";
+
+		if (actions === "Add Schedule" || isReschedule) {
 			// scheduleDate arrives over JSON as whatever the client sent — never
 			// trust it's already a valid Date-parseable value. Coerce and
 			// validate explicitly so a bad value gets a clear 400 instead of an
@@ -107,22 +116,124 @@ export async function POST(req: NextRequest) {
 			}
 
 			// --- 2. Insert the main maintenance schedule record ---
-			const dateToSave = convertToPhilippineTimezone(parsedScheduleDate);
-			const scheduledAtStr = format(parsedScheduleDate, "yyyy-MM-dd");
+			//
+			// Both the duplicate-schedule check below and the actual insert
+			// MUST derive from the exact same calendar date, or they can
+			// silently disagree. That's exactly what was happening here:
+			// this used to compute two DIFFERENT strings from the same
+			// input — `dateToSave` via convertToPhilippineTimezone
+			// (Asia/Manila) for the actual insert, but `scheduledAtStr` via
+			// plain date-fns `format()` (the SERVER's local timezone, UTC on
+			// Vercel) for the duplicate check and every user-facing message.
+			//
+			// A Scheduler in Manila picking a date in the UI sends a Date
+			// whose JSON-serialized instant is often still the PREVIOUS
+			// day in UTC (e.g. picking Aug 15 in Manila, UTC+8, serializes
+			// to "2026-08-14T16:00:00.000Z"). The UTC-formatted string is
+			// then off by one calendar day from what's actually stored —
+			// so a genuinely different date (e.g. Aug 16) could format to
+			// the SAME string as an existing Aug 15 schedule's stored
+			// value, tripping the duplicate guard on two schedules that
+			// were never actually for the same day. Anchoring both to
+			// Asia/Manila fixes both directions of that bug: legitimate
+			// different-date schedules for the same technician/client/
+			// location are no longer blocked, and a genuine same-day
+			// duplicate is reliably caught.
+			const scheduledAtStr = convertToPhilippineTimezone(
+				parsedScheduleDate,
+				"yyyy-MM-dd"
+			);
+
+			// Printers that will be attached to the new schedule. For a normal
+			// creation these come from the form; for a reschedule the client
+			// sends none and they're derived from the missed schedule instead,
+			// below.
+			// mtId is nullable here (unlike the form payload's type): a routine
+			// schedule has no originating maintenance record to point back at.
+			let printersToAttach: { printerId: number; mtId: number | null }[] =
+				added ?? [];
+			let rescheduledFromId: number | null = null;
+
+			if (isReschedule) {
+				if (!scheduleId) {
+					return NextResponse.json(
+						{ message: "Reschedule requires the original schedule id." },
+						{ status: 400 }
+					);
+				}
+
+				const [original] = await db
+					.select({ id: schedules.id, scheduledAt: schedules.scheduledAt })
+					.from(schedules)
+					.where(eq(schedules.id, scheduleId))
+					.limit(1);
+
+				if (!original) {
+					return NextResponse.json(
+						{ message: "The schedule being rescheduled no longer exists." },
+						{ status: 404 }
+					);
+				}
+
+				rescheduledFromId = original.id;
+
+				// Carry over only the work that never got done. A schedule can
+				// be partially completed — the technician maintained three of
+				// five printers before the day ran out — and re-booking the
+				// finished ones would both duplicate history and put a printer
+				// back on a route it doesn't need to be on.
+				const outstanding = await db
+					.select({
+						printerId: scheduleDetails.printerId,
+						originMTId: scheduleDetails.originMTId,
+					})
+					.from(scheduleDetails)
+					.where(
+						and(
+							eq(scheduleDetails.scheduleId, original.id),
+							eq(scheduleDetails.isMaintained, false)
+						)
+					);
+
+				if (outstanding.length === 0) {
+					return NextResponse.json(
+						{
+							message:
+								"There is nothing left to reschedule — every printer on this schedule has already been maintained.",
+						},
+						{ status: 409 }
+					);
+				}
+
+				printersToAttach = outstanding.map((d) => ({
+					printerId: d.printerId,
+					// Preserved so an issue-driven visit still points back at the
+					// maintenance record that triggered it, across the reschedule.
+					mtId: d.originMTId,
+				}));
+			}
 
 			// Check for a duplicate ourselves rather than relying on
 			// onConflictDoNothing, which requires a matching unique index in
 			// the database — one was never actually created here, so that
 			// approach silently fails with "no unique or exclusion
 			// constraint matching the ON CONFLICT specification".
-			const existing = await db.query.schedules.findFirst({
-				where: and(
-					eq(schedules.technicianId, Number(technicianId)),
-					eq(schedules.clientId, Number(clientId)),
-					eq(schedules.locationId, Number(locationId)),
-					eq(schedules.scheduledAt, scheduledAtStr)
-				),
-			});
+			//
+			// Deliberately NOT run for a reschedule. A missed visit is very
+			// often re-booked onto a day where that technician already has the
+			// same client/location — that's the normal shape of catching up,
+			// not a mistake, and blocking it is exactly the bug this branch
+			// fixes. The guard still applies in full to ordinary creation.
+			const existing = isReschedule
+				? undefined
+				: await db.query.schedules.findFirst({
+						where: and(
+							eq(schedules.technicianId, Number(technicianId)),
+							eq(schedules.clientId, Number(clientId)),
+							eq(schedules.locationId, Number(locationId)),
+							eq(schedules.scheduledAt, scheduledAtStr)
+						),
+					});
 
 			if (existing) {
 				return NextResponse.json(
@@ -139,6 +250,46 @@ export async function POST(req: NextRequest) {
 				);
 			}
 
+			// A printer can only be in one place at a time, so it can never be
+			// scheduled twice for the same date — regardless of client. Checked
+			// across ALL schedules for that date.
+			//
+			// Run BEFORE the schedule row is inserted: it used to run after,
+			// which left an empty orphan schedule behind every time it tripped.
+			if (printersToAttach.length > 0) {
+				const conflicting = await db
+					.select({
+						printerId: scheduleDetails.printerId,
+						serialNo: printers.serialNo,
+					})
+					.from(scheduleDetails)
+					.innerJoin(schedules, eq(schedules.id, scheduleDetails.scheduleId))
+					.innerJoin(printers, eq(printers.id, scheduleDetails.printerId))
+					.where(
+						and(
+							eq(schedules.scheduledAt, scheduledAtStr),
+							inArray(
+								scheduleDetails.printerId,
+								printersToAttach.map((p) => p.printerId)
+							)
+						)
+					);
+
+				if (conflicting.length > 0) {
+					const serials = [
+						...new Set(conflicting.map((c) => c.serialNo)),
+					].join(", ");
+					return NextResponse.json(
+						{
+							message: `Printer(s) ${serials} ${
+								conflicting.length === 1 ? "is" : "are"
+							} already scheduled for ${scheduledAtStr} on a different schedule.`,
+						},
+						{ status: 409 }
+					);
+				}
+			}
+
 			const [newSchedule] = await db
 				.insert(schedules)
 				.values({
@@ -148,7 +299,13 @@ export async function POST(req: NextRequest) {
 					priority: Number(priority),
 					notes: notes,
 					maintainAll,
-					scheduledAt: dateToSave,
+					scheduledAt: scheduledAtStr,
+					// Null for a normal creation; the original missed schedule's
+					// id for a reschedule. The original row is never touched, so
+					// it stays "missed" for audit — this pointer is the only link
+					// between the two, and following it back yields the full
+					// chain for a visit rescheduled more than once.
+					rescheduledFromId,
 					// createdAt and updatedAt will be defaultNow() from schema
 				})
 				.returning({ id: schedules.id }); // Get the ID of the newly inserted schedule
@@ -162,47 +319,11 @@ export async function POST(req: NextRequest) {
 
 			newScheduleId = newSchedule.id;
 
-			// Attach any printers selected at creation time immediately,
-			// instead of leaving a brand-new schedule empty until the user
-			// happens to click Update again — same duplicate-guard as the
-			// update path below.
-			if (added.length > 0) {
-				// A printer can only be in one place at a time, so it can never be
-				// scheduled twice for the same date — regardless of client. Checked
-				// across ALL schedules for this date, not just this client's.
-				const conflicting = await db
-					.select({
-						printerId: scheduleDetails.printerId,
-						serialNo: printers.serialNo,
-					})
-					.from(scheduleDetails)
-					.innerJoin(schedules, eq(schedules.id, scheduleDetails.scheduleId))
-					.innerJoin(printers, eq(printers.id, scheduleDetails.printerId))
-					.where(
-						and(
-							eq(schedules.scheduledAt, dateToSave),
-							inArray(
-								scheduleDetails.printerId,
-								added.map((p) => p.printerId)
-							),
-							sql`${scheduleDetails.scheduleId} != ${newScheduleId}`
-						)
-					);
-
-				if (conflicting.length > 0) {
-					const serials = conflicting.map((c) => c.serialNo).join(", ");
-					return NextResponse.json(
-						{
-							message: `Printer(s) ${serials} ${
-								conflicting.length === 1 ? "is" : "are"
-							} already scheduled for ${scheduledAtStr} on a different schedule.`,
-						},
-						{ status: 409 }
-					);
-				}
-
+			// Attach the printers immediately, instead of leaving a brand-new
+			// schedule empty until the user happens to click Update again.
+			if (printersToAttach.length > 0) {
 				await db.insert(scheduleDetails).values(
-					added.map((printer) => ({
+					printersToAttach.map((printer) => ({
 						scheduleId: newScheduleId!,
 						printerId: printer.printerId,
 						originMTId: printer.mtId,
@@ -328,8 +449,14 @@ export async function GET(req: Request) {
 		const technicianId = Number(technicianIdParam);
 		const scheduledAt = format(new Date(scheduledAtParam!), "yyyy-MM-dd");
 
+		// Always answer with an ARRAY. This branch used to return bare objects
+		// ({ status: 200 } here, { message: "No schedules" } below) even though
+		// the client types the response as Schedule[] and reads `.length` off
+		// it — a non-array reply makes that length `undefined`, which silently
+		// breaks every check built on it and can leave the Schedule form's
+		// controls in the wrong state.
 		if (technicianId === 0 || scheduledAt === null) {
-			return NextResponse.json({ status: 200 });
+			return NextResponse.json([], { status: 200 });
 		}
 
 		try {
@@ -346,6 +473,10 @@ export async function GET(req: Request) {
 					priority: priorities.name,
 					notes: schedules.notes,
 					maintainAll: schedules.maintainAll,
+					// Non-null when this schedule replaced a missed one. Drives
+					// the "Rescheduled" marker in the grid, which is what makes
+					// the audit trail visible rather than only stored.
+					rescheduledFromId: schedules.rescheduledFromId,
 					scheduleAt:
 						sql<string>`to_char(${schedules.scheduledAt}, 'MM/DD/YYYY')`.as(
 							"date"
@@ -364,15 +495,8 @@ export async function GET(req: Request) {
 				)
 				.orderBy(desc(priorities.id));
 
-			if (data.length === 0) {
-				return NextResponse.json(
-					{
-						message: "No schedules",
-					},
-					{ status: 200 }
-				);
-			}
-
+			// An empty day is a normal, successful result — an empty array, not
+			// a message object. See the note above.
 			return NextResponse.json(data, { status: 200 });
 		} catch (error) {
 			console.error("Error fetching schedule data:", error);

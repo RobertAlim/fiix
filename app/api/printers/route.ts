@@ -131,7 +131,18 @@ export async function GET(req: Request) {
 				.where(
 					and(
 						eq(deployments.clientId, clientId),
-						eq(deployments.locationId, locationId)
+						eq(deployments.locationId, locationId),
+						// Printer Transfer (see /api/admin/master/printers/[id]/transfer)
+						// retires the old deployment row rather than deleting it, so
+						// history is preserved — but that means a printer transferred
+						// AWAY from this client/location and later back TO it again
+						// has more than one deployments row matching the clientId/
+						// locationId filter above. Without this, that printer's id
+						// appears twice in the result: once per matching deployment
+						// row, all joined against the same printers.id — which is
+						// exactly the "two children with the same key" React error,
+						// since the UI keys this list by printer.id.
+						eq(deployments.deployedHere, true)
 					)
 				)
 				.orderBy(scheduleDetailsData.schedId);
