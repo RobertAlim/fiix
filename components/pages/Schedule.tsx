@@ -124,7 +124,10 @@ interface ScheduleMaintenancePayload {
 		printerId: number;
 		mtId: number;
 	}[];
-	actions: string; // Action to be performed, e.g., "Add Schedule" or "Update Schedule";
+	// "Add Schedule" | "Update Schedule" | "Reschedule". "Reschedule" is
+	// handled server-side as a create that skips the duplicate-schedule
+	// guard and links back to the original — see app/api/schedule/route.ts.
+	actions: string;
 }
 
 // Define the type for the response you expect from the API (optional, but good practice)
@@ -152,6 +155,9 @@ const createMaintenanceSchedule = async (
 
 	return response.json();
 };
+
+/** Stable empty-array reference — see the note at its use site. */
+const EMPTY_SCHEDULES: Schedule[] = [];
 
 export default function SchedulePage() {
 	const [edits, setEdits] = useState<Record<string, PrinterEdit>>({});
@@ -241,7 +247,7 @@ export default function SchedulePage() {
 				description:
 					action === "FromDataGrid"
 						? "A new schedule has been added to the system."
-						: "The selected schedule date has been updated.",
+						: "A new schedule was created for the outstanding printers. The original schedule is kept on record as missed.",
 				position: "top-right",
 				color: "success",
 			});
@@ -371,20 +377,42 @@ export default function SchedulePage() {
 		// isError: isErrorSchedules,
 		// error: schedulesError,
 		isSuccess: isSchedulesSuccess,
+		// True for the very first fetch of a technician/date pair AND for
+		// every later refetch of it (including a query-key change). Used
+		// below to hold the card grid on a "Loading…" state instead of
+		// `placeholderData`'s carried-over previous result — otherwise the
+		// PREVIOUS technician/date's cards stay on screen for the whole
+		// refetch, which reads as "picking a new technician & date didn't
+		// populate anything" right up until the moment it flips.
+		isFetching: isFetchingSchedules,
 	} = useQuery<Schedule[], Error>({
 		queryKey: ["schedules", selectedTechnicianId, scheduleDate],
 		queryFn: () => {
-			const scheduledAt = format(
-				fetchedScheduleData ? new Date(scheduleDate!) : new Date("1900-01-01"),
-				"yyyy-MM-dd"
-			);
+			// This used to read `fetchedScheduleData` — its OWN result — to
+			// decide which date to request, falling back to 1900-01-01 when
+			// it was still undefined. That made the first fetch after a
+			// technician/date change query a date nothing is ever scheduled
+			// on, so the page could sit on an empty result for the day the
+			// user actually picked. The picked date is right here in state;
+			// use it, and let `enabled` below hold the query until there is
+			// one.
+			const scheduledAt = format(scheduleDate!, "yyyy-MM-dd");
 			return fetchData<Schedule[]>(
-				`/api/schedule?technicianId=${selectedTechnicianId}&scheduledAt=${scheduledAt}&pageSource="Schedule"`
+				`/api/schedule?technicianId=${selectedTechnicianId}&scheduledAt=${scheduledAt}&pageSource=Schedule`
 			);
 		},
-		enabled: !!selectedClientId && !!selectedLocationId,
+		// Gated on what this query actually needs. It was previously gated on
+		// client/location, which this request doesn't use at all — and which
+		// the Change Technician & Date flow resets to "0", so the gate said
+		// nothing useful either way.
+		enabled:
+			!!selectedTechnicianId && selectedTechnicianId !== "0" && !!scheduleDate,
 		staleTime: 1000 * 60 * 1,
-		placeholderData: (previousData) => previousData, // Keep this if you want to show previous data while refetching
+		// previousData is still used as a base so the grid doesn't flash
+		// empty between technician/date changes, but the render below never
+		// shows it directly while isFetchingSchedules is true — see the
+		// comment on isFetching above.
+		placeholderData: (previousData) => previousData,
 		retry: false,
 	});
 
@@ -567,7 +595,11 @@ export default function SchedulePage() {
 		useState<VisibilityState>({});
 	const [rowSelectionSchedules, setRowSelectionSchedules] =
 		useState<RowSelectionState>({});
-	const scheduleData = fetchedScheduleData || []; // Fallback to empty array if undefined
+	// Module-level constant, not a fresh `[]` literal: this value is a
+	// dependency of the effect below, and a new array reference on every
+	// render would re-fire it every render (the same trap that once caused
+	// a "Maximum update depth exceeded" loop in ItinerarySequenceManager).
+	const scheduleData = fetchedScheduleData ?? EMPTY_SCHEDULES;
 
 	React.useEffect(() => {
 		async function fetchTime() {
@@ -579,7 +611,17 @@ export default function SchedulePage() {
 	}, []);
 
 	React.useEffect(() => {
-		if (isSchedulesSuccess && scheduleData.length === 0 && !isSetupModalOpen) {
+		// Also holds off while isFetchingSchedules is true — otherwise
+		// `scheduleData` can still be the PREVIOUS technician/date's
+		// (possibly empty) placeholder result, and this would fire "No
+		// schedules found" for a selection that, once the fetch actually
+		// lands, does have one.
+		if (
+			isSchedulesSuccess &&
+			!isFetchingSchedules &&
+			scheduleData.length === 0 &&
+			!isSetupModalOpen
+		) {
 			console.log(
 				"No schedules found for the selected technician and date. Please select a different technician or date."
 			);
@@ -590,9 +632,18 @@ export default function SchedulePage() {
 				color: "info",
 			});
 		}
-	}, [scheduleData, isSchedulesSuccess, isSetupModalOpen]); // Re-run when scheduleData changes
+	}, [scheduleData, isSchedulesSuccess, isFetchingSchedules, isSetupModalOpen]); // Re-run when scheduleData changes
 
-	const areControlsEnabled = isEditing || isAdding!;
+	// The Client / Location / Priority / Notes controls are unlocked purely by
+	// this: a technician and date have been confirmed, so the user is in
+	// create or edit mode. They used to ALSO require `scheduleData.length > 0`
+	// — i.e. "you may only fill in this form if this technician already has
+	// schedules on this date" — which is backwards, since filling it in is how
+	// the first schedule for that day gets created. It also disabled the whole
+	// form any time the schedules query had no data yet (initial fetch, a
+	// refetch with no cached result, an errored request), which is the freeze
+	// that showed up right after Change Technician & Date.
+	const areControlsEnabled = isEditing || isAdding;
 
 	const handleEditSchedule = React.useCallback(
 		(schedId: number) => {
@@ -1264,7 +1315,15 @@ export default function SchedulePage() {
 						scheduleId: scheduleId,
 						added: [],
 						removed: [],
-						actions: "Add Schedule",
+						// NOT "Add Schedule". A missed visit is routinely
+						// re-booked onto a day the technician already covers
+						// that client/location, which the duplicate guard on
+						// "Add Schedule" rejects. "Reschedule" tells the server
+						// to skip that guard, carry the missed schedule's
+						// still-unmaintained printers across, and record a link
+						// back to the original — which itself stays untouched
+						// and keeps reading as missed.
+						actions: "Reschedule",
 					};
 
 					mutate(scheduleData);
@@ -1406,7 +1465,7 @@ export default function SchedulePage() {
 											: "No client found.."
 										: "Please select a client first."
 								}
-								disabled={!areControlsEnabled || scheduleData.length === 0}
+								disabled={!areControlsEnabled}
 							/>
 							{/* Location Combobox */}{" "}
 							<ComboBoxResponsive
@@ -1419,8 +1478,7 @@ export default function SchedulePage() {
 								disabled={
 									!selectedClientId ||
 									isLoadingAllLocations ||
-									!areControlsEnabled ||
-									scheduleData.length === 0
+									!areControlsEnabled
 								}
 								emptyMessage={
 									selectedClientId
@@ -1436,14 +1494,14 @@ export default function SchedulePage() {
 								selectedValue={selectedPriorityId}
 								onValueChange={setSelectedPriorityId}
 								emptyMessage="No priority found."
-								disabled={!areControlsEnabled || scheduleData.length === 0}
+								disabled={!areControlsEnabled}
 							/>
 							<Textarea
 								id="notes"
 								placeholder="Leave a note here"
 								value={notes || ""}
 								onChange={(e) => setNotes(e.target.value)}
-								disabled={!areControlsEnabled || scheduleData.length === 0}
+								disabled={!areControlsEnabled}
 							/>
 						</div>
 						<div className="col-span-2">
@@ -1525,7 +1583,18 @@ export default function SchedulePage() {
 
 							<Separator className="my-2" />
 
-							{scheduleData && scheduleData.length > 0 ? (
+							{isFetchingSchedules ? (
+								// Deliberately not the previous technician/date's cards
+								// (placeholderData) here — showing them while a new
+								// selection is in flight is what made "Change
+								// Technician & Date" look like it wasn't populating the
+								// existing record: the OLD cards stayed put for the
+								// whole fetch instead of the grid reflecting what was
+								// just picked.
+								<p className="py-6 text-center text-sm text-muted-foreground">
+									Loading schedules for this technician and date…
+								</p>
+							) : scheduleData && scheduleData.length > 0 ? (
 								<div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
 									{scheduleData.map((schedule) => (
 										<ScheduleCard
