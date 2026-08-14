@@ -33,12 +33,20 @@ export interface MapPoint {
 	longitude: number;
 }
 
+export interface TrailPoint {
+	latitude: number;
+	longitude: number;
+}
+
 const MANILA_CENTER = { lat: 14.5995, lng: 120.9842 };
 
 // Matches the color coding used before (and still used by the itinerary/
 // route-planner navigate icons): indigo = the technician's live position,
 // gray = where the day started or the last completed stop, green = the
-// next assigned destination.
+// next assigned destination. The trail below uses the technician color
+// too (it's the same person's path) but thinner and dashed, so it reads
+// as "where they've been" rather than competing visually with the
+// solid, more prominent planned-route line.
 const MARKER_COLORS = {
 	technician: "#4f46e5",
 	origin: "#6b7280",
@@ -85,11 +93,18 @@ export function GpsMonitoringGoogleMap({
 	technician,
 	origin,
 	destination,
+	trail,
 	onRouteComputed,
 }: {
 	technician: MapPoint | null;
 	origin: MapPoint | null;
 	destination: MapPoint | null;
+	/** The technician's actual GPS fixes for the day, oldest first — the
+	 * literal path they've traveled, distinct from origin/destination
+	 * above (which is a PLANNED stop-to-stop line, not a record of real
+	 * movement). Optional/undefined-safe so existing callers that haven't
+	 * been updated yet don't break. */
+	trail?: TrailPoint[];
 	/** Reports distance/ETA text up to the parent, so it can render it
 	 * outside the map (e.g. in the card header) instead of only as an
 	 * on-map popover. */
@@ -103,6 +118,7 @@ export function GpsMonitoringGoogleMap({
 	const originMarkerRef = useRef<google.maps.Marker | null>(null);
 	const destinationMarkerRef = useRef<google.maps.Marker | null>(null);
 	const polylineRef = useRef<google.maps.Polyline | null>(null);
+	const trailPolylineRef = useRef<google.maps.Polyline | null>(null);
 	const routeRequestSeq = useRef(0);
 
 	const [loadError, setLoadError] = useState<string | null>(null);
@@ -165,6 +181,46 @@ export function GpsMonitoringGoogleMap({
 		// Admin has set — same reasoning as the old Leaflet RecenterOnMove.
 		map.panTo(position);
 	});
+
+	// --- Trail: the technician's actual path today, from real pings ------
+	useEffect(() => {
+		const map = mapRef.current;
+		if (!map) return;
+
+		if (!trail || trail.length < 2) {
+			trailPolylineRef.current?.setMap(null);
+			trailPolylineRef.current = null;
+			return;
+		}
+
+		const path = trail.map((p) => ({ lat: p.latitude, lng: p.longitude }));
+		if (!trailPolylineRef.current) {
+			trailPolylineRef.current = new google.maps.Polyline({
+				map,
+				path,
+				geodesic: true,
+				// Dashed via Google's icons-repeat technique: the base line
+				// itself is invisible (strokeOpacity: 0) and the repeated
+				// short-stroke symbol below draws the visible dashes —
+				// distinct on purpose from the solid planned-route line
+				// further down, since this is a record of where the
+				// technician has actually been, not a suggested route.
+				strokeColor: MARKER_COLORS.technician,
+				strokeOpacity: 0,
+				strokeWeight: 3,
+				icons: [
+					{
+						icon: { path: "M 0,-1 0,1", strokeOpacity: 0.7, scale: 3 },
+						offset: "0",
+						repeat: "12px",
+					},
+				],
+				zIndex: 1,
+			});
+		} else {
+			trailPolylineRef.current.setPath(path);
+		}
+	}, [trail]);
 
 	// --- Origin / destination markers + the routed polyline --------------
 	useEffect(() => {

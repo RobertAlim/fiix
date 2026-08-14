@@ -50,6 +50,12 @@ interface RoutePlanPoint {
 	latitude: number;
 	longitude: number;
 }
+interface GpsTrailPoint {
+	latitude: number;
+	longitude: number;
+	accuracy: number | null;
+	capturedAt: string;
+}
 interface RoutePlan {
 	status: "not_started" | "no_itinerary" | "in_progress" | "all_completed";
 	timedOut?: boolean;
@@ -111,6 +117,19 @@ export default function GpsMonitoringPage() {
 		// every 5 seconds, so refetching this at the same cadence would just
 		// be wasted requests.
 		refetchInterval: 15_000,
+	});
+
+	// The technician's actual traveled path today — distinct from
+	// routePlan above (which is a PLANNED origin/destination, not where
+	// they've really been). Matches the live-position poll's cadence
+	// since a trail that lags behind the live dot would look wrong on the
+	// same map.
+	const { data: trail } = useQuery<GpsTrailPoint[]>({
+		queryKey: ["gps-history", technicianId],
+		queryFn: () =>
+			fetchData<GpsTrailPoint[]>(`/api/gps/history?technicianId=${technicianId}`),
+		enabled: !!technicianId,
+		refetchInterval: 5_000,
 	});
 
 	const technicianPoint =
@@ -178,6 +197,7 @@ export default function GpsMonitoringPage() {
 								technician={technicianPoint}
 								origin={routePlan?.origin ?? null}
 								destination={routePlan?.destination ?? null}
+								trail={trail ?? []}
 							/>
 						</div>
 					) : (

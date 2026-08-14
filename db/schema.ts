@@ -7,6 +7,7 @@ import {
 	pgTable,
 	pgView,
 	uniqueIndex,
+	index,
 	serial,
 	text,
 	date,
@@ -557,3 +558,44 @@ export const technicianGpsStatus = pgTable("technicianGpsStatus", {
 		.$onUpdate(() => new Date()),
 });
 export type TechnicianGpsStatus = InferSelectModel<typeof technicianGpsStatus>;
+
+/** Append-only log of every real GPS fix a technician's device reports
+ * while on duty — what technicianGpsStatus above deliberately doesn't
+ * keep (it's a single upserted row, latest fix only, by design, so the
+ * live map read stays a cheap point lookup). GPS Monitoring's "path
+ * traveled today" trail reads this table; the live current-position dot
+ * still reads technicianGpsStatus. Both are written from the same
+ * POST /api/gps/ping request — one ping, one upsert here, one insert
+ * there — so there's exactly one code path producing GPS data, not two
+ * that could drift apart.
+ * Not written for {enabled: false} pings (GPS-off signals carry no
+ * fix) — only real position reports become trail points. */
+export const technicianGpsPings = pgTable(
+	"technicianGpsPings",
+	{
+		id: serial("id").primaryKey(),
+		technicianId: integer("technicianId")
+			.notNull()
+			.references(() => users.id, { onDelete: "cascade" }),
+		latitude: doublePrecision("latitude").notNull(),
+		longitude: doublePrecision("longitude").notNull(),
+		accuracy: doublePrecision("accuracy"),
+		/** Device fix time, same field this represents on
+		 * technicianGpsStatus — what the trail is actually ordered and
+		 * plotted by. */
+		capturedAt: timestamp("capturedAt", { withTimezone: true }).notNull(),
+		createdAt: timestamp("createdAt", { withTimezone: true })
+			.notNull()
+			.defaultNow(),
+	},
+	(table) => ({
+		// GPS Monitoring's history read is always "one technician, one
+		// day, in order" — this composite index is exactly that access
+		// pattern, not a general-purpose index added speculatively.
+		technicianCapturedAtIdx: index("technicianGpsPings_technicianId_capturedAt_idx").on(
+			table.technicianId,
+			table.capturedAt
+		),
+	})
+);
+export type TechnicianGpsPing = InferSelectModel<typeof technicianGpsPings>;
