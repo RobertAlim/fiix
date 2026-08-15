@@ -400,6 +400,13 @@
             "when": 1785991184552,
             "tag": "0057_signatories_location",
             "breakpoints": true
+        },
+        {
+            "idx": 58,
+            "version": "7",
+            "when": 1785991185552,
+            "tag": "0058_maintain_signpath_default",
+            "breakpoints": true
         }
     ]
 }

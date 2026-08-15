@@ -1,0 +1,15 @@
+-- maintain.signPath already has a real NOT NULL constraint in production
+-- (confirmed via a live Postgres 23502 violation — this migration doesn't
+-- ADD that constraint, since it's already there; db/schema.ts previously
+-- just didn't declare it, which was the actual drift). This migration
+-- adds the missing piece: a DB-level DEFAULT matching "Unsigned", the
+-- app's established sentinel for "no signature captured yet" (checked in
+-- at least eight places across the codebase). Defense-in-depth on top of
+-- every client remembering to send it explicitly — a future client that
+-- forgets gets the correct sentinel automatically instead of a 500.
+--
+-- Idempotent per this project's standing convention — SET DEFAULT is
+-- naturally idempotent (re-running it just sets the same default again),
+-- no IF NOT EXISTS/DO $$ guard needed the way ADD COLUMN/ADD CONSTRAINT
+-- require.
+ALTER TABLE "maintain" ALTER COLUMN "signPath" SET DEFAULT 'Unsigned';

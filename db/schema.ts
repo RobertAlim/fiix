@@ -95,7 +95,20 @@ export const maintain = pgTable("maintain", {
 	notes: text("notes"),
 	userId: integer("userId").notNull(),
 	signatoryId: integer("signatoryId").notNull(),
-	signPath: text("signPath"),
+	// NOT NULL + a real default in the actual production database (confirmed
+	// via a live Postgres constraint-violation error — code 23502, "null
+	// value in column signPath ... violates not-null constraint" — this
+	// schema.ts file previously declared it as plain nullable with no
+	// default, which didn't match reality). "Unsigned" is the app's
+	// established sentinel for "no signature captured yet" — checked in at
+	// least eight places across the app (PDF report rendering, dashboards,
+	// the purge tool, features/offline-sync/save-maintenance-report.ts's
+	// own `signKey ?? "Unsigned"`) — so every INSERT path needs a real,
+	// non-null value here regardless of client. The DB-level default below
+	// is defense-in-depth on top of that convention: any future client
+	// that forgets to send signPath explicitly gets the correct sentinel
+	// automatically instead of a 500.
+	signPath: text("signPath").notNull().default("Unsigned"),
 	nozzlePath: text("nozzlePath"),
 	createdAt: timestamp("createdAt")
 		.notNull()
