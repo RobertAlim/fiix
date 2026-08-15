@@ -242,6 +242,13 @@ export const signatories = pgTable("signatories", {
 	firstName: varchar("firstName", { length: 20 }).notNull(),
 	lastName: varchar("lastName", { length: 20 }).notNull(),
 	clientId: integer("clientId"),
+	/** Nullable, same reasoning as clientId above — an existing client-only
+	 * signatory (created before this column existed) has no location on
+	 * file and stays valid rather than becoming orphaned data. New
+	 * signatories added from the mobile app's Maintenance form always set
+	 * this, since a technician always has a specific location in hand when
+	 * adding one. */
+	locationId: integer("locationId"),
 });
 
 export const otps = pgTable("otps", {

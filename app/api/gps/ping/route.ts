@@ -1,21 +1,27 @@
 // app/api/gps/ping/route.ts
 //
-// Called by the technician's own device roughly every 15 seconds while
-// they're on duty (see components/GpsReporter.tsx). Upserts this
-// technician's single technicianGpsStatus row and, when GPS goes from ON
-// to OFF while the technician is still clocked in, sends the SMS alert
-// required by the GPS Monitoring feature.
+// Called by BOTH the web app's own device (components/GpsReporter.tsx,
+// every 5s) and the Technician mobile app (every 10s) while a technician
+// is on duty — one shared endpoint, so there is exactly one place that
+// decides what a ping means and what happens to it, regardless of which
+// client sent it. Upserts this technician's single technicianGpsStatus
+// row (live "where are they right now" read) and appends a row to
+// technicianGpsPings (the "where have they been today" trail — see that
+// table's doc comment in db/schema.ts), and, when GPS goes from ON to OFF
+// while the technician is still clocked in, sends the SMS alert required
+// by the GPS Monitoring feature.
 //
 // A ping has one of two shapes:
 //   - { latitude, longitude, accuracy? }  — a live fix; gpsEnabled = true
-//   - { enabled: false }                  — the browser's watchPosition
-//     callback errored out (permission revoked, location services turned
-//     off, etc.) — there is no coordinate to report
+//   - { enabled: false }                  — the client's location watch
+//     errored out (permission revoked, location services turned off,
+//     etc.) — there is no coordinate to report
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/db";
 import {
 	technicianGpsStatus,
+	technicianGpsPings,
 	technicianAttendance,
 	locationGeofences,
 	locations,
@@ -180,8 +186,14 @@ export async function POST(req: NextRequest) {
 			return NextResponse.json({ gpsEnabled: false, alertSent: !!smsResult });
 		}
 
-		// GPS is ON — upsert the fix and clear any pending off-alert flag so
-		// the NEXT off episode (however far away) alerts fresh.
+		// GPS is ON — upsert the live-status row (unchanged) AND append a
+		// trail point to the history log, which is the actual change this
+		// requirement asked for: GPS Monitoring's "path traveled today"
+		// previously had nothing to read except Time In/Out/Maintenance
+		// coordinates, because every ping only ever overwrote the single
+		// technicianGpsStatus row above and left no record behind. Both
+		// writes come from this one ping — there still isn't a second code
+		// path that could drift out of sync with this one.
 		await db
 			.insert(technicianGpsStatus)
 			.values({
@@ -206,6 +218,24 @@ export async function POST(req: NextRequest) {
 					updatedAt: now,
 				},
 			});
+
+		// Own try/catch: a history-log failure must never turn into the
+		// generic "ping not recorded" response below when the live status
+		// above already committed successfully — the technician's current
+		// position is the part that actually matters in the moment; the
+		// trail is a nice-to-have that can drop a point without anyone
+		// noticing.
+		try {
+			await db.insert(technicianGpsPings).values({
+				technicianId,
+				latitude: data.latitude,
+				longitude: data.longitude,
+				accuracy: data.accuracy ?? null,
+				capturedAt: now,
+			});
+		} catch (historyErr) {
+			console.error("gps ping history insert failed:", historyErr);
+		}
 
 		return NextResponse.json({ gpsEnabled: true });
 	} catch (err) {
