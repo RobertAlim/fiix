@@ -7,6 +7,7 @@ import {
 	resets,
 	printers,
 	activeDeployment,
+	deployments,
 	models,
 	clients,
 	locations,
@@ -15,7 +16,7 @@ import {
 	maintenanceLocation,
 	maintenanceSyncEvents,
 } from "@/db/schema";
-import { eq, sql, and } from "drizzle-orm";
+import { eq, sql, and, desc } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import {
 	maintainSubmitSchema,
@@ -91,6 +92,32 @@ export async function GET(req: Request) {
 		);
 	}
 
+	// Latest recorded print count for this PRINTER (not just its current
+	// deployment) — joins through `deployments` rather than
+	// `activeDeployment`, since Printer Transfer retires the old
+	// deployment row and inserts a new one, so a printer's full history
+	// spans more than one deploymentId over time. "History" is
+	// deliberately just this: every past maintain row for the printer,
+	// ordered by createdAt — see the printCount column's comment in
+	// db/schema.ts.
+	const [lastPrintCountRow] = await db
+		.select({ printCount: maintain.printCount })
+		.from(maintain)
+		.innerJoin(deployments, eq(maintain.deploymentId, deployments.id))
+		.where(
+			and(
+				eq(deployments.printerId, maintenanceData.id),
+				sql`${maintain.printCount} IS NOT NULL`
+			)
+		)
+		.orderBy(desc(maintain.createdAt))
+		.limit(1);
+
+	const maintenanceDataWithHistory = {
+		...maintenanceData,
+		lastPrintCount: lastPrintCountRow?.printCount ?? null,
+	};
+
 	const signatoryList = await db
 		.select({
 			id: signatories.id,
@@ -107,7 +134,7 @@ export async function GET(req: Request) {
 	}));
 
 	return NextResponse.json({
-		maintenanceData,
+		maintenanceData: maintenanceDataWithHistory,
 		signatories: signatoriesFormatted,
 	});
 }
@@ -127,6 +154,50 @@ export async function POST(req: Request) {
 
 	const data = parsed.data;
 	const { clientUuid, gps, geocode, auditTrail } = data;
+
+	// Required + monotonic-increase check for printCount — split out from
+	// the Zod schema above because it needs a DB lookup (the schema only
+	// validates shape/type). printCount is optional at the schema level
+	// so purgeMaintainSubmitSchema (Admin backfill tool, no print count
+	// field in its form) stays unaffected; THIS route is the real
+	// technician submission path, so it's the one that actually requires
+	// it. Looked up via deployments (not activeDeployment) — a printer
+	// that's been through Printer Transfer has more than one deploymentId
+	// over its lifetime, and the "previous recorded value" needs to span
+	// all of them, not just the current one.
+	if (data.printCount == null) {
+		return NextResponse.json(
+			{ error: "Print count is required." },
+			{ status: 400 }
+		);
+	}
+	const [deployment] = await db
+		.select({ printerId: deployments.printerId })
+		.from(deployments)
+		.where(eq(deployments.id, data.deploymentId))
+		.limit(1);
+	if (deployment) {
+		const [lastPrintCountRow] = await db
+			.select({ printCount: maintain.printCount })
+			.from(maintain)
+			.innerJoin(deployments, eq(maintain.deploymentId, deployments.id))
+			.where(
+				and(
+					eq(deployments.printerId, deployment.printerId),
+					sql`${maintain.printCount} IS NOT NULL`
+				)
+			)
+			.orderBy(desc(maintain.createdAt))
+			.limit(1);
+		if (lastPrintCountRow && data.printCount < lastPrintCountRow.printCount!) {
+			return NextResponse.json(
+				{
+					error: `Print count can't be lower than the last recorded value (${lastPrintCountRow.printCount}).`,
+				},
+				{ status: 400 }
+			);
+		}
+	}
 
 	try {
 		// IDEMPOTENCY — a retried sync of the same locally-saved report replays
@@ -165,6 +236,7 @@ export async function POST(req: Request) {
 				signatoryId: data.signatoryId,
 				signPath: data.signPath,
 				nozzlePath: data.nozzlePath,
+				printCount: data.printCount,
 				originMTId: data.originMTId,
 				clientUuid,
 			})

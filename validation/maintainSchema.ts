@@ -63,6 +63,20 @@ export const maintainFormSchema = z
 		signatoryId: z.number().min(1, { message: "Signatory is required" }),
 		signPath: z.string().optional(),
 		nozzlePath: z.string().optional(),
+		// Optional at THIS shared-schema level deliberately — purgeMaintainSubmitSchema
+		// below also extends maintainFormSchema, for the separate Admin-only
+		// Purge Maintenance backfill tool, whose form has no print count
+		// field at all. "Required, whole number, not lower than the
+		// printer's previous recorded value" is the real technician
+		// submission's rule specifically — enforced in
+		// app/api/maintain/route.ts's POST handler (the not-lower-than
+		// check needs a DB lookup anyway, so the required/integer checks
+		// live there too rather than being split across two places).
+		printCount: z
+			.number()
+			.int("Print count must be a whole number.")
+			.nonnegative("Print count can't be negative.")
+			.optional(),
 		originMTId: z.number().optional(),
 		colorGroup: z.unknown().optional(),
 		resetGroup: z.unknown().optional(),

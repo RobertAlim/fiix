@@ -407,6 +407,13 @@
             "when": 1785991185552,
             "tag": "0058_maintain_signpath_default",
             "breakpoints": true
+        },
+        {
+            "idx": 59,
+            "version": "7",
+            "when": 1786872771288,
+            "tag": "0059_maintain_print_count",
+            "breakpoints": true
         }
     ]
 }

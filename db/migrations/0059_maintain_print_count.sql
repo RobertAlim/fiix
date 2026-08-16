@@ -1,0 +1,16 @@
+-- Adds maintain.printCount — the printer's odometer-style print counter at
+-- the time of the report, captured by the Technician alongside the nozzle
+-- check (mobile app) / print count field (web). Nullable: existing rows
+-- predate this column and have no value to backfill.
+--
+-- "History" for a printer is deliberately just every past maintain row for
+-- that printer's active deployment, ordered by createdAt — no separate
+-- history table. "Previous/latest recorded value" is this column's most
+-- recent non-null value for the printer; GET /api/maintain resolves and
+-- returns it as `lastPrintCount`, and POST /api/maintain re-checks it
+-- server-side before insert.
+--
+-- Idempotent per this project's standing convention (every migration since
+-- 0051 must be — see the Reschedule/GPS migrations for the same pattern):
+-- IF NOT EXISTS guards a re-run safely even if this was already applied.
+ALTER TABLE "maintain" ADD COLUMN IF NOT EXISTS "printCount" integer;

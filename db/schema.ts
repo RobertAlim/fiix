@@ -110,6 +110,19 @@ export const maintain = pgTable("maintain", {
 	// automatically instead of a 500.
 	signPath: text("signPath").notNull().default("Unsigned"),
 	nozzlePath: text("nozzlePath"),
+	// Printer's odometer-style print counter at the time of this report,
+	// captured by the Technician alongside the nozzle check. Nullable
+	// (rather than notNull) since existing rows predate this column and
+	// have no value to backfill. "History for a printer" is deliberately
+	// just every past maintain row for that printer's active deployment,
+	// ordered by createdAt — no separate history table, same pattern as
+	// how maintenance history already works for everything else on this
+	// table (status, notes, etc.). "Previous/latest recorded value" is
+	// this column's most recent non-null value for the printer, which
+	// app/api/maintain's GET handler resolves and returns as
+	// `lastPrintCount`, and the POST handler re-checks server-side before
+	// insert (see the printCount validation blocks in both).
+	printCount: integer("printCount"),
 	createdAt: timestamp("createdAt")
 		.notNull()
 		.default(sql`now()`),
