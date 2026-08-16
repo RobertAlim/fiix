@@ -1,16 +1,16 @@
-// app/api/admin/master/sms-recipients/[id]/route.ts
+// app/api/admin/master/staff-gps-locations/[id]/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/db";
-import { smsRecipients } from "@/db/schema";
+import { staffGpsLocations } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { requireSuperAdmin } from "@/lib/require-role";
 
-// userId is intentionally not editable here — swapping which person a
-// recipient row represents is a delete-and-re-add, not an edit, so the
-// role/opt-in validation in POST always runs for a new linkage.
 const bodySchema = z.object({
-	isActive: z.boolean().optional(),
+	label: z.string().trim().min(1).max(60).optional(),
+	latitude: z.number().min(-90).max(90).optional(),
+	longitude: z.number().min(-180).max(180).optional(),
+	radiusMeters: z.number().int().min(10).max(5000).optional(),
 });
 
 function parseId(id: string) {
@@ -37,9 +37,9 @@ export async function PATCH(
 	}
 
 	const [row] = await db
-		.update(smsRecipients)
-		.set(parsed.data)
-		.where(eq(smsRecipients.id, id))
+		.update(staffGpsLocations)
+		.set({ ...parsed.data, updatedAt: new Date() })
+		.where(eq(staffGpsLocations.id, id))
 		.returning();
 
 	if (!row) {
@@ -58,6 +58,6 @@ export async function DELETE(
 	const id = parseId((await params).id);
 	if (!id) return NextResponse.json({ error: "Invalid id." }, { status: 400 });
 
-	await db.delete(smsRecipients).where(eq(smsRecipients.id, id));
+	await db.delete(staffGpsLocations).where(eq(staffGpsLocations.id, id));
 	return NextResponse.json({ success: true });
 }

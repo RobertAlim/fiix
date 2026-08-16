@@ -4,7 +4,7 @@ import { z } from "zod";
 import { db } from "@/db";
 import { smsRecipients, users } from "@/db/schema";
 import { asc, ilike, eq, or } from "drizzle-orm";
-import { requireRole } from "@/lib/require-role";
+import { requireSuperAdmin } from "@/lib/require-role";
 
 // Only these roles ever actually receive the Time In notification (see
 // app/api/attendance/time-in) — rejecting anyone else here at link-time
@@ -18,7 +18,7 @@ const bodySchema = z.object({
 });
 
 export async function GET(req: Request) {
-	const auth = await requireRole(["Admin"]);
+	const auth = await requireSuperAdmin();
 	if (auth.error) return auth.error;
 
 	const search = new URL(req.url).searchParams.get("search")?.trim();
@@ -47,7 +47,7 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-	const auth = await requireRole(["Admin"]);
+	const auth = await requireSuperAdmin();
 	if (auth.error) return auth.error;
 
 	const parsed = bodySchema.safeParse(await req.json().catch(() => null));

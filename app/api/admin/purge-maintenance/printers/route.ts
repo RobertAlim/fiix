@@ -9,10 +9,10 @@ import { db } from "@/db";
 import { printers, models, departments, deployments } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { NextResponse } from "next/server";
-import { requireRole } from "@/lib/require-role";
+import { requireSuperAdmin } from "@/lib/require-role";
 
 export async function GET(req: Request) {
-	const authResult = await requireRole(["Admin"]);
+	const authResult = await requireSuperAdmin();
 	if (authResult.error) return authResult.error;
 
 	const { searchParams } = new URL(req.url);

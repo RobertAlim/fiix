@@ -17,6 +17,7 @@ import {
 	scheduleDetails,
 	schedules,
 	users,
+	maintenanceResolutions,
 } from "@/db/schema";
 import { eq, and, desc, inArray, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
@@ -38,6 +39,7 @@ export async function GET() {
 	if (authResult.error) return authResult.error;
 
 	const scheduledTechnician = alias(users, "scheduled_technician");
+	const resolvedByUser = alias(users, "resolved_by_user");
 
 	const latestMaintain = db.$with("latest_maintain").as(
 		db
@@ -76,6 +78,16 @@ export async function GET() {
 				THEN ${scheduledTechnician.firstName} || ' ' || ${scheduledTechnician.lastName}
 				ELSE NULL END
 			`,
+			// Resolution audit trail — see maintenanceResolutions' doc comment
+			// in db/schema.ts. Left-joined: most rows have no resolution yet.
+			isResolved: sql<boolean>`${maintenanceResolutions.id} IS NOT NULL`,
+			resolvedAt: maintenanceResolutions.resolvedAt,
+			resolutionNotes: maintenanceResolutions.notes,
+			resolvedByName: sql<string | null>`
+				CASE WHEN ${resolvedByUser.id} IS NOT NULL
+				THEN ${resolvedByUser.firstName} || ' ' || ${resolvedByUser.lastName}
+				ELSE NULL END
+			`,
 		})
 		.from(latestMaintain)
 		.innerJoin(printers, eq(printers.id, latestMaintain.printerId))
@@ -87,6 +99,11 @@ export async function GET() {
 		.leftJoin(scheduleDetails, eq(scheduleDetails.originMTId, latestMaintain.mtId))
 		.leftJoin(schedules, eq(schedules.id, scheduleDetails.scheduleId))
 		.leftJoin(scheduledTechnician, eq(scheduledTechnician.id, schedules.technicianId))
+		.leftJoin(
+			maintenanceResolutions,
+			eq(maintenanceResolutions.maintainId, latestMaintain.mtId)
+		)
+		.leftJoin(resolvedByUser, eq(resolvedByUser.id, maintenanceResolutions.resolvedByUserId))
 		.where(
 			and(
 				eq(deployments.deployedHere, true),

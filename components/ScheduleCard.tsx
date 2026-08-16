@@ -12,8 +12,9 @@ import {
 	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { MoreHorizontal, User, MapPin, CalendarDays, CheckSquare } from "lucide-react";
+import { MoreHorizontal, User, MapPin, CalendarDays, CheckSquare, GripVertical } from "lucide-react";
 import { Schedule } from "@/components/columns/schedules/columns";
+import { cn } from "@/lib/utils";
 
 interface ScheduleCardProps {
 	schedule: Schedule;
@@ -22,6 +23,25 @@ interface ScheduleCardProps {
 	onShowDetailsClick: (schedId: number) => void;
 	onShowReschedClick: (schedId: number) => void;
 	onCardClick?: (schedule: Schedule) => void;
+	/**
+	 * 1-based position in the current itinerary order, shown as a corner
+	 * badge. Only passed when the grid is actually reorderable (a
+	 * technician + date have been picked on the Schedule page) — cards
+	 * shown from other contexts simply omit it and render unchanged.
+	 */
+	sequenceNumber?: number;
+	/** Native HTML5 drag-and-drop wiring for reordering. All optional and
+	 * only meaningful together — a card without `onReorderDrop` doesn't
+	 * become draggable even if the others are passed, since dropping it
+	 * would have nowhere to go. */
+	draggableReorder?: boolean;
+	isDragging?: boolean;
+	isDropTarget?: boolean;
+	onDragStartCard?: (e: React.DragEvent<HTMLDivElement>) => void;
+	onDragOverCard?: (e: React.DragEvent<HTMLDivElement>) => void;
+	onDragLeaveCard?: (e: React.DragEvent<HTMLDivElement>) => void;
+	onDropCard?: (e: React.DragEvent<HTMLDivElement>) => void;
+	onDragEndCard?: (e: React.DragEvent<HTMLDivElement>) => void;
 }
 
 function priorityBadgeClass(priority: string): string {
@@ -42,19 +62,47 @@ export function ScheduleCard({
 	onShowDetailsClick,
 	onShowReschedClick,
 	onCardClick,
+	sequenceNumber,
+	draggableReorder,
+	isDragging,
+	isDropTarget,
+	onDragStartCard,
+	onDragOverCard,
+	onDragLeaveCard,
+	onDropCard,
+	onDragEndCard,
 }: ScheduleCardProps) {
 	return (
 		<Card
-			className={
-				onCardClick
-					? "rounded-xl border shadow-none hover:shadow-sm transition-shadow cursor-pointer"
-					: "rounded-xl border shadow-none hover:shadow-sm transition-shadow"
-			}
+			className={cn(
+				"relative rounded-xl border shadow-none transition-shadow hover:shadow-sm",
+				onCardClick && "cursor-pointer",
+				draggableReorder && "cursor-grab active:cursor-grabbing",
+				isDragging && "opacity-40",
+				isDropTarget && "ring-2 ring-primary"
+			)}
 			onClick={() => onCardClick?.(schedule)}
+			draggable={draggableReorder}
+			onDragStart={onDragStartCard}
+			onDragOver={onDragOverCard}
+			onDragLeave={onDragLeaveCard}
+			onDrop={onDropCard}
+			onDragEnd={onDragEndCard}
 		>
+			{sequenceNumber != null && (
+				<div
+					className="absolute -left-2 -top-2 flex h-6 w-6 items-center justify-center rounded-full border-2 border-background bg-primary text-xs font-semibold text-primary-foreground shadow"
+					title={`Visit order: ${sequenceNumber}`}
+				>
+					{sequenceNumber}
+				</div>
+			)}
 			<CardContent className="space-y-3 p-4">
 				<div className="flex items-start justify-between gap-2">
 					<div className="flex items-center gap-2">
+						{draggableReorder && (
+							<GripVertical className="h-4 w-4 shrink-0 text-muted-foreground" />
+						)}
 						<User className="h-4 w-4 text-muted-foreground" />
 						<p className="font-semibold capitalize leading-tight">
 							{schedule.technician}

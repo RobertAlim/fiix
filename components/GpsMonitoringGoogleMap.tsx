@@ -123,6 +123,16 @@ export function GpsMonitoringGoogleMap({
 
 	const [loadError, setLoadError] = useState<string | null>(null);
 	const [routeSummary, setRouteSummary] = useState<RouteSummary | null>(null);
+	// Flips true the moment `mapRef.current` is actually assigned. Every
+	// other effect below reads `mapRef.current` and bails if it's null —
+	// without this, an effect whose OWN deps (e.g. `trail`) happen to
+	// resolve before the async Google Maps load finishes would return
+	// early and then never re-fire, because none of those deps change
+	// again once the technician is just standing still. `mapRef` itself
+	// isn't state, so assigning it doesn't trigger a re-render or
+	// re-evaluate any effect — this flag is what makes "the map just
+	// became available" an observable dependency.
+	const [mapReady, setMapReady] = useState(false);
 
 	// --- Load the API and create the map once ---------------------------
 	useEffect(() => {
@@ -139,6 +149,7 @@ export function GpsMonitoringGoogleMap({
 					streetViewControl: false,
 					fullscreenControl: false,
 				});
+				setMapReady(true);
 			})
 			.catch((err) => {
 				console.error("Google Maps failed to load:", err);
@@ -180,7 +191,8 @@ export function GpsMonitoringGoogleMap({
 		// Follow the technician without resetting whatever zoom level the
 		// Admin has set — same reasoning as the old Leaflet RecenterOnMove.
 		map.panTo(position);
-	});
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [mapReady, technician?.latitude, technician?.longitude, technician?.label]);
 
 	// --- Trail: the technician's actual path today, from real pings ------
 	useEffect(() => {
@@ -220,7 +232,7 @@ export function GpsMonitoringGoogleMap({
 		} else {
 			trailPolylineRef.current.setPath(path);
 		}
-	}, [trail]);
+	}, [trail, mapReady]);
 
 	// --- Origin / destination markers + the routed polyline --------------
 	useEffect(() => {
@@ -345,7 +357,13 @@ export function GpsMonitoringGoogleMap({
 			}
 		});
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [origin?.latitude, origin?.longitude, destination?.latitude, destination?.longitude]);
+	}, [
+		origin?.latitude,
+		origin?.longitude,
+		destination?.latitude,
+		destination?.longitude,
+		mapReady,
+	]);
 
 	if (!apiKey) {
 		return (

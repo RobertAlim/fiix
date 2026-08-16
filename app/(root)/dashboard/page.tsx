@@ -32,16 +32,21 @@ import {
 	FileSpreadsheet,
 	History,
 	Satellite,
+	ClipboardList,
+	Timer,
+	Navigation,
 } from "lucide-react";
 import { useUserStore } from "@/state/userStore";
 import { useDBUser } from "@/hooks/use-db-user";
-import { useQueries } from "@tanstack/react-query";
+import { useQueries, useQuery } from "@tanstack/react-query";
+import { fetchData } from "@/lib/fetchData";
 import { SignOutBtn } from "@/components/auth/sign-out-button";
-import { canAccessModule, ModuleKey } from "@/lib/permissions";
+import { canAccessModule, isWebBlockedRole, ModuleKey } from "@/lib/permissions";
 import { OfflineSyncProvider } from "@/features/offline-sync/OfflineSyncProvider";
 import { SyncStatusIndicator } from "@/components/SyncStatusIndicator";
 import { OpenIssuesBell } from "@/components/OpenIssuesBell";
 import { AttendanceGate } from "@/components/TimeInScreen";
+import { TechnicianWebNotice } from "@/components/TechnicianWebNotice";
 import { TimeOutButton } from "@/components/TimeOutButton";
 import {
 	fetchPartsCached,
@@ -71,6 +76,13 @@ const PurgeMaintenancePage = dynamic(
 const GpsMonitoringPage = dynamic(
 	() => import("@/components/pages/GpsMonitoring")
 );
+const PendingMaintenancePage = dynamic(
+	() => import("@/components/pages/PendingMaintenance")
+);
+const TimekeepPage = dynamic(() => import("@/components/pages/Timekeep"));
+const StaffGpsLocationsPage = dynamic(
+	() => import("@/components/pages/StaffGpsLocations")
+);
 
 type PageKey = ModuleKey;
 
@@ -80,10 +92,13 @@ const ALL_NAV_ITEMS: { key: PageKey; label: string; icon: React.ElementType }[] 
 	{ key: "taskTracker", label: "Task Tracker", icon: ListTodo },
 	{ key: "report", label: "Report", icon: FileText },
 	{ key: "schedule", label: "Schedule", icon: CalendarCheck },
+	{ key: "pendingMaintenance", label: "Pending Maintenance", icon: ClipboardList },
+	{ key: "timekeep", label: "Timekeep", icon: Timer },
 	{ key: "roleAssignment", label: "Role Assignment", icon: ShieldCheck },
 	{ key: "dataImport", label: "Data Import", icon: DatabaseZap },
 	{ key: "printers", label: "Printers", icon: Printer },
 	{ key: "locationGeofences", label: "Client Locations", icon: MapPin },
+	{ key: "staffGpsLocations", label: "Staff GPS Location", icon: Navigation },
 	{ key: "smsRecipients", label: "SMS Recipients", icon: MessageSquare },
 	{ key: "attendanceReport", label: "Attendance Report", icon: FileSpreadsheet },
 	{ key: "purgeMaintenance", label: "Purge Maintenance", icon: History },
@@ -96,10 +111,13 @@ const PAGE_TITLES: Record<PageKey, string> = {
 	taskTracker: "Task Tracker",
 	report: "Report",
 	schedule: "Schedule",
+	pendingMaintenance: "Pending Maintenance",
+	timekeep: "Timekeep",
 	roleAssignment: "Role Assignment",
 	dataImport: "Data Import",
 	printers: "Printers",
 	locationGeofences: "Client Locations",
+	staffGpsLocations: "Staff GPS Location",
 	smsRecipients: "SMS Recipients",
 	attendanceReport: "Attendance Report",
 	purgeMaintenance: "Purge Maintenance",
@@ -146,6 +164,21 @@ export default function DashboardPage() {
 
 	const [parts, status] = queries;
 
+	// Only ever fetched for an Admin — a Super Admin already sees every
+	// reserved module normally, and no other role can reach them under any
+	// circumstance, so there's nothing for this to unlock for them. See
+	// GET /api/bootstrap-status and requireSuperAdmin() in
+	// lib/require-role.ts for the matching server-side fallback this
+	// mirrors.
+	const { data: bootstrapStatus } = useQuery<{ superAdminExists: boolean }>({
+		queryKey: ["bootstrap-status"],
+		queryFn: () => fetchData<{ superAdminExists: boolean }>("/api/bootstrap-status"),
+		enabled: users?.role === "Admin",
+		staleTime: 30_000,
+	});
+	const superAdminBootstrapping =
+		users?.role === "Admin" && bootstrapStatus?.superAdminExists === false;
+
 	useEffect(() => {
 		if (data) {
 			setUsers(data);
@@ -157,8 +190,11 @@ export default function DashboardPage() {
 	// in the UI. Middleware has already confirmed the account is active and
 	// has a role before this component ever renders.
 	const navItems = useMemo(
-		() => ALL_NAV_ITEMS.filter((item) => canAccessModule(users?.role, item.key)),
-		[users?.role]
+		() =>
+			ALL_NAV_ITEMS.filter((item) =>
+				canAccessModule(users?.role, item.key, { superAdminBootstrapping })
+			),
+		[users?.role, superAdminBootstrapping]
 	);
 
 	const isTechnician = users?.role === "Technician";
@@ -166,10 +202,13 @@ export default function DashboardPage() {
 	// If the user's current tab is no longer permitted (e.g. role changed
 	// mid-session), fall back to Dashboard rather than showing a blocked page.
 	useEffect(() => {
-		if (users?.role && !canAccessModule(users.role, activePage)) {
+		if (
+			users?.role &&
+			!canAccessModule(users.role, activePage, { superAdminBootstrapping })
+		) {
 			setActivePage("dashboard");
 		}
-	}, [users?.role, activePage]);
+	}, [users?.role, activePage, superAdminBootstrapping]);
 
 	const handleCardClick = ({
 		serialNo,
@@ -201,7 +240,7 @@ export default function DashboardPage() {
 		// Defense in depth: even if a nav item were reachable via manipulated
 		// client state, block the render here too. The APIs each page calls
 		// enforce the same rule server-side regardless.
-		if (!canAccessModule(users?.role, activePage)) {
+		if (!canAccessModule(users?.role, activePage, { superAdminBootstrapping })) {
 			return <NotAuthorized />;
 		}
 
@@ -230,6 +269,12 @@ export default function DashboardPage() {
 				return <ReportPage />;
 			case "schedule":
 				return <SchedulePage />;
+			case "pendingMaintenance":
+				return <PendingMaintenancePage />;
+			case "timekeep":
+				return <TimekeepPage />;
+			case "staffGpsLocations":
+				return <StaffGpsLocationsPage />;
 			case "roleAssignment":
 				return <RoleAssignmentPage />;
 			case "dataImport":
@@ -280,6 +325,20 @@ export default function DashboardPage() {
 			})}
 		</nav>
 	);
+
+	// Technicians are mobile-only now. Placed here, AFTER every hook above,
+	// so the early return can never change the hook call order between
+	// renders (the role arrives asynchronously via useDBUser, so this
+	// component renders at least once before `users?.role` is known).
+	//
+	// Nothing Technician-specific has been deleted: the Maintenance page,
+	// AttendanceGate, GpsReporter and every /api route that accepts the
+	// Technician role are all still here and still working, because the
+	// Fiix Technician mobile app calls that same API. This closes the web
+	// shell only.
+	if (isWebBlockedRole(users?.role)) {
+		return <TechnicianWebNotice firstName={users?.firstName} />;
+	}
 
 	return (
 		<OfflineSyncProvider>

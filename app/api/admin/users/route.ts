@@ -3,10 +3,15 @@ import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { users } from "@/db/schema";
 import { desc, inArray } from "drizzle-orm";
-import { requireRole } from "@/lib/require-role";
+import { requireSuperAdmin } from "@/lib/require-role";
 
 export async function GET(req: Request) {
-	const auth = await requireRole(["Admin"]);
+	// Both consumers of this route (Role Assignment, SMS Recipients) are
+	// Super-Admin-only modules — see lib/permissions.ts's
+	// SUPER_ADMIN_ONLY_MODULES — so the API is gated the same way, with
+	// the bootstrap fallback that lets an Admin through until the first
+	// Super Admin exists.
+	const auth = await requireSuperAdmin();
 	if (auth.error) return auth.error;
 
 	// Optional filter, e.g. ?role=Admin,Scheduler — used by the SMS

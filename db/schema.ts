@@ -170,7 +170,7 @@ export const schedules = pgTable("schedules", {
 	 * rescheduled twice is A <- B <- C, and following the pointers back
 	 * yields the complete audit trail. */
 	rescheduledFromId: integer("rescheduledFromId").references(
-		(): AnyPgColumn => schedules.id
+		(): AnyPgColumn => schedules.id,
 	),
 	createdAt: timestamp("createdAt")
 		.notNull()
@@ -260,7 +260,7 @@ export const activeDeployment = pgView("active_deployment", {
         ${deployments}
     WHERE
         ${deployments.deployedHere} = True
-  `
+  `,
 );
 
 export const signatories = pgTable("signatories", {
@@ -326,7 +326,7 @@ export const scheduleDetailsRelations = relations(
 			fields: [scheduleDetails.originMTId], // Ito ang field sa scheduleDetails
 			references: [maintain.id], // Ito ang field sa maintenanceRecords na irereference
 		}),
-	})
+	}),
 );
 
 // Printers relations (add models, departments, and maintain relations)
@@ -427,12 +427,18 @@ export const maintenanceLocation = pgTable("maintenance_location", {
 	postalCode: varchar("postalCode", { length: 20 }),
 	/** Device timestamp at which the fix was acquired (may predate sync). */
 	capturedAt: timestamp("capturedAt", { withTimezone: true }).notNull(),
-	gpsProvider: varchar("gpsProvider", { length: 50 }).default("browser-geolocation"),
+	gpsProvider: varchar("gpsProvider", { length: 50 }).default(
+		"browser-geolocation",
+	),
 	isMockLocation: boolean("isMockLocation").notNull().default(false),
 	/** False until a reverse-geocode has populated the address fields. */
 	reverseGeocoded: boolean("reverseGeocoded").notNull().default(false),
-	createdAt: timestamp("createdAt").notNull().default(sql`now()`),
-	updatedAt: timestamp("updatedAt").notNull().default(sql`now()`),
+	createdAt: timestamp("createdAt")
+		.notNull()
+		.default(sql`now()`),
+	updatedAt: timestamp("updatedAt")
+		.notNull()
+		.default(sql`now()`),
 });
 
 export const maintenanceLocationRelations = relations(
@@ -442,7 +448,7 @@ export const maintenanceLocationRelations = relations(
 			fields: [maintenanceLocation.maintenanceId],
 			references: [maintain.id],
 		}),
-	})
+	}),
 );
 
 /**
@@ -457,11 +463,15 @@ export const maintenanceSyncEvents = pgTable("maintenance_sync_events", {
 	detail: text("detail"),
 	/** When the event happened on the device (client clock). */
 	occurredAt: timestamp("occurredAt", { withTimezone: true }),
-	createdAt: timestamp("createdAt").notNull().default(sql`now()`),
+	createdAt: timestamp("createdAt")
+		.notNull()
+		.default(sql`now()`),
 });
 
 export type MaintenanceLocation = InferSelectModel<typeof maintenanceLocation>;
-export type NewMaintenanceLocation = InferInsertModel<typeof maintenanceLocation>;
+export type NewMaintenanceLocation = InferInsertModel<
+	typeof maintenanceLocation
+>;
 
 // ATTENDANCE / GEOFENCING / SMS ***********************************************************************
 
@@ -481,8 +491,12 @@ export const locationGeofences = pgTable("locationGeofences", {
 	longitude: doublePrecision("longitude").notNull(),
 	/** Allowed distance from the pin, in meters. */
 	radiusMeters: integer("radiusMeters").notNull().default(150),
-	createdAt: timestamp("createdAt").notNull().default(sql`now()`),
-	updatedAt: timestamp("updatedAt").notNull().default(sql`now()`),
+	createdAt: timestamp("createdAt")
+		.notNull()
+		.default(sql`now()`),
+	updatedAt: timestamp("updatedAt")
+		.notNull()
+		.default(sql`now()`),
 });
 
 /**
@@ -507,7 +521,7 @@ export const technicianAttendance = pgTable(
 		timeInLongitude: doublePrecision("timeInLongitude").notNull(),
 		/** The schedule the geofence check was validated against, for audit. */
 		firstScheduleId: integer("firstScheduleId").references(
-			(): AnyPgColumn => schedules.id
+			(): AnyPgColumn => schedules.id,
 		),
 		timeOut: timestamp("timeOut", { withTimezone: true }),
 		/** Set the moment the Time In SMS batch is claimed for sending — not
@@ -518,7 +532,9 @@ export const technicianAttendance = pgTable(
 		 * after a lost response, for instance). See app/api/attendance/time-in.
 		 */
 		smsSentAt: timestamp("smsSentAt", { withTimezone: true }),
-		createdAt: timestamp("createdAt").notNull().default(sql`now()`),
+		createdAt: timestamp("createdAt")
+			.notNull()
+			.default(sql`now()`),
 	},
 	(table) => [
 		// One session per technician per day — this is what actually stops a
@@ -526,9 +542,9 @@ export const technicianAttendance = pgTable(
 		// hits this constraint instead of creating two open sessions.
 		uniqueIndex("technicianAttendance_technician_workDate_idx").on(
 			table.technicianId,
-			table.workDate
+			table.workDate,
 		),
-	]
+	],
 );
 
 /** Recipients who get an SMS whenever any technician times in. Not
@@ -548,11 +564,15 @@ export const smsRecipients = pgTable("smsRecipients", {
 		.unique()
 		.references(() => users.id, { onDelete: "cascade" }),
 	isActive: boolean("isActive").notNull().default(true),
-	createdAt: timestamp("createdAt").notNull().default(sql`now()`),
+	createdAt: timestamp("createdAt")
+		.notNull()
+		.default(sql`now()`),
 });
 
 export type LocationGeofence = InferSelectModel<typeof locationGeofences>;
-export type TechnicianAttendance = InferSelectModel<typeof technicianAttendance>;
+export type TechnicianAttendance = InferSelectModel<
+	typeof technicianAttendance
+>;
 export type SmsRecipient = InferSelectModel<typeof smsRecipients>;
 
 /** One row per technician — the latest live GPS state, upserted on every
@@ -625,10 +645,81 @@ export const technicianGpsPings = pgTable(
 		// GPS Monitoring's history read is always "one technician, one
 		// day, in order" — this composite index is exactly that access
 		// pattern, not a general-purpose index added speculatively.
-		technicianCapturedAtIdx: index("technicianGpsPings_technicianId_capturedAt_idx").on(
-			table.technicianId,
-			table.capturedAt
-		),
-	})
+		technicianCapturedAtIdx: index(
+			"technicianGpsPings_technicianId_capturedAt_idx",
+		).on(table.technicianId, table.capturedAt),
+	}),
 );
 export type TechnicianGpsPing = InferSelectModel<typeof technicianGpsPings>;
+
+/**
+ * The GPS pin an Admin or Scheduler must be standing at to Time In/Out —
+ * the office (or whichever site that person reports to), configured by a
+ * Super Admin under Staff GPS Location.
+ *
+ * Deliberately a SEPARATE table from locationGeofences rather than a reuse
+ * of it: that one is keyed by `locationId` (a CLIENT's branch, which is
+ * what a technician's itinerary is built from), while this one is keyed by
+ * `userId` — office staff aren't scheduled to client sites, so there is no
+ * itinerary to derive a fence from the way the Technician flow does. One
+ * row per user; a user with no row simply cannot time in yet, which is
+ * reported to them as a setup gap rather than as "you're too far away".
+ */
+export const staffGpsLocations = pgTable("staffGpsLocations", {
+	id: serial("id").primaryKey(),
+	userId: integer("userId")
+		.notNull()
+		.unique()
+		.references(() => users.id, { onDelete: "cascade" }),
+	/** Free-text name for the pin ("Main Office", "Warehouse") — shown on
+	 * the Timekeep screen so staff know which site they're being measured
+	 * against. */
+	label: varchar("label", { length: 60 }).notNull().default("Office"),
+	latitude: doublePrecision("latitude").notNull(),
+	longitude: doublePrecision("longitude").notNull(),
+	/** Allowed distance from the pin, in meters. Same meaning and default
+	 * as locationGeofences.radiusMeters. */
+	radiusMeters: integer("radiusMeters").notNull().default(150),
+	createdAt: timestamp("createdAt")
+		.notNull()
+		.default(sql`now()`),
+	updatedAt: timestamp("updatedAt")
+		.notNull()
+		.default(sql`now()`),
+});
+export type StaffGpsLocation = InferSelectModel<typeof staffGpsLocations>;
+
+/**
+ * Audit trail for an Admin marking a Pending Maintenance item resolved.
+ *
+ * Append-only and kept in its own table rather than as columns on
+ * `maintain`: the maintenance record is the technician's field report and
+ * must stay exactly as it was filed. "This was dealt with, by whom, when,
+ * and why" is a separate administrative fact ABOUT that report, not a
+ * correction to it — the same reasoning the Reschedule feature used when
+ * it refused to mutate the original missed schedule row.
+ *
+ * `maintainId` is unique: an item is resolved once. Re-resolving is not a
+ * second row (that would make "who resolved this" ambiguous); the resolve
+ * endpoint rejects it.
+ */
+export const maintenanceResolutions = pgTable("maintenanceResolutions", {
+	id: serial("id").primaryKey(),
+	maintainId: integer("maintainId")
+		.notNull()
+		.unique()
+		.references((): AnyPgColumn => maintain.id, { onDelete: "cascade" }),
+	/** The Admin who resolved it. Never nullable — an audit entry with no
+	 * author is not an audit entry. */
+	resolvedByUserId: integer("resolvedByUserId")
+		.notNull()
+		.references(() => users.id),
+	resolvedAt: timestamp("resolvedAt", { withTimezone: true })
+		.notNull()
+		.defaultNow(),
+	/** Required by the spec — an explanation is the point of the trail. */
+	notes: text("notes").notNull(),
+});
+export type MaintenanceResolution = InferSelectModel<
+	typeof maintenanceResolutions
+>;

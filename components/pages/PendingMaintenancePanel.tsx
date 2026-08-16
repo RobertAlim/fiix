@@ -29,10 +29,13 @@ import {
 	CalendarX2,
 	UserCog,
 	ChevronDown,
+	CheckCircle2,
+	History,
 } from "lucide-react";
 import { fetchData } from "@/lib/fetchData";
 import { showAppToast } from "@/components/ui/apptoast";
 import { apiPath } from "@/lib/base-path";
+import { useUserStore } from "@/state/userStore";
 
 interface PendingMaintenanceItem {
 	id: number; // maintain.id
@@ -50,6 +53,10 @@ interface PendingMaintenanceItem {
 	isScheduled: boolean;
 	scheduledDate: string | null;
 	scheduledTechnicianName: string | null;
+	isResolved: boolean;
+	resolvedAt: string | null;
+	resolutionNotes: string | null;
+	resolvedByName: string | null;
 }
 
 /** A schedule whose date has passed with the work never marked done. */
@@ -122,7 +129,14 @@ function daysSince(dateStr: string): number {
 
 export default function PendingMaintenancePanel() {
 	const queryClient = useQueryClient();
+	const { users } = useUserStore();
+	// Role implication means a Super Admin also sees this — see
+	// lib/permissions.ts's effectiveRoles/ROLE_IMPLIES.
+	const canResolve = users?.role === "Admin" || users?.role === "Super Admin";
 	const [assignTarget, setAssignTarget] = useState<AssignTarget | null>(null);
+	const [resolveTarget, setResolveTarget] = useState<PendingMaintenanceItem | null>(
+		null
+	);
 	// Collapsed by default — the Missed Schedules grid can run to several
 	// rows and was pushing the rest of the Schedule page down before a user
 	// had even decided they needed to look at it. Per-session only (not
@@ -154,7 +168,7 @@ export default function PendingMaintenancePanel() {
 		staleTime: 1000 * 60,
 	});
 
-	const unscheduled = pendingItems.filter((i) => !i.isScheduled);
+	const unscheduled = pendingItems.filter((i) => !i.isScheduled && !i.isResolved);
 
 	if (isLoading) {
 		return (
@@ -350,40 +364,84 @@ export default function PendingMaintenancePanel() {
 										</p>
 									)}
 
+									{item.isResolved && (
+										<div className="flex items-start gap-2 rounded-lg bg-success/10 p-2 text-xs text-success">
+											<History className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+											<div className="min-w-0">
+												<p className="font-medium">
+													Resolved{item.resolvedByName ? ` by ${item.resolvedByName}` : ""}
+													{item.resolvedAt
+														? ` · ${new Date(item.resolvedAt).toLocaleString("en-US", {
+																timeZone: "Asia/Manila",
+																dateStyle: "medium",
+																timeStyle: "short",
+															})}`
+														: ""}
+												</p>
+												{item.resolutionNotes && (
+													<p className="text-success/80">{item.resolutionNotes}</p>
+												)}
+											</div>
+										</div>
+									)}
+
 									<div className="flex items-center justify-between pt-1">
 										<span className="flex items-center gap-1 text-xs text-muted-foreground">
 											<Clock3 className="h-3 w-3" />
 											{daysSince(item.createdAt)}d open
 										</span>
 
-										{item.isScheduled ? (
-											<Badge className="gap-1 bg-info text-info-foreground">
-												<CalendarCheck2 className="h-3 w-3" />
-												Scheduled
-												{item.scheduledTechnicianName
-													? ` · ${item.scheduledTechnicianName}`
-													: ""}
-											</Badge>
-										) : (
-											<Button
-												size="sm"
-												onClick={() =>
-													setAssignTarget({
-														mode: "assign",
-														maintainId: item.id,
-														printerId: item.printerId,
-														serialNo: item.serialNo,
-														model: item.model,
-														clientId: item.clientId,
-														client: item.client,
-														locationId: item.locationId,
-														location: item.location,
-													})
-												}
-											>
-												Assign
-											</Button>
-										)}
+										<div className="flex items-center gap-2">
+											{item.isScheduled && (
+												<Badge className="gap-1 bg-info text-info-foreground">
+													<CalendarCheck2 className="h-3 w-3" />
+													Scheduled
+													{item.scheduledTechnicianName
+														? ` · ${item.scheduledTechnicianName}`
+														: ""}
+												</Badge>
+											)}
+
+											{item.isResolved ? (
+												<Badge className="gap-1 bg-success text-success-foreground">
+													<CheckCircle2 className="h-3 w-3" />
+													Resolved
+												</Badge>
+											) : (
+												<>
+													{!item.isScheduled && (
+														<Button
+															size="sm"
+															onClick={() =>
+																setAssignTarget({
+																	mode: "assign",
+																	maintainId: item.id,
+																	printerId: item.printerId,
+																	serialNo: item.serialNo,
+																	model: item.model,
+																	clientId: item.clientId,
+																	client: item.client,
+																	locationId: item.locationId,
+																	location: item.location,
+																})
+															}
+														>
+															Assign
+														</Button>
+													)}
+													{canResolve && (
+														<Button
+															size="sm"
+															variant="outline"
+															onClick={() => setResolveTarget(item)}
+														>
+															<CheckCircle2 className="h-4 w-4" />
+															Resolved
+														</Button>
+													)}
+												</>
+											)}
+										</div>
 									</div>
 								</CardContent>
 							</Card>
@@ -406,8 +464,106 @@ export default function PendingMaintenancePanel() {
 					setAssignTarget(null);
 				}}
 			/>
+
+			<ResolveDialog
+				item={resolveTarget}
+				onClose={() => setResolveTarget(null)}
+				onResolved={() => {
+					queryClient.invalidateQueries({ queryKey: ["pending-maintenance"] });
+					setResolveTarget(null);
+				}}
+			/>
 		</Card>
 		</div>
+	);
+}
+
+function ResolveDialog({
+	item,
+	onClose,
+	onResolved,
+}: {
+	item: PendingMaintenanceItem | null;
+	onClose: () => void;
+	onResolved: () => void;
+}) {
+	const [notes, setNotes] = useState("");
+	const { mutate, isPending } = useMutation({
+		mutationFn: async () => {
+			if (!item) return;
+			const res = await fetch(
+				apiPath(`/api/pending-maintenance/${item.id}/resolve`),
+				{
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({ notes }),
+				}
+			);
+			if (!res.ok) {
+				const data = await res.json().catch(() => ({}));
+				throw new Error(data.error || "Failed to resolve this item.");
+			}
+			return res.json();
+		},
+		onSuccess: () => {
+			showAppToast({
+				message: "Marked resolved",
+				position: "top-right",
+				color: "success",
+			});
+			setNotes("");
+			onResolved();
+		},
+		onError: (error: Error) => {
+			showAppToast({
+				message: "Failed to resolve",
+				description: error.message,
+				position: "top-right",
+				color: "error",
+			});
+		},
+	});
+
+	return (
+		<Dialog
+			open={!!item}
+			onOpenChange={(open) => {
+				if (!open) {
+					setNotes("");
+					onClose();
+				}
+			}}
+		>
+			<DialogContent>
+				<DialogHeader>
+					<DialogTitle>Resolve Pending Maintenance</DialogTitle>
+					<DialogDescription>
+						{item
+							? `${item.serialNo} — ${item.client} · ${item.location}`
+							: ""}{" "}
+						This records who resolved it, when, and why — the underlying
+						maintenance report is not changed.
+					</DialogDescription>
+				</DialogHeader>
+				<div className="space-y-2 py-2">
+					<label className="text-sm font-medium">Resolution notes</label>
+					<Textarea
+						value={notes}
+						onChange={(e) => setNotes(e.target.value)}
+						placeholder="What was done to resolve this?"
+						rows={4}
+					/>
+				</div>
+				<DialogFooter>
+					<Button
+						onClick={() => mutate()}
+						disabled={isPending || notes.trim().length === 0}
+					>
+						{isPending ? "Saving…" : "Mark Resolved"}
+					</Button>
+				</DialogFooter>
+			</DialogContent>
+		</Dialog>
 	);
 }
 

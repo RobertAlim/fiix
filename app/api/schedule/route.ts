@@ -1,7 +1,7 @@
 // app/api/schedule-maintenance/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db"; // Adjust this path to your Drizzle client setup
-import { eq, and, sql, desc, inArray } from "drizzle-orm";
+import { eq, and, sql, asc, inArray } from "drizzle-orm";
 import {
 	schedules,
 	scheduleDetails,
@@ -473,6 +473,11 @@ export async function GET(req: Request) {
 					priority: priorities.name,
 					notes: schedules.notes,
 					maintainAll: schedules.maintainAll,
+					// Visit order within the technician's day, set by drag-reordering
+					// the itinerary cards on this page (null if never sequenced).
+					// Selected here so the card grid can render in the same order
+					// the technician actually sees on Time In.
+					sequence: schedules.sequence,
 					// Non-null when this schedule replaced a missed one. Drives
 					// the "Rescheduled" marker in the grid, which is what makes
 					// the audit trail visible rather than only stored.
@@ -493,7 +498,17 @@ export async function GET(req: Request) {
 						eq(schedules.scheduledAt, scheduledAt)
 					)
 				)
-				.orderBy(desc(priorities.id));
+				// Sequenced stops first (ascending), unsequenced after by id — the
+				// SAME ordering rule used by every other itinerary read in this
+				// project (attendance status, Time In's first-stop lookup, the
+				// sequence PATCH route's own first-stop check), so this grid,
+				// drag-reorder, and what the technician actually sees never
+				// disagree about order.
+				.orderBy(
+					sql`CASE WHEN ${schedules.sequence} IS NULL THEN 1 ELSE 0 END`,
+					asc(schedules.sequence),
+					asc(schedules.id)
+				);
 
 			// An empty day is a normal, successful result — an empty array, not
 			// a message object. See the note above.

@@ -105,9 +105,9 @@ export default function TaskTracker() {
 	};
 
 	return (
-		<div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+		<div className="grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-2">
 			{/* Left: Schedules */}
-			<Card className="overflow-hidden">
+			<Card className="flex min-h-0 flex-col overflow-hidden">
 				<CardHeader className="space-y-1">
 					<CardTitle>Maintenance Task Tracker</CardTitle>
 					<CardDescription>
@@ -123,7 +123,7 @@ export default function TaskTracker() {
 						{loadingSchedules && <Loader2 className="h-4 w-4 animate-spin" />}
 					</div>
 				</CardHeader>
-				<CardContent className="px-0">
+				<CardContent className="min-h-0 flex-1 overflow-y-auto px-0">
 					<Table>
 						<TableHeader>
 							<TableRow>
@@ -132,7 +132,15 @@ export default function TaskTracker() {
 								<TableHead>Client / Location</TableHead>
 								<TableHead>Technician</TableHead>
 								<TableHead>Priority</TableHead>
-								<TableHead className="w-[220px]">Progress</TableHead>
+								{/* Frozen while the table scrolls horizontally on
+								    narrow viewports — sticky to the right edge with
+								    its own opaque background (matching the Card's
+								    bg-card) so scrolled-under cells don't show
+								    through, and a left border to visually separate
+								    it from the scrolling columns. */}
+								<TableHead className="sticky right-0 z-10 w-[220px] border-l bg-card">
+									Progress
+								</TableHead>
 							</TableRow>
 						</TableHeader>
 						<TableBody>
@@ -167,7 +175,12 @@ export default function TaskTracker() {
 											{row.priority}
 										</Badge>
 									</TableCell>
-									<TableCell>
+									<TableCell
+										className={cn(
+											"sticky right-0 z-10 border-l bg-card",
+											selectedId === row.id && "bg-muted/60"
+										)}
+									>
 										<div className="space-y-1">
 											<div className="flex items-center justify-between text-xs">
 												<span>
@@ -224,7 +237,7 @@ export default function TaskTracker() {
 			</Card>
 
 			{/* Right: Details */}
-			<Card className="overflow-hidden">
+			<Card className="flex min-h-0 flex-col overflow-hidden">
 				<CardHeader>
 					<div className="flex items-center justify-between">
 						<div>
@@ -252,7 +265,7 @@ export default function TaskTracker() {
 					</div>
 				</CardHeader>
 				<Separator />
-				<CardContent className="px-0">
+				<CardContent className="min-h-0 flex-1 overflow-y-auto px-0">
 					{loadingDetails && selectedId != null ? (
 						<div className="flex items-center justify-center h-32 text-sm text-muted-foreground">
 							<Loader2 className="h-4 w-4 animate-spin mr-2" /> Loading details…
@@ -263,6 +276,7 @@ export default function TaskTracker() {
 								{details?.data?.length !== 0 && (
 									<TableRow>
 										<TableHead>Printer</TableHead>
+										<TableHead>Model</TableHead>
 										<TableHead>Status</TableHead>
 										<TableHead>Maintained</TableHead>
 										<TableHead>MT Id</TableHead>
@@ -312,6 +326,7 @@ export default function TaskTracker() {
 													</span>
 												</div>
 											</TableCell>
+											<TableCell>{d.model ?? "—"}</TableCell>
 											<TableCell className="space-x-2">
 												{statusBadge}
 												{d.statusId != null && (
@@ -331,7 +346,7 @@ export default function TaskTracker() {
 								{!loadingDetails && (details?.data?.length ?? 0) === 0 && (
 									<TableRow className={`${selectedId} bg-orange-300`}>
 										<TableCell
-											colSpan={5}
+											colSpan={6}
 											className={`text-center text-lg text-black py-8`}
 										>
 											{selectedId

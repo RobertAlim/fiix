@@ -4,7 +4,7 @@ import { db } from "@/db";
 import { users } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
-import { requireRole } from "@/lib/require-role";
+import { requireSuperAdmin, invalidateSuperAdminCache } from "@/lib/require-role";
 import { ROLES } from "@/lib/permissions";
 
 const bodySchema = z.object({
@@ -16,7 +16,7 @@ export async function PATCH(
 	req: NextRequest,
 	{ params }: { params: Promise<{ id: string }> }
 ) {
-	const auth = await requireRole(["Admin"]);
+	const auth = await requireSuperAdmin();
 	if (auth.error) return auth.error;
 
 	const { id } = await params;
@@ -62,6 +62,14 @@ export async function PATCH(
 
 	if (!updated) {
 		return NextResponse.json({ error: "User not found" }, { status: 404 });
+	}
+
+	// The bootstrap fallback in requireSuperAdmin() memoizes "does a Super
+	// Admin exist" for up to a minute — clear it immediately on any role
+	// change so promoting (or demoting) the first Super Admin takes effect
+	// on their very next request, not up to 60s late.
+	if (parsed.data.role !== undefined) {
+		invalidateSuperAdminCache();
 	}
 
 	return NextResponse.json(updated, { status: 200 });

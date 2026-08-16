@@ -3,7 +3,7 @@
 // "Generate" button — same filters, same underlying query, same formatting
 // helpers, so the on-screen grid and the downloaded file always agree.
 import { NextResponse } from "next/server";
-import { requireRole } from "@/lib/require-role";
+import { requireSuperAdmin } from "@/lib/require-role";
 import {
 	renderedMinutes,
 	formatRenderedDuration,
@@ -16,7 +16,7 @@ import {
 } from "@/lib/server/attendance-report-query";
 
 export async function GET(req: Request) {
-	const auth = await requireRole(["Admin"]);
+	const auth = await requireSuperAdmin();
 	if (auth.error) return auth.error;
 
 	const parsed = parseAttendanceReportParams(new URL(req.url).searchParams);

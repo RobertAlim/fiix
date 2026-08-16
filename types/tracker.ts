@@ -16,6 +16,7 @@ export type ScheduleDetailRow = {
 	id: number; // scheduleDetails.id
 	printerId: number;
 	serialNo: string;
+	model: string | null;
 	isMaintained: boolean;
 	maintainedDate: string | null; // ISO timestamp
 	mtId: number | null; // maintain.id (if created)

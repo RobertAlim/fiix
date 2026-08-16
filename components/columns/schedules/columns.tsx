@@ -26,6 +26,9 @@ export type Schedule = {
 	notes?: string;
 	maintainAll: boolean;
 	scheduleAt: Date;
+	/** Visit order within the technician's day — null until reordered via
+	 * the drag-and-drop itinerary cards. */
+	sequence: number | null;
 };
 
 // Define props that the column function will accept

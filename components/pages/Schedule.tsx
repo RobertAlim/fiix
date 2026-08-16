@@ -68,8 +68,8 @@ import { OpenIssueComponent } from "../OpenIssueComponents";
 import { LoadingSpinnerModal } from "../ui/loading-modal";
 import { PrinterStatusCard } from "../PrinterStatusCard";
 import PendingMaintenancePanel from "./PendingMaintenancePanel";
-import { ItinerarySequenceManager } from "../ItinerarySequenceManager";
 import { ScheduleCard } from "../ScheduleCard";
+import { ListOrdered } from "lucide-react";
 import { apiPath } from "@/lib/base-path";
 
 export type Maintenance = {
@@ -600,6 +600,147 @@ export default function SchedulePage() {
 	// render would re-fire it every render (the same trap that once caused
 	// a "Maximum update depth exceeded" loop in ItinerarySequenceManager).
 	const scheduleData = fetchedScheduleData ?? EMPTY_SCHEDULES;
+
+	// --- Itinerary drag-reorder -------------------------------------------
+	// Local, reorderable copy of this technician/date's schedule ids.
+	// `null` means "not yet initialized for the current scheduleData" —
+	// distinct from an initialized-but-empty array — so the effect below
+	// can tell "server data just changed, resync" apart from "the user
+	// dragged the last card out", which should NOT be overwritten.
+	const [itineraryOrder, setItineraryOrder] = React.useState<number[] | null>(
+		null
+	);
+	const [draggedId, setDraggedId] = React.useState<number | null>(null);
+	const [dragOverId, setDragOverId] = React.useState<number | null>(null);
+	const [isSavingOrder, setIsSavingOrder] = React.useState(false);
+
+	// Resyncs whenever the underlying schedules for this technician/date
+	// change — a new technician/date picked, a save just landed, or a card
+	// was added/removed/rescheduled — so a stale local order can never
+	// drift from the server. Sorted the same sequence-first way the API
+	// itself already orders by, so the FIRST render (before any drag)
+	// exactly matches what's already on the server.
+	React.useEffect(() => {
+		setItineraryOrder(
+			[...scheduleData]
+				.sort((a, b) => {
+					if (a.sequence != null && b.sequence != null) return a.sequence - b.sequence;
+					if (a.sequence != null) return -1;
+					if (b.sequence != null) return 1;
+					return Number(a.id) - Number(b.id);
+				})
+				.map((s) => Number(s.id))
+		);
+	}, [scheduleData]);
+
+	const scheduleById = React.useMemo(
+		() => new Map(scheduleData.map((s) => [Number(s.id), s])),
+		[scheduleData]
+	);
+	const orderedScheduleCards = (itineraryOrder ?? [])
+		.map((id) => scheduleById.get(id))
+		.filter((s): s is (typeof scheduleData)[number] => !!s);
+
+	// Dirty relative to the server's own sequence-first order (the same
+	// derivation used to seed itineraryOrder above), not relative to
+	// insertion order — so a technician/date that was already reordered on
+	// a previous visit doesn't show Save Order as enabled the instant it
+	// loads.
+	const serverOrderIds = [...scheduleData]
+		.sort((a, b) => {
+			if (a.sequence != null && b.sequence != null) return a.sequence - b.sequence;
+			if (a.sequence != null) return -1;
+			if (b.sequence != null) return 1;
+			return Number(a.id) - Number(b.id);
+		})
+		.map((s) => Number(s.id));
+	const isItineraryOrderDirty =
+		!!itineraryOrder &&
+		(itineraryOrder.length !== serverOrderIds.length ||
+			itineraryOrder.some((id, i) => id !== serverOrderIds[i]));
+
+	const handleCardDragStart =
+		(id: number) => (e: React.DragEvent<HTMLDivElement>) => {
+			setDraggedId(id);
+			e.dataTransfer.effectAllowed = "move";
+		};
+	const handleCardDragOver =
+		(id: number) => (e: React.DragEvent<HTMLDivElement>) => {
+			e.preventDefault();
+			if (draggedId != null && draggedId !== id) setDragOverId(id);
+		};
+	const handleCardDragLeave = (id: number) => () => {
+		setDragOverId((prev) => (prev === id ? null : prev));
+	};
+	// Order is determined by CARD PLACEMENT (top-to-bottom, then
+	// left-to-right) — i.e. by array index in a row-major grid, which is
+	// exactly what `itineraryOrder`'s array order already represents.
+	// Dropping simply moves the dragged id to the target's index.
+	const handleCardDrop =
+		(targetId: number) => (e: React.DragEvent<HTMLDivElement>) => {
+			e.preventDefault();
+			setDragOverId(null);
+			const sourceId = draggedId;
+			setDraggedId(null);
+			if (sourceId == null || sourceId === targetId) return;
+			setItineraryOrder((prev) => {
+				if (!prev) return prev;
+				const next = [...prev];
+				const from = next.indexOf(sourceId);
+				const to = next.indexOf(targetId);
+				if (from === -1 || to === -1) return prev;
+				next.splice(from, 1);
+				next.splice(to, 0, sourceId);
+				return next;
+			});
+		};
+	const handleCardDragEnd = () => {
+		setDraggedId(null);
+		setDragOverId(null);
+	};
+
+	const handleSaveOrder = async () => {
+		if (
+			!selectedTechnicianId ||
+			selectedTechnicianId === "0" ||
+			!scheduleDate ||
+			!itineraryOrder ||
+			itineraryOrder.length === 0
+		) {
+			return;
+		}
+		setIsSavingOrder(true);
+		try {
+			const res = await fetch(apiPath("/api/schedule/sequence"), {
+				method: "PATCH",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					technicianId: Number(selectedTechnicianId),
+					scheduledAt: format(scheduleDate, "yyyy-MM-dd"),
+					orderedScheduleIds: itineraryOrder,
+				}),
+			});
+			if (!res.ok) {
+				const data = await res.json().catch(() => ({}));
+				throw new Error(data.error || "Failed to save the new order.");
+			}
+			showAppToast({
+				message: "Itinerary order saved",
+				position: "top-right",
+				color: "success",
+			});
+			queryClient.invalidateQueries({ queryKey: ["schedules"] });
+		} catch (err) {
+			showAppToast({
+				message: "Save failed",
+				description: err instanceof Error ? err.message : "Please try again.",
+				position: "top-right",
+				color: "error",
+			});
+		} finally {
+			setIsSavingOrder(false);
+		}
+	};
 
 	React.useEffect(() => {
 		async function fetchTime() {
@@ -1371,8 +1512,6 @@ export default function SchedulePage() {
 		<div className="space-y-6">
 			<PendingMaintenancePanel />
 
-			<ItinerarySequenceManager />
-
 			<Card className="rounded-2xl border shadow-sm">
 				<CardContent className="p-6 space-y-4">
 					<div className="grid lg:grid-cols-3 grid-cols-1 gap-4">
@@ -1581,6 +1720,23 @@ export default function SchedulePage() {
 								{existingSchedule ? "Update" : "Save"}
 							</Button>
 
+							{/* Only meaningful once a technician + date's cards are on
+							    screen to actually reorder — hidden rather than
+							    disabled-and-confusing when there's nothing to save. */}
+							{!!selectedTechnicianId &&
+								selectedTechnicianId !== "0" &&
+								orderedScheduleCards.length > 1 && (
+									<Button
+										variant="outline"
+										className="ml-2 gap-2"
+										onClick={handleSaveOrder}
+										disabled={!isItineraryOrderDirty || isSavingOrder}
+									>
+										<ListOrdered className="h-4 w-4" />
+										{isSavingOrder ? "Saving Order…" : "Save Order"}
+									</Button>
+								)}
+
 							<Separator className="my-2" />
 
 							{isFetchingSchedules ? (
@@ -1595,19 +1751,46 @@ export default function SchedulePage() {
 									Loading schedules for this technician and date…
 								</p>
 							) : scheduleData && scheduleData.length > 0 ? (
-								<div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-									{scheduleData.map((schedule) => (
-										<ScheduleCard
-											key={schedule.id}
-											schedule={schedule}
-											onEditClick={handleEditSchedule}
-											onDeleteClick={handleDeleteSchedule}
-											onShowDetailsClick={handleShowDetails}
-											onShowReschedClick={handleReschedule}
-											onCardClick={handleCardClick}
-										/>
-									))}
-								</div>
+								<>
+									{orderedScheduleCards.length > 1 && (
+										<p className="pb-1 text-xs text-muted-foreground">
+											Drag a card to reorder the itinerary — order runs
+											top-to-bottom, then left-to-right.
+										</p>
+									)}
+									<div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+										{orderedScheduleCards.map((schedule, idx) => (
+											<ScheduleCard
+												key={schedule.id}
+												schedule={schedule}
+												onEditClick={handleEditSchedule}
+												onDeleteClick={handleDeleteSchedule}
+												onShowDetailsClick={handleShowDetails}
+												onShowReschedClick={handleReschedule}
+												onCardClick={handleCardClick}
+												sequenceNumber={
+													orderedScheduleCards.length > 1
+														? idx + 1
+														: undefined
+												}
+												draggableReorder={orderedScheduleCards.length > 1}
+												isDragging={draggedId === Number(schedule.id)}
+												isDropTarget={dragOverId === Number(schedule.id)}
+												onDragStartCard={handleCardDragStart(
+													Number(schedule.id)
+												)}
+												onDragOverCard={handleCardDragOver(
+													Number(schedule.id)
+												)}
+												onDragLeaveCard={handleCardDragLeave(
+													Number(schedule.id)
+												)}
+												onDropCard={handleCardDrop(Number(schedule.id))}
+												onDragEndCard={handleCardDragEnd}
+											/>
+										))}
+									</div>
+								</>
 							) : (
 								<p className="py-6 text-center text-sm text-muted-foreground">
 									No schedules yet for this selection.

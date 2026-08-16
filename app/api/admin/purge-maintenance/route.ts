@@ -21,10 +21,10 @@ import {
 import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { purgeMaintainSubmitSchema } from "@/validation/maintainSchema";
-import { requireRole } from "@/lib/require-role";
+import { requireSuperAdmin } from "@/lib/require-role";
 
 export async function POST(req: Request) {
-	const authResult = await requireRole(["Admin"]);
+	const authResult = await requireSuperAdmin();
 	if (authResult.error) return authResult.error;
 
 	const parsed = purgeMaintainSubmitSchema.safeParse(await req.json().catch(() => null));
