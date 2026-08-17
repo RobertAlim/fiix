@@ -30,7 +30,12 @@ export async function GET(req: Request) {
 	}
 	const { params, rangeStart, rangeEnd } = parsed;
 
-	const rows = await fetchAttendanceReportRows(rangeStart, rangeEnd, params.technicianId);
+	const rows = await fetchAttendanceReportRows(
+		rangeStart,
+		rangeEnd,
+		params.technicianId,
+		params.role
+	);
 
 	const workbook = new ExcelJS.Workbook();
 	workbook.creator = "Fiix";
@@ -38,7 +43,8 @@ export async function GET(req: Request) {
 
 	const sheet = workbook.addWorksheet("Attendance");
 	sheet.columns = [
-		{ header: "Technician", key: "technician", width: 24 },
+		{ header: "Name", key: "technician", width: 24 },
+		{ header: "Role", key: "role", width: 14 },
 		{ header: "Itinerary Date", key: "itineraryDate", width: 28 },
 		{ header: "Time In", key: "timeIn", width: 14 },
 		{ header: "Time Out", key: "timeOut", width: 14 },
@@ -49,6 +55,7 @@ export async function GET(req: Request) {
 	for (const r of rows) {
 		sheet.addRow({
 			technician: `${r.technicianFirstName} ${r.technicianLastName}`,
+			role: r.role ?? "—",
 			itineraryDate: formatItineraryDate(new Date(r.workDate)),
 			timeIn: formatClockTime(r.timeIn),
 			// An open session (no Time Out yet) is shown as such rather than

@@ -25,12 +25,18 @@ export async function GET(req: Request) {
 	}
 	const { params, rangeStart, rangeEnd } = parsed;
 
-	const rows = await fetchAttendanceReportRows(rangeStart, rangeEnd, params.technicianId);
+	const rows = await fetchAttendanceReportRows(
+		rangeStart,
+		rangeEnd,
+		params.technicianId,
+		params.role
+	);
 
 	return NextResponse.json({
 		rows: rows.map((r) => ({
 			technicianId: r.technicianId,
 			technician: `${r.technicianFirstName} ${r.technicianLastName}`,
+			role: r.role,
 			itineraryDate: formatItineraryDate(new Date(r.workDate)),
 			timeIn: formatClockTime(r.timeIn),
 			timeOut: r.timeOut ? formatClockTime(r.timeOut) : "—",

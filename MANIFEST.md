@@ -1,10 +1,10 @@
 # Fiix web app updates — apply into your repo at these exact paths
 
-Supersedes nothing earlier — this is on top of your existing repo at commit
-024710f, plus everything from the prior three delivery rounds. Organized by
-round below so you can tell what's new in THIS zip vs. what you should
-already have applied. Round 4 has no database changes — skip straight to
-"Round 4" below if you've already applied Rounds 1–3.
+Supersedes nothing earlier — this is on top of your existing repo, plus
+everything from the prior five delivery rounds. Organized by round below so
+you can tell what's new in THIS zip vs. what you should already have
+applied. Rounds 4, 5, and 6 have no database changes — skip straight to
+whichever round you need if you've already applied earlier ones.
 
 ## ⚠️ Read this before touching db/schema.ts
 
@@ -66,7 +66,113 @@ land — check you saved the right file.
 
 ---
 
-## Round 4 — Restored itinerary features lost when Round 1 rebuilt the card grid
+## Round 6 — Printer History modal redesign + Attendance Report role filtering
+
+No database changes. `db/schema.ts` in this zip is unchanged from Round 5.
+
+### Replaces an existing file
+- `components/PrinterHistoryDialog.tsx` — modal is now much larger:
+  roughly 20% margin per side on large screens (`xl:w-[60vw] xl:h-[80vh]`,
+  capped at 1280px so it doesn't balloon on ultrawide monitors), scaling
+  down through `lg`/`sm` breakpoints to nearly full-screen on mobile —
+  a literal 20% margin on a phone would leave almost nothing to work
+  with, which cuts against the "responsive on small screens" ask.
+  **Note:** the default `DialogContent` sets `sm:max-w-lg` — overriding
+  it required an explicit `sm:max-w-none` in the new className, since
+  `twMerge` treats different responsive prefixes as separate class
+  groups and won't let a bare `max-w-none` cancel a `sm:`-prefixed one.
+  Worth knowing if you customize dialog sizing elsewhere in this app and
+  hit the same silent 32rem cap.
+  Printer Information is now two rows of two tiles (Serial Number/Model,
+  then Client/Print Count) instead of four cramped into one row, each
+  tile bigger and allowed to wrap onto two lines instead of truncating.
+  The history table switched from `max-w + line-clamp` (the cause of the
+  overlapping text in the screenshot) to `table-fixed` with explicit
+  percentage column widths and `whitespace-normal break-words`, so long
+  Notes/Replacement-Repair text wraps cleanly instead of overlapping.
+- `components/pages/AttendanceReport.tsx` — renamed from "Technician
+  Attendance Report" to "Attendance Report" (no longer technician-only).
+  New "Role" filter dropdown alongside the person picker, populated from
+  whichever roles actually have attendance records (not a static list —
+  a role filter offering "Scheduler" when nobody with that role has ever
+  timed in would just be a dead end). New "Role" column in the results
+  grid so records are visually distinguishable by role, not just
+  filterable. The person picker ("Technician" → "Person") now sources
+  from the new people endpoint below instead of `/api/technicians`,
+  which only ever returns Technicians.
+- `lib/server/attendance-report-query.ts` — adds a `role` filter
+  (combinable with the existing person filter) and returns each row's
+  role, shared between the JSON route and the Excel export as before so
+  the two can never disagree.
+- `app/api/attendance/report/data/route.ts`, `app/api/attendance/report/
+  route.ts` — pass the new `role` param through; the Excel export gained
+  a "Role" column (and its "Technician" header is now "Name").
+
+### New files
+- `app/api/attendance/report/people/route.ts` — returns everyone who has
+  AT LEAST ONE attendance record, any role, for the report's person
+  picker. Deliberately not reusing `/api/technicians` (which is
+  Technician-only and backs the Schedule-assignment picker elsewhere) —
+  this is what makes an Admin or Scheduler who's used Timekeep actually
+  show up as filterable, without cluttering the list with every Admin
+  account that's never timed in.
+
+---
+
+
+
+No new tables. `db/schema.ts` in this zip now includes `printCount` on
+`maintain` (the field you already restored yourself after the earlier
+build error) — it's there for reference/consistency only; you don't need
+to do anything with it since you already fixed it. Still never replace
+your whole `db/schema.ts` with this snapshot.
+
+### New files
+- `app/api/admin/master/printers/[id]/history/route.ts` — backs the new
+  modal: current printer info (serial/model/client/print count, model and
+  client sourced from the active deployment same as the Printers list) +
+  complete maintenance history across every deployment the printer's ever
+  had, newest first. The "Replacement/Repair" column combines everything
+  checked under the Maintenance Report's "Services" section on that
+  visit — Cleaning of Printer, Cleaning of Waste Tank, plus whichever
+  parts were marked for Replacement or Repair (labelled
+  "(Replace)"/"(Repair)") — comma-separated, matching the same data this
+  app's own PDF report already builds from `maintain.cleanPrinter`/
+  `cleanWasteTank` and the `replace`/`repair` join tables. (Corrected
+  after the first version of this route only pulled the Replacement/Repair
+  parts and missed the two Cleaning checkboxes — confirmed against a
+  screenshot of the actual "Services" section on the report form.)
+- `components/PrinterHistoryDialog.tsx` — the modal itself. A table on
+  md+ screens, a stacked card list below that (fully responsive, not just
+  horizontally scrollable). Status-driven red/green highlighting via the
+  next file.
+- `lib/printer-history-status.ts` — the red/green status-name lists from
+  the request, plus one alias ("For Replacement Printer Part" without
+  parentheses) matching this app's existing `NEEDS_ATTENTION_STATUSES`
+  spelling, in case the live `status` table uses that form instead of the
+  parenthesized one given in the request.
+
+### Replaces an existing file
+- `components/MasterDataManager.tsx` — gained an optional `onRowClick`
+  prop (opt-in, every other module using this shared component is
+  unaffected). Clicks on the Actions column (Edit/Delete/any `rowActions`)
+  are stopped from bubbling into it, so a row-details modal and row-level
+  action buttons coexist without one accidentally firing the other.
+- `components/pages/Printers.tsx` — wires `onRowClick` to open
+  `PrinterHistoryDialog`, mounted alongside the existing
+  `PrinterTransferDialog`.
+- `components/tracker/task-tracker.tsx` — when a selected schedule has no
+  assigned printers (`scheduleDetails` is empty), the Schedule Details
+  panel now shows that schedule's own `notes` (from the same list the
+  left-hand grid already has loaded — matched by `id`, so it can't show
+  the wrong schedule's notes) instead of the old "Please Get Check."
+  placeholder. Also cleaned up a pre-existing bug in that empty-state row
+  where `selectedId` (a number) was being interpolated directly into a
+  `className` string.
+
+---
+
+
 
 Round 1 replaced the old `ItinerarySequenceManager` (up/down-button reorder
 card) with the current drag-and-drop card grid on the Schedule page — but

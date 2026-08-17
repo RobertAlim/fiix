@@ -99,6 +99,17 @@ export default function TaskTracker() {
 		}
 	}, [schedules, selectedId]);
 
+	// The schedule the Details panel is currently showing — used below to
+	// fall back to the Scheduler's own Notes when this schedule has no
+	// printers assigned yet (scheduleDetails is empty), instead of the old
+	// generic "Please Get Check." placeholder. Matched by id off the SAME
+	// list the grid renders, so the notes shown can never belong to a
+	// different client/schedule than the one currently selected.
+	const selectedSchedule = React.useMemo(
+		() => schedules?.data.find((s) => s.id === selectedId) ?? null,
+		[schedules, selectedId]
+	);
+
 	const handleRowClick = (mtId: number) => {
 		const url = apiPath(`/api/pdf?mtId=${mtId}`);
 		window.open(url, "_blank");
@@ -344,14 +355,27 @@ export default function TaskTracker() {
 									);
 								})}
 								{!loadingDetails && (details?.data?.length ?? 0) === 0 && (
-									<TableRow className={`${selectedId} bg-orange-300`}>
-										<TableCell
-											colSpan={6}
-											className={`text-center text-lg text-black py-8`}
-										>
-											{selectedId
-												? "Please Get Check."
-												: "Select a schedule to view details."}
+									<TableRow>
+										<TableCell colSpan={6} className="py-8">
+											{selectedSchedule ? (
+												<div className="mx-auto max-w-md space-y-1 text-center">
+													<p className="text-sm font-medium text-muted-foreground">
+														No printers are assigned to this schedule yet.
+													</p>
+													<p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground/70">
+														Scheduler&apos;s notes for {selectedSchedule.client}
+													</p>
+													<p className="text-sm text-foreground">
+														{selectedSchedule.notes?.trim()
+															? selectedSchedule.notes
+															: "No notes were entered for this schedule."}
+													</p>
+												</div>
+											) : (
+												<p className="text-center text-lg text-muted-foreground">
+													Select a schedule to view details.
+												</p>
+											)}
 										</TableCell>
 									</TableRow>
 								)}

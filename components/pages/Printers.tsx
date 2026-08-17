@@ -11,11 +11,13 @@ import {
 	PrinterTransferDialog,
 	type TransferTarget,
 } from "@/components/PrinterTransferDialog";
+import { PrinterHistoryDialog } from "@/components/PrinterHistoryDialog";
 
 export default function PrintersPage() {
 	const [transferTarget, setTransferTarget] = useState<TransferTarget | null>(
 		null
 	);
+	const [historyPrinterId, setHistoryPrinterId] = useState<number | null>(null);
 
 	return (
 		<Card className="rounded-2xl border shadow-sm">
@@ -155,6 +157,7 @@ export default function PrintersPage() {
 							<ArrowLeftRight className="h-4 w-4 text-primary" />
 						</Button>
 					)}
+					onRowClick={(row) => setHistoryPrinterId(Number(row.id))}
 				/>
 			</CardContent>
 
@@ -162,6 +165,13 @@ export default function PrintersPage() {
 				target={transferTarget}
 				onOpenChange={(open) => {
 					if (!open) setTransferTarget(null);
+				}}
+			/>
+
+			<PrinterHistoryDialog
+				printerId={historyPrinterId}
+				onOpenChange={(open) => {
+					if (!open) setHistoryPrinterId(null);
 				}}
 			/>
 		</Card>

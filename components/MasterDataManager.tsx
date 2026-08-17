@@ -120,6 +120,12 @@ interface MasterDataManagerProps {
 	 * isn't generic CRUD (e.g. transferring a printer) without every other
 	 * grid inheriting it. */
 	rowActions?: (row: DataRow) => React.ReactNode;
+	/** Makes the whole row clickable (e.g. opening a details/history modal),
+	 * separate from `rowActions` and the built-in Edit/Delete buttons —
+	 * clicks on any of those are stopped from bubbling up to this handler,
+	 * so a details view and row-level actions can coexist without one
+	 * accidentally triggering the other. */
+	onRowClick?: (row: DataRow) => void;
 }
 
 export function MasterDataManager({
@@ -136,6 +142,7 @@ export function MasterDataManager({
 	filters,
 	defaultPageSize = 25,
 	rowActions,
+	onRowClick,
 }: MasterDataManagerProps) {
 	const queryClient = useQueryClient();
 	const [search, setSearch] = useState("");
@@ -469,7 +476,11 @@ export function MasterDataManager({
 								</TableRow>
 							) : (
 								rows.map((row) => (
-									<TableRow key={String(row[idField])}>
+									<TableRow
+										key={String(row[idField])}
+										onClick={onRowClick ? () => onRowClick(row) : undefined}
+										className={onRowClick ? "cursor-pointer hover:bg-muted/50" : undefined}
+									>
 										{visibleColumns.map((c) => (
 											<TableCell
 												key={c.key}
@@ -482,7 +493,10 @@ export function MasterDataManager({
 													: "—"}
 											</TableCell>
 										))}
-										<TableCell className="sticky right-0 z-10 bg-card text-right shadow-[-8px_0_8px_-8px_rgba(0,0,0,0.15)]">
+										<TableCell
+											className="sticky right-0 z-10 bg-card text-right shadow-[-8px_0_8px_-8px_rgba(0,0,0,0.15)]"
+											onClick={(e) => e.stopPropagation()}
+										>
 											{rowActions?.(row)}
 											<Button variant="ghost" size="icon" onClick={() => openEdit(row)}>
 												<Pencil className="h-4 w-4" />
