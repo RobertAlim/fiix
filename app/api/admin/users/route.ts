@@ -14,9 +14,11 @@ export async function GET(req: Request) {
 	const auth = await requireSuperAdmin();
 	if (auth.error) return auth.error;
 
-	// Optional filter, e.g. ?role=Admin,Scheduler — used by the SMS
-	// Recipients picker, which should only offer roles that actually receive
-	// the Time In notification (see app/api/attendance/time-in).
+	// Optional filter, e.g. ?role=Admin,Scheduler — still used by Role
+	// Assignment's own filtering needs, if any. SMS Recipients now calls
+	// this WITHOUT a role param (any user can be a recipient — see
+	// lib/sms.ts's getActiveSmsRecipientNumbers, which decides who
+	// actually gets texted by Active status alone, not role).
 	const roleParam = new URL(req.url).searchParams.get("role");
 	const roles = roleParam
 		?.split(",")

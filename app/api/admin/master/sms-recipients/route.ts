@@ -6,12 +6,6 @@ import { smsRecipients, users } from "@/db/schema";
 import { asc, ilike, eq, or } from "drizzle-orm";
 import { requireSuperAdmin } from "@/lib/require-role";
 
-// Only these roles ever actually receive the Time In notification (see
-// app/api/attendance/time-in) — rejecting anyone else here at link-time
-// avoids a recipient that silently never gets a text and looks "linked"
-// in the UI while doing nothing.
-const NOTIFIABLE_ROLES = ["Admin", "Scheduler"];
-
 const bodySchema = z.object({
 	userId: z.number().int().positive(),
 	isActive: z.boolean().optional(),
@@ -59,20 +53,12 @@ export async function POST(req: Request) {
 	}
 
 	const [user] = await db
-		.select({ id: users.id, role: users.role })
+		.select({ id: users.id })
 		.from(users)
 		.where(eq(users.id, parsed.data.userId))
 		.limit(1);
 	if (!user) {
 		return NextResponse.json({ error: "User not found." }, { status: 404 });
-	}
-	if (!user.role || !NOTIFIABLE_ROLES.includes(user.role)) {
-		return NextResponse.json(
-			{
-				error: `Only ${NOTIFIABLE_ROLES.join(" and ")} users receive Time In notifications — this user's role doesn't qualify.`,
-			},
-			{ status: 400 }
-		);
 	}
 
 	const [existing] = await db

@@ -6,7 +6,7 @@ import { env } from "@/lib/env";
 import "server-only";
 import { db } from "@/db";
 import { smsRecipients, users } from "@/db/schema";
-import { eq, and, inArray, isNotNull } from "drizzle-orm";
+import { eq, and, isNotNull } from "drizzle-orm";
 
 /**
  * Canonicalizes a PH mobile number to 09XXXXXXXXX.
@@ -77,26 +77,22 @@ export async function sendSmsToRecipients(
 
 /**
  * Phone numbers for every active SMS recipient, sourced live from
- * users.contactNo (not a manually-typed number) and filtered to
- * Admin/Scheduler — extracted from app/api/attendance/time-in/route.ts's
- * original inline query so the GPS-off alert doesn't grow a second,
- * silently-divergent copy of the same rule. Filtered here even though
- * smsRecipients only ever links those roles at creation time, because a
- * linked user's role can change afterward; this is the authoritative
- * check, not the linkage alone.
+ * users.contactNo (never a separately-typed number, so an update to a
+ * recipient's profile phone number takes effect on the very next send
+ * with no extra step). Eligibility is governed SOLELY by
+ * smsRecipients.isActive — whoever is on this list and marked Active
+ * receives notifications, regardless of their system role. There used to
+ * be an Admin/Scheduler-only role filter here; it's deliberately gone —
+ * see app/api/admin/master/sms-recipients/route.ts's POST handler, which
+ * used to reject non-Admin/Scheduler users at link-time for the same
+ * reason and no longer does.
  */
 export async function getActiveSmsRecipientNumbers(): Promise<string[]> {
 	const recipients = await db
 		.select({ contactNo: users.contactNo })
 		.from(smsRecipients)
 		.innerJoin(users, eq(users.id, smsRecipients.userId))
-		.where(
-			and(
-				eq(smsRecipients.isActive, true),
-				inArray(users.role, ["Admin", "Scheduler"]),
-				isNotNull(users.contactNo)
-			)
-		);
+		.where(and(eq(smsRecipients.isActive, true), isNotNull(users.contactNo)));
 	return recipients
 		.map((r) => r.contactNo)
 		.filter((n): n is string => n != null);

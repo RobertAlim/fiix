@@ -15,10 +15,12 @@ export default function SmsRecipientsPage() {
 					SMS Recipients
 				</CardTitle>
 				<p className="text-sm text-muted-foreground">
-					Admin and Scheduler users on this list with &quot;Active&quot;
-					checked get a text whenever any Technician times in. The
-					number sent to is whatever&apos;s on that person&apos;s account
-					— update it from their profile if it changes.
+					Anyone on this list with &quot;Active&quot; checked gets a text
+					whenever any Technician times in — eligibility is based solely
+					on Active status here, regardless of their system role. The
+					number sent to is whatever&apos;s on that person&apos;s account;
+					update it from their profile and the next message uses the new
+					number automatically.
 				</p>
 			</CardHeader>
 			<CardContent>
@@ -66,11 +68,14 @@ export default function SmsRecipientsPage() {
 							type: "select",
 							required: true,
 							immutable: true,
-							optionsEndpoint: "/api/admin/users?role=Admin,Scheduler",
-							optionsQueryKey: ["/api/admin/users?role=Admin,Scheduler"],
+							// No role filter — any user can be a recipient now (see
+							// lib/sms.ts's getActiveSmsRecipientNumbers). Was previously
+							// scoped to ?role=Admin,Scheduler.
+							optionsEndpoint: "/api/admin/users",
+							optionsQueryKey: ["/api/admin/users"],
 							optionsMap: (r) => ({
 								value: String(r.id),
-								label: `${r.firstName} ${r.lastName} (${r.role})${
+								label: `${r.firstName} ${r.lastName}${r.role ? ` (${r.role})` : ""}${
 									r.contactNo ? "" : " — no number on file"
 								}`,
 							}),

@@ -4,16 +4,15 @@ import {
 	technicianAttendance,
 	schedules,
 	locationGeofences,
-	smsRecipients,
 	users,
 	clients,
 } from "@/db/schema";
-import { eq, and, asc, sql, isNull, inArray, isNotNull } from "drizzle-orm";
+import { eq, and, asc, sql, isNull } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireRole } from "@/lib/require-role";
 import { isWithinGeofence } from "@/lib/geofence";
-import { sendSmsToRecipients } from "@/lib/sms";
+import { sendSmsToRecipients, getActiveSmsRecipientNumbers } from "@/lib/sms";
 
 const bodySchema = z.object({
 	latitude: z.number().min(-90).max(90),
@@ -168,33 +167,23 @@ export async function POST(req: Request) {
 			.where(eq(users.id, technicianId))
 			.limit(1);
 
-		// Sourced from users.contactNo, not a manually-typed number — and
-		// filtered to Admin/Scheduler here even though smsRecipients only
-		// ever links those roles at creation time (see the sms-recipients
-		// POST route), because a linked user's role can change afterward.
-		// This is the authoritative check; linkage alone is not.
-		const recipients = await db
-			.select({ contactNo: users.contactNo })
-			.from(smsRecipients)
-			.innerJoin(users, eq(users.id, smsRecipients.userId))
-			.where(
-				and(
-					eq(smsRecipients.isActive, true),
-					inArray(users.role, ["Admin", "Scheduler"]),
-					isNotNull(users.contactNo)
-				)
-			);
+		// This used to be its own inline copy of the same query
+		// getActiveSmsRecipientNumbers() runs — exactly the kind of drift
+		// that helper's own doc comment (lib/sms.ts) was written to
+		// prevent, just never actually wired up here. Now calls the real
+		// shared function, which also means the Admin/Scheduler-only role
+		// filter that used to live in this inline copy is gone too: any
+		// active recipient qualifies now, regardless of role.
+		const numbers = await getActiveSmsRecipientNumbers();
 
-		if (recipients.length > 0 && technician) {
+		if (numbers.length > 0 && technician) {
 			const timeStr = new Date().toLocaleTimeString("en-US", {
 				timeZone: "Asia/Manila",
 				hour: "2-digit",
 				minute: "2-digit",
 			});
 			smsResult = await sendSmsToRecipients(
-				recipients
-					.map((r) => r.contactNo)
-					.filter((n): n is string => n != null),
+				numbers,
 				`${technician.firstName} ${technician.lastName} has timed in at ${firstStop.clientName} at ${timeStr}.`
 			);
 		}

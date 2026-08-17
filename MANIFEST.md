@@ -1,9 +1,9 @@
 # Fiix web app updates — apply into your repo at these exact paths
 
 Supersedes nothing earlier — this is on top of your existing repo, plus
-everything from the prior five delivery rounds. Organized by round below so
+everything from the prior six delivery rounds. Organized by round below so
 you can tell what's new in THIS zip vs. what you should already have
-applied. Rounds 4, 5, and 6 have no database changes — skip straight to
+applied. Rounds 4 through 7 have no database changes — skip straight to
 whichever round you need if you've already applied earlier ones.
 
 ## ⚠️ Read this before touching db/schema.ts
@@ -66,7 +66,40 @@ land — check you saved the right file.
 
 ---
 
-## Round 6 — Printer History modal redesign + Attendance Report role filtering
+## Round 7 — SMS Recipients: any role, Active status only
+
+No database changes.
+
+### Replaces an existing file
+- `lib/sms.ts` — `getActiveSmsRecipientNumbers()` no longer filters by
+  role. Eligibility is now `smsRecipients.isActive` alone; the phone
+  number was already sourced live from `users.contactNo` (never a
+  separately-typed number), so a profile phone-number update already
+  took effect automatically — that part didn't need to change.
+- `app/api/admin/master/sms-recipients/route.ts` — removed the POST
+  handler's `NOTIFIABLE_ROLES` check that used to reject non-Admin/
+  Scheduler users at link time. Any user can be added as a recipient now.
+- `components/pages/SmsRecipients.tsx` — the "User" picker no longer
+  filters `/api/admin/users` to `?role=Admin,Scheduler`; every user is
+  selectable. Updated the page's description text to match the new rule.
+- `app/api/admin/users/route.ts` — comment-only update; the role-filter
+  query param itself still works (harmless, just no longer used by this
+  picker).
+- `app/api/attendance/time-in/route.ts` — **found and fixed real drift
+  while making this change**: this route had its own inline copy of the
+  recipient-lookup query (including the Admin/Scheduler filter) instead
+  of actually calling the shared `getActiveSmsRecipientNumbers()` — despite
+  that function's own doc comment claiming it had been "extracted from"
+  this exact route. It hadn't been wired up. Now it actually calls the
+  shared function, which both fixes the role restriction here and closes
+  the drift risk the extraction was originally meant to prevent. The Time
+  Out and GPS-off-alert routes already called the shared function
+  correctly, so they picked up the fix automatically from the `lib/sms.ts`
+  change alone — no edits needed there.
+
+---
+
+
 
 No database changes. `db/schema.ts` in this zip is unchanged from Round 5.
 
