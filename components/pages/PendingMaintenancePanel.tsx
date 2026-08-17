@@ -30,7 +30,6 @@ import {
 	UserCog,
 	ChevronDown,
 	CheckCircle2,
-	History,
 } from "lucide-react";
 import { fetchData } from "@/lib/fetchData";
 import { showAppToast } from "@/components/ui/apptoast";
@@ -53,10 +52,6 @@ interface PendingMaintenanceItem {
 	isScheduled: boolean;
 	scheduledDate: string | null;
 	scheduledTechnicianName: string | null;
-	isResolved: boolean;
-	resolvedAt: string | null;
-	resolutionNotes: string | null;
-	resolvedByName: string | null;
 }
 
 /** A schedule whose date has passed with the work never marked done. */
@@ -168,7 +163,7 @@ export default function PendingMaintenancePanel() {
 		staleTime: 1000 * 60,
 	});
 
-	const unscheduled = pendingItems.filter((i) => !i.isScheduled && !i.isResolved);
+	const unscheduled = pendingItems.filter((i) => !i.isScheduled);
 
 	if (isLoading) {
 		return (
@@ -364,27 +359,6 @@ export default function PendingMaintenancePanel() {
 										</p>
 									)}
 
-									{item.isResolved && (
-										<div className="flex items-start gap-2 rounded-lg bg-success/10 p-2 text-xs text-success">
-											<History className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-											<div className="min-w-0">
-												<p className="font-medium">
-													Resolved{item.resolvedByName ? ` by ${item.resolvedByName}` : ""}
-													{item.resolvedAt
-														? ` · ${new Date(item.resolvedAt).toLocaleString("en-US", {
-																timeZone: "Asia/Manila",
-																dateStyle: "medium",
-																timeStyle: "short",
-															})}`
-														: ""}
-												</p>
-												{item.resolutionNotes && (
-													<p className="text-success/80">{item.resolutionNotes}</p>
-												)}
-											</div>
-										</div>
-									)}
-
 									<div className="flex items-center justify-between pt-1">
 										<span className="flex items-center gap-1 text-xs text-muted-foreground">
 											<Clock3 className="h-3 w-3" />
@@ -402,44 +376,39 @@ export default function PendingMaintenancePanel() {
 												</Badge>
 											)}
 
-											{item.isResolved ? (
-												<Badge className="gap-1 bg-success text-success-foreground">
-													<CheckCircle2 className="h-3 w-3" />
-													Resolved
-												</Badge>
-											) : (
-												<>
-													{!item.isScheduled && (
-														<Button
-															size="sm"
-															onClick={() =>
-																setAssignTarget({
-																	mode: "assign",
-																	maintainId: item.id,
-																	printerId: item.printerId,
-																	serialNo: item.serialNo,
-																	model: item.model,
-																	clientId: item.clientId,
-																	client: item.client,
-																	locationId: item.locationId,
-																	location: item.location,
-																})
-															}
-														>
-															Assign
-														</Button>
-													)}
-													{canResolve && (
-														<Button
-															size="sm"
-															variant="outline"
-															onClick={() => setResolveTarget(item)}
-														>
-															<CheckCircle2 className="h-4 w-4" />
-															Resolved
-														</Button>
-													)}
-												</>
+											{!item.isScheduled && (
+												<Button
+													size="sm"
+													onClick={() =>
+														setAssignTarget({
+															mode: "assign",
+															maintainId: item.id,
+															printerId: item.printerId,
+															serialNo: item.serialNo,
+															model: item.model,
+															clientId: item.clientId,
+															client: item.client,
+															locationId: item.locationId,
+															location: item.location,
+														})
+													}
+												>
+													Assign
+												</Button>
+											)}
+											{/* Label is "Resolve" (an action), not "Resolved" (a
+											    state) — every item that reaches this list is, by
+											    construction, still pending: see the GET route's
+											    doc comment. */}
+											{canResolve && (
+												<Button
+													size="sm"
+													variant="outline"
+													onClick={() => setResolveTarget(item)}
+												>
+													<CheckCircle2 className="h-4 w-4" />
+													Resolve
+												</Button>
 											)}
 										</div>
 									</div>
@@ -541,8 +510,8 @@ function ResolveDialog({
 						{item
 							? `${item.serialNo} — ${item.client} · ${item.location}`
 							: ""}{" "}
-						This records who resolved it, when, and why — the underlying
-						maintenance report is not changed.
+						This sets the maintenance status to Resolved and records who
+						resolved it, when, and why. It moves off this list once saved.
 					</DialogDescription>
 				</DialogHeader>
 				<div className="space-y-2 py-2">
@@ -559,7 +528,7 @@ function ResolveDialog({
 						onClick={() => mutate()}
 						disabled={isPending || notes.trim().length === 0}
 					>
-						{isPending ? "Saving…" : "Mark Resolved"}
+						{isPending ? "Saving…" : "Resolve"}
 					</Button>
 				</DialogFooter>
 			</DialogContent>

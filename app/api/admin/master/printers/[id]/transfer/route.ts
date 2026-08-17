@@ -28,10 +28,22 @@ import { printers, deployments, clients, locations } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
 import { phTodayDateString } from "@/lib/attendance";
 
-const bodySchema = z.object({
-	clientId: z.number().int().positive(),
-	locationId: z.number().int().positive(),
-});
+// Three actions live behind this one route because they're all "the
+// Transfer Printer dialog": relocating to a known new client/location, or
+// tagging the unit as Missing/Found when its location ISN'T known. See
+// components/PrinterTransferDialog.tsx and printers.status's doc comment
+// in db/schema.ts — "Missing" means specifically "not physically found at
+// its recorded location, but still exists in the system", and is only ever
+// set or cleared from here.
+const bodySchema = z.discriminatedUnion("action", [
+	z.object({
+		action: z.literal("transfer"),
+		clientId: z.number().int().positive(),
+		locationId: z.number().int().positive(),
+	}),
+	z.object({ action: z.literal("markMissing") }),
+	z.object({ action: z.literal("markFound") }),
+]);
 
 function parseId(id: string) {
 	const n = Number(id);
@@ -55,17 +67,47 @@ export async function POST(
 			{ status: 400 }
 		);
 	}
-	const { clientId, locationId } = parsed.data;
+	const { action } = parsed.data;
 
 	try {
 		const [printer] = await db
-			.select({ id: printers.id, serialNo: printers.serialNo })
+			.select({ id: printers.id, serialNo: printers.serialNo, status: printers.status })
 			.from(printers)
 			.where(eq(printers.id, id))
 			.limit(1);
 		if (!printer) {
 			return NextResponse.json({ error: "Printer not found." }, { status: 404 });
 		}
+
+		// --- Mark Missing / Mark Found -------------------------------------
+		// Neither touches deployments — Missing means "we don't know where
+		// it is right now", not "it moved". The last known client/location
+		// stays exactly as recorded until either a real transfer happens or
+		// it's found back where it already was (markFound).
+		if (action === "markMissing") {
+			if (printer.status === "Missing") {
+				return NextResponse.json(
+					{ error: "This printer is already marked Missing." },
+					{ status: 409 }
+				);
+			}
+			await db.update(printers).set({ status: "Missing" }).where(eq(printers.id, id));
+			return NextResponse.json({ success: true, status: "Missing", serialNo: printer.serialNo });
+		}
+
+		if (action === "markFound") {
+			if (printer.status !== "Missing") {
+				return NextResponse.json(
+					{ error: "This printer is not currently marked Missing." },
+					{ status: 409 }
+				);
+			}
+			await db.update(printers).set({ status: "Active" }).where(eq(printers.id, id));
+			return NextResponse.json({ success: true, status: "Active", serialNo: printer.serialNo });
+		}
+
+		// --- Transfer --------------------------------------------------------
+		const { clientId, locationId } = parsed.data;
 
 		const [[client], [location]] = await Promise.all([
 			db
@@ -163,6 +205,13 @@ export async function POST(
 				deployedHere: true,
 			})
 			.returning({ id: deployments.id });
+
+		// A transfer means the unit was physically located and moved — if it
+		// had been flagged Missing, that's resolved by this action, same as
+		// an explicit markFound would do.
+		if (printer.status === "Missing") {
+			await db.update(printers).set({ status: "Active" }).where(eq(printers.id, id));
+		}
 
 		return NextResponse.json({
 			success: true,

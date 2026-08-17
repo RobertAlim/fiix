@@ -24,7 +24,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { ComboBoxResponsive, ComboboxItem } from "@/components/ui/combobox";
-import { Loader2, ArrowRight } from "lucide-react";
+import { Loader2, ArrowRight, AlertTriangle, MapPinOff, MapPinCheck } from "lucide-react";
 import { fetchData } from "@/lib/fetchData";
 import { apiPath } from "@/lib/base-path";
 import { showAppToast } from "@/components/ui/apptoast";
@@ -46,7 +46,11 @@ export interface TransferTarget {
 	serialNo: string;
 	clientName?: string | null;
 	locationName?: string | null;
+	/** "Active" | "Missing" — decides which tabs this dialog opens with. */
+	status?: string | null;
 }
+
+type Mode = "transfer" | "markMissing" | "markFound";
 
 const EMPTY_CLIENTS: ClientRow[] = [];
 const EMPTY_LOCATIONS: LocationRow[] = [];
@@ -62,12 +66,17 @@ export function PrinterTransferDialog({
 	const queryClient = useQueryClient();
 	const [clientId, setClientId] = useState<string | null>(null);
 	const [locationId, setLocationId] = useState<string | null>(null);
+	const isCurrentlyMissing = target?.status === "Missing";
+	const [mode, setMode] = useState<Mode>("transfer");
 
 	// Reset on every new target, otherwise the previous printer's selection
-	// carries over into the next dialog.
+	// carries over into the next dialog. Defaults to the Transfer tab
+	// regardless of current status — Missing or not, relocating is always
+	// the primary action; the Missing/Found tab is the secondary one.
 	useEffect(() => {
 		setClientId(null);
 		setLocationId(null);
+		setMode("transfer");
 	}, [target?.id]);
 
 	const { data: clients = EMPTY_CLIENTS } = useQuery<ClientRow[]>({
@@ -100,30 +109,51 @@ export function PrinterTransferDialog({
 
 	const transfer = useMutation({
 		mutationFn: async () => {
-			if (!target || !clientId || !locationId) return;
+			if (!target) return;
+			const body =
+				mode === "transfer"
+					? clientId && locationId
+						? { action: "transfer" as const, clientId: Number(clientId), locationId: Number(locationId) }
+						: null
+					: { action: mode };
+			if (!body) return;
+
 			const res = await fetch(
 				apiPath(`/api/admin/master/printers/${target.id}/transfer`),
 				{
 					method: "POST",
 					headers: { "Content-Type": "application/json" },
-					body: JSON.stringify({
-						clientId: Number(clientId),
-						locationId: Number(locationId),
-					}),
+					body: JSON.stringify(body),
 				}
 			);
 			const data = await res.json().catch(() => ({}));
 			if (!res.ok) {
-				throw new Error(data.error || "Could not transfer the printer.");
+				const fallback =
+					mode === "markMissing"
+						? "Could not mark this printer Missing."
+						: mode === "markFound"
+						? "Could not mark this printer Found."
+						: "Could not transfer the printer.";
+				throw new Error(data.error || fallback);
 			}
-			return data as { clientName: string; locationName: string };
+			return data as { clientName?: string; locationName?: string; status?: string };
 		},
 		onSuccess: (data) => {
 			showAppToast({
-				message: "Printer transferred",
-				description: data
-					? `${target?.serialNo} is now at ${data.locationName} (${data.clientName}).`
-					: undefined,
+				message:
+					mode === "markMissing"
+						? "Marked Missing"
+						: mode === "markFound"
+						? "Marked Found"
+						: "Printer transferred",
+				description:
+					mode === "transfer" && data
+						? `${target?.serialNo} is now at ${data.locationName} (${data.clientName}).`
+						: mode === "markMissing"
+						? `${target?.serialNo} is flagged as physically missing. It stays in the system and can be transferred or marked Found once located.`
+						: mode === "markFound"
+						? `${target?.serialNo} is no longer flagged as missing.`
+						: undefined,
 				position: "top-right",
 				color: "success",
 			});
@@ -136,7 +166,12 @@ export function PrinterTransferDialog({
 		},
 		onError: (err) => {
 			showAppToast({
-				message: "Transfer failed",
+				message:
+					mode === "markMissing"
+						? "Couldn't mark Missing"
+						: mode === "markFound"
+						? "Couldn't mark Found"
+						: "Transfer failed",
 				description: err instanceof Error ? err.message : "Please try again.",
 				position: "top-right",
 				color: "error",
@@ -144,7 +179,9 @@ export function PrinterTransferDialog({
 		},
 	});
 
-	const canSubmit = !!clientId && !!locationId && !transfer.isPending;
+	const canSubmit =
+		!transfer.isPending &&
+		(mode === "transfer" ? !!clientId && !!locationId : true);
 
 	return (
 		<Dialog open={!!target} onOpenChange={onOpenChange}>
@@ -152,54 +189,121 @@ export function PrinterTransferDialog({
 				<DialogHeader>
 					<DialogTitle>Transfer printer</DialogTitle>
 					<DialogDescription>
-						Move {target?.serialNo} to a new client and location. Its
-						original client stays on record, and past maintenance reports
-						keep showing where the work was actually done.
+						{mode === "transfer"
+							? `Move ${target?.serialNo} to a new client and location. Its original client stays on record, and past maintenance reports keep showing where the work was actually done.`
+							: mode === "markMissing"
+							? `Flag ${target?.serialNo} as missing from its recorded location. It stays in the system — use this only when the unit can't be physically found, not for any other status change.`
+							: `Clear the Missing flag on ${target?.serialNo}. Its recorded client and location are unchanged.`}
 					</DialogDescription>
 				</DialogHeader>
 
-				<div className="space-y-4">
-					<div className="rounded-lg border bg-muted/40 p-3 text-sm">
-						<p className="text-xs font-medium text-muted-foreground">
-							Currently at
-						</p>
-						<p className="flex items-center gap-2">
-							<span>{target?.clientName ?? "—"}</span>
-							<ArrowRight className="h-3 w-3 text-muted-foreground" />
-							<span>{target?.locationName ?? "—"}</span>
-						</p>
+				{isCurrentlyMissing && (
+					<div className="flex items-center gap-2 rounded-lg bg-warning/10 px-3 py-2 text-sm text-warning-foreground">
+						<AlertTriangle className="h-4 w-4 shrink-0" />
+						Currently marked Missing.
 					</div>
+				)}
 
-					<div className="space-y-1">
-						<label className="text-sm font-medium">New client</label>
-						<ComboBoxResponsive
-							data={clientOptions}
-							placeholder="Select client"
-							selectedValue={clientId}
-							onValueChange={(v) => {
-								setClientId(v);
-								// A location from the previous client would no longer
-								// be valid, so it's cleared rather than left stale.
-								setLocationId(null);
-							}}
-							emptyMessage="No client found."
-						/>
-					</div>
-
-					<div className="space-y-1">
-						<label className="text-sm font-medium">New location</label>
-						<ComboBoxResponsive
-							data={locationOptions}
-							placeholder={
-								clientId ? "Select location" : "Select a client first"
-							}
-							selectedValue={locationId}
-							onValueChange={setLocationId}
-							emptyMessage="This client has no locations yet."
-							disabled={!clientId}
-						/>
-					</div>
+				{/* Tabs: Transfer is always available; the second tab flips
+				    between Mark Missing / Mark Found depending on whether the
+				    printer is currently flagged. */}
+				<div className="flex gap-2 rounded-lg bg-muted p-1">
+					<button
+						type="button"
+						onClick={() => setMode("transfer")}
+						className={`flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+							mode === "transfer"
+								? "bg-background shadow-sm"
+								: "text-muted-foreground hover:text-foreground"
+						}`}
+					>
+						Transfer
+					</button>
+					<button
+						type="button"
+						onClick={() => setMode(isCurrentlyMissing ? "markFound" : "markMissing")}
+						className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+							mode !== "transfer"
+								? "bg-background shadow-sm"
+								: "text-muted-foreground hover:text-foreground"
+						}`}
+					>
+						{isCurrentlyMissing ? (
+							<>
+								<MapPinCheck className="h-4 w-4" /> Mark as Found
+							</>
+						) : (
+							<>
+								<MapPinOff className="h-4 w-4" /> Mark as Missing
+							</>
+						)}
+					</button>
 				</div>
+
+				{mode === "transfer" ? (
+					<div className="space-y-4">
+						<div className="rounded-lg border bg-muted/40 p-3 text-sm">
+							<p className="text-xs font-medium text-muted-foreground">
+								Currently at
+							</p>
+							<p className="flex items-center gap-2">
+								<span>{target?.clientName ?? "—"}</span>
+								<ArrowRight className="h-3 w-3 text-muted-foreground" />
+								<span>{target?.locationName ?? "—"}</span>
+							</p>
+						</div>
+
+						<div className="space-y-1">
+							<label className="text-sm font-medium">New client</label>
+							<ComboBoxResponsive
+								data={clientOptions}
+								placeholder="Select client"
+								selectedValue={clientId}
+								onValueChange={(v) => {
+									setClientId(v);
+									// A location from the previous client would no longer
+									// be valid, so it's cleared rather than left stale.
+									setLocationId(null);
+								}}
+								emptyMessage="No client found."
+							/>
+						</div>
+
+						<div className="space-y-1">
+							<label className="text-sm font-medium">New location</label>
+							<ComboBoxResponsive
+								data={locationOptions}
+								placeholder={
+									clientId ? "Select location" : "Select a client first"
+								}
+								selectedValue={locationId}
+								onValueChange={setLocationId}
+								emptyMessage="This client has no locations yet."
+								disabled={!clientId}
+							/>
+						</div>
+					</div>
+				) : (
+					<div className="rounded-lg border bg-muted/40 p-3 text-sm text-muted-foreground">
+						{mode === "markMissing" ? (
+							<>
+								No fields to fill in — this only flags the unit as
+								physically missing from{" "}
+								<span className="font-medium text-foreground">
+									{target?.locationName ?? "its recorded location"}
+								</span>
+								. Its client and location stay recorded as-is so you can
+								still transfer or find it later.
+							</>
+						) : (
+							<>
+								This clears the Missing flag without changing where{" "}
+								{target?.serialNo} is recorded — use Transfer instead if it
+								was actually found somewhere else.
+							</>
+						)}
+					</div>
+				)}
 
 				<DialogFooter>
 					<Button
@@ -212,8 +316,17 @@ export function PrinterTransferDialog({
 					<Button onClick={() => transfer.mutate()} disabled={!canSubmit}>
 						{transfer.isPending ? (
 							<>
-								<Loader2 className="h-4 w-4 animate-spin" /> Transferring…
+								<Loader2 className="h-4 w-4 animate-spin" />{" "}
+								{mode === "markMissing"
+									? "Marking Missing…"
+									: mode === "markFound"
+									? "Marking Found…"
+									: "Transferring…"}
 							</>
+						) : mode === "markMissing" ? (
+							"Mark as Missing"
+						) : mode === "markFound" ? (
+							"Mark as Found"
 						) : (
 							"Transfer"
 						)}

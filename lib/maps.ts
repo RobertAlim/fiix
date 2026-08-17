@@ -56,20 +56,24 @@ function formatPoint(point: LatLng): string {
 /**
  * Directions URL from one coordinate to another.
  *
- * @param origin      where the ride starts (previous itinerary stop)
+ * @param origin      where the ride starts (previous itinerary stop), or
+ *                     `null` for a stop with no preceding leg (the first
+ *                     stop of a day) — Google Maps falls back to the
+ *                     device's current location as the starting point when
+ *                     the `origin` param is omitted entirely.
  * @param destination where it ends (the stop whose icon was clicked)
  */
 export function googleMapsDirectionsUrl(
-	origin: LatLng,
+	origin: LatLng | null,
 	destination: LatLng,
 	travelMode: TravelMode = DEFAULT_TRAVEL_MODE
 ): string {
 	const params = new URLSearchParams({
 		api: "1",
-		origin: formatPoint(origin),
 		destination: formatPoint(destination),
 		travelmode: travelMode,
 	});
+	if (origin) params.set("origin", formatPoint(origin));
 	return `https://www.google.com/maps/dir/?${params.toString()}`;
 }
 
@@ -79,7 +83,7 @@ export function googleMapsDirectionsUrl(
  * one via window.opener.
  */
 export function openGoogleMapsDirections(
-	origin: LatLng,
+	origin: LatLng | null,
 	destination: LatLng,
 	travelMode: TravelMode = DEFAULT_TRAVEL_MODE
 ): void {

@@ -414,6 +414,13 @@
       "when": 1785991186552,
       "tag": "0059_staff_timekeep_and_resolutions",
       "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1785991187552,
+      "tag": "0060_printer_missing_status_and_resolved",
+      "breakpoints": true
     }
   ]
 }

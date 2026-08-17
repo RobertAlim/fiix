@@ -4,6 +4,12 @@
 // everything awaiting a schedule in one place. Items already linked to a
 // schedule are still returned, flagged as scheduled, so the scheduler gets
 // visible confirmation rather than the item silently vanishing.
+//
+// Resolved items are excluded by construction, not by a separate filter:
+// resolving (POST /api/pending-maintenance/[id]/resolve) flips the report's
+// own statusId to "Resolved", and "Resolved" is deliberately never included
+// in NEEDS_ATTENTION_STATUSES below — so the WHERE clause here already
+// drops it. There is no client-side "isResolved" flag to check anymore.
 import { db } from "@/db";
 import {
 	maintain,
@@ -17,29 +23,18 @@ import {
 	scheduleDetails,
 	schedules,
 	users,
-	maintenanceResolutions,
 } from "@/db/schema";
 import { eq, and, desc, inArray, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { NextResponse } from "next/server";
 import { requireRole } from "@/lib/require-role";
-
-// Statuses that indicate a printer still needs a technician's attention.
-// Kept in sync with the "Open Issues" list already used elsewhere in Schedule.
-const NEEDS_ATTENTION_STATUSES = [
-	"Replacement (Parts)",
-	"Replacement (Unit)",
-	"Pulled Out",
-	"For Replacement Printer Part",
-	"For Replacement of Printer",
-];
+import { NEEDS_ATTENTION_STATUS_LIST } from "@/lib/maintenance-status";
 
 export async function GET() {
 	const authResult = await requireRole(["Admin", "Scheduler"]);
 	if (authResult.error) return authResult.error;
 
 	const scheduledTechnician = alias(users, "scheduled_technician");
-	const resolvedByUser = alias(users, "resolved_by_user");
 
 	const latestMaintain = db.$with("latest_maintain").as(
 		db
@@ -78,16 +73,6 @@ export async function GET() {
 				THEN ${scheduledTechnician.firstName} || ' ' || ${scheduledTechnician.lastName}
 				ELSE NULL END
 			`,
-			// Resolution audit trail — see maintenanceResolutions' doc comment
-			// in db/schema.ts. Left-joined: most rows have no resolution yet.
-			isResolved: sql<boolean>`${maintenanceResolutions.id} IS NOT NULL`,
-			resolvedAt: maintenanceResolutions.resolvedAt,
-			resolutionNotes: maintenanceResolutions.notes,
-			resolvedByName: sql<string | null>`
-				CASE WHEN ${resolvedByUser.id} IS NOT NULL
-				THEN ${resolvedByUser.firstName} || ' ' || ${resolvedByUser.lastName}
-				ELSE NULL END
-			`,
 		})
 		.from(latestMaintain)
 		.innerJoin(printers, eq(printers.id, latestMaintain.printerId))
@@ -99,15 +84,10 @@ export async function GET() {
 		.leftJoin(scheduleDetails, eq(scheduleDetails.originMTId, latestMaintain.mtId))
 		.leftJoin(schedules, eq(schedules.id, scheduleDetails.scheduleId))
 		.leftJoin(scheduledTechnician, eq(scheduledTechnician.id, schedules.technicianId))
-		.leftJoin(
-			maintenanceResolutions,
-			eq(maintenanceResolutions.maintainId, latestMaintain.mtId)
-		)
-		.leftJoin(resolvedByUser, eq(resolvedByUser.id, maintenanceResolutions.resolvedByUserId))
 		.where(
 			and(
 				eq(deployments.deployedHere, true),
-				inArray(latestMaintain.statusName, NEEDS_ATTENTION_STATUSES)
+				inArray(latestMaintain.statusName, NEEDS_ATTENTION_STATUS_LIST)
 			)
 		)
 		.orderBy(desc(latestMaintain.createdAt));

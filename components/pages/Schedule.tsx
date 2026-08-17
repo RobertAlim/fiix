@@ -69,8 +69,14 @@ import { LoadingSpinnerModal } from "../ui/loading-modal";
 import { PrinterStatusCard } from "../PrinterStatusCard";
 import PendingMaintenancePanel from "./PendingMaintenancePanel";
 import { ScheduleCard } from "../ScheduleCard";
-import { ListOrdered } from "lucide-react";
+import { ListOrdered, Lock } from "lucide-react";
 import { apiPath } from "@/lib/base-path";
+import {
+	hasCoordinates,
+	openGoogleMapsDirections,
+	type LatLng,
+} from "@/lib/maps";
+import { phTodayDateString } from "@/lib/attendance";
 
 export type Maintenance = {
 	id: number;
@@ -158,6 +164,16 @@ const createMaintenanceSchedule = async (
 
 /** Stable empty-array reference — see the note at its use site. */
 const EMPTY_SCHEDULES: Schedule[] = [];
+
+/** One row of /api/location-coordinates — the geofence pin for a client
+ * location. Only ever used to build a Maps link; deliberately never
+ * rendered, since raw latitude/longitude is noise to a Scheduler. */
+interface LocationCoordinate extends LatLng {
+	locationId: number;
+}
+// Same stable-reference reasoning as EMPTY_SCHEDULES above, for the
+// coordinates query.
+const EMPTY_COORDINATES: LocationCoordinate[] = [];
 
 export default function SchedulePage() {
 	const [edits, setEdits] = useState<Record<string, PrinterEdit>>({});
@@ -601,6 +617,50 @@ export default function SchedulePage() {
 	// a "Maximum update depth exceeded" loop in ItinerarySequenceManager).
 	const scheduleData = fetchedScheduleData ?? EMPTY_SCHEDULES;
 
+	// --- First-stop lock (mirrors PATCH /api/schedule/sequence's own rule) -
+	// Only meaningful for TODAY — reordering a past or future day is never
+	// restricted by whether the technician has timed in (they can't have,
+	// for a future day; it's moot for a past one).
+	const scheduledAtStr = scheduleDate ? format(scheduleDate, "yyyy-MM-dd") : undefined;
+	const scheduledAtIsToday = scheduledAtStr === phTodayDateString();
+	const { data: technicianStatus } = useQuery<{ timedInToday: boolean }>({
+		queryKey: ["technician-status", selectedTechnicianId],
+		queryFn: () =>
+			fetchData<{ timedInToday: boolean }>(
+				`/api/attendance/technician-status?technicianId=${selectedTechnicianId}`
+			),
+		enabled:
+			!!selectedTechnicianId &&
+			selectedTechnicianId !== "0" &&
+			scheduledAtIsToday,
+		// Short — this drives a UI lock the Scheduler needs to see update
+		// promptly right around when a technician actually times in.
+		staleTime: 30 * 1000,
+	});
+	const firstStopLocked = scheduledAtIsToday && !!technicianStatus?.timedInToday;
+
+	// --- Google Maps navigation ---------------------------------------------
+	// Geofence pins for every configured location, fetched once and looked
+	// up by locationId — same source lib/maps.ts and the Time In geofence
+	// check both use, so a route drawn here always ends exactly where a
+	// technician is required to be standing.
+	const { data: locationCoordinates = EMPTY_COORDINATES } = useQuery<
+		LocationCoordinate[]
+	>({
+		queryKey: ["location-coordinates"],
+		queryFn: () => fetchData<LocationCoordinate[]>("/api/location-coordinates"),
+		staleTime: 1000 * 60 * 10,
+	});
+	const coordsByLocationId = React.useMemo(() => {
+		const map = new Map<number, LatLng>();
+		for (const c of locationCoordinates) {
+			if (hasCoordinates(c)) {
+				map.set(c.locationId, { latitude: c.latitude, longitude: c.longitude });
+			}
+		}
+		return map;
+	}, [locationCoordinates]);
+
 	// --- Itinerary drag-reorder -------------------------------------------
 	// Local, reorderable copy of this technician/date's schedule ids.
 	// `null` means "not yet initialized for the current scheduleData" —
@@ -697,6 +757,28 @@ export default function SchedulePage() {
 	const handleCardDragEnd = () => {
 		setDraggedId(null);
 		setDragOverId(null);
+	};
+
+	// Directions ending at this stop. For idx > 0, routes from the PREVIOUS
+	// stop (the leg the technician is about to ride) — that's the same
+	// "from previous stop" semantics the old ItinerarySequenceManager used.
+	// For idx === 0 there is no preceding stop, so origin is omitted
+	// entirely and Google Maps falls back to the device's current location
+	// (see lib/maps.ts) rather than hiding the icon on the first card.
+	const handleNavigateStop = (idx: number) => {
+		const to = orderedScheduleCards[idx];
+		if (!to) return;
+		const destination = coordsByLocationId.get(to.locationId);
+		if (!destination) return;
+
+		if (idx === 0) {
+			openGoogleMapsDirections(null, destination);
+			return;
+		}
+		const from = orderedScheduleCards[idx - 1];
+		const origin = from ? coordsByLocationId.get(from.locationId) : undefined;
+		if (!origin) return;
+		openGoogleMapsDirections(origin, destination);
 	};
 
 	const handleSaveOrder = async () => {
@@ -1739,6 +1821,14 @@ export default function SchedulePage() {
 
 							<Separator className="my-2" />
 
+							{firstStopLocked && (
+								<div className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-sm text-warning-foreground">
+									<Lock className="mt-0.5 h-4 w-4 shrink-0" />
+									The technician has already timed in. Re-ordering the first
+									itinerary is not allowed.
+								</div>
+							)}
+
 							{isFetchingSchedules ? (
 								// Deliberately not the previous technician/date's cards
 								// (placeholderData) here — showing them while a new
@@ -1787,6 +1877,18 @@ export default function SchedulePage() {
 												)}
 												onDropCard={handleCardDrop(Number(schedule.id))}
 												onDragEndCard={handleCardDragEnd}
+												isLocked={firstStopLocked && idx === 0}
+												onNavigate={() => handleNavigateStop(idx)}
+												navigateDisabled={
+													!coordsByLocationId.has(schedule.locationId) ||
+													(idx > 0 &&
+														!coordsByLocationId.has(orderedScheduleCards[idx - 1]?.locationId ?? -1))
+												}
+												navigateTitle={
+													idx === 0
+														? 'Directions to this stop'
+														: `Directions from ${orderedScheduleCards[idx - 1]?.location ?? 'previous stop'}`
+												}
 											/>
 										))}
 									</div>

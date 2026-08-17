@@ -12,7 +12,7 @@ import {
 	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { MoreHorizontal, User, MapPin, CalendarDays, CheckSquare, GripVertical } from "lucide-react";
+import { MoreHorizontal, User, MapPin, CalendarDays, CheckSquare, GripVertical, Lock, Navigation } from "lucide-react";
 import { Schedule } from "@/components/columns/schedules/columns";
 import { cn } from "@/lib/utils";
 
@@ -42,6 +42,24 @@ interface ScheduleCardProps {
 	onDragLeaveCard?: (e: React.DragEvent<HTMLDivElement>) => void;
 	onDropCard?: (e: React.DragEvent<HTMLDivElement>) => void;
 	onDragEndCard?: (e: React.DragEvent<HTMLDivElement>) => void;
+	/** True once the technician has timed in today AND this card is
+	 * currently the first stop — the same business rule PATCH
+	 * /api/schedule/sequence enforces server-side. Shows a lock icon in
+	 * place of the drag handle and makes the card inert for drag/drop
+	 * (neither draggable nor a valid drop target), while every other card
+	 * stays freely reorderable among themselves. */
+	isLocked?: boolean;
+	/** Opens Google Maps directions ending at this stop (from the previous
+	 * stop's location, or from the device's current location for the
+	 * first stop — see lib/maps.ts). The icon always renders per-card;
+	 * pass `navigateDisabled` (with an explanatory `navigateTitle`) rather
+	 * than omitting `onNavigate` when there's no geofence pin to route
+	 * to/from, so the control is consistently in the same place on every
+	 * card instead of appearing/disappearing.
+	 */
+	onNavigate?: () => void;
+	navigateDisabled?: boolean;
+	navigateTitle?: string;
 }
 
 function priorityBadgeClass(priority: string): string {
@@ -71,37 +89,55 @@ export function ScheduleCard({
 	onDragLeaveCard,
 	onDropCard,
 	onDragEndCard,
+	isLocked,
+	onNavigate,
+	navigateDisabled,
+	navigateTitle,
 }: ScheduleCardProps) {
+	const draggable = draggableReorder && !isLocked;
 	return (
 		<Card
 			className={cn(
 				"relative rounded-xl border shadow-none transition-shadow hover:shadow-sm",
 				onCardClick && "cursor-pointer",
-				draggableReorder && "cursor-grab active:cursor-grabbing",
+				draggable && "cursor-grab active:cursor-grabbing",
 				isDragging && "opacity-40",
 				isDropTarget && "ring-2 ring-primary"
 			)}
 			onClick={() => onCardClick?.(schedule)}
-			draggable={draggableReorder}
-			onDragStart={onDragStartCard}
-			onDragOver={onDragOverCard}
-			onDragLeave={onDragLeaveCard}
-			onDrop={onDropCard}
+			draggable={draggable}
+			onDragStart={draggable ? onDragStartCard : undefined}
+			onDragOver={isLocked ? undefined : onDragOverCard}
+			onDragLeave={isLocked ? undefined : onDragLeaveCard}
+			onDrop={isLocked ? undefined : onDropCard}
 			onDragEnd={onDragEndCard}
 		>
 			{sequenceNumber != null && (
 				<div
-					className="absolute -left-2 -top-2 flex h-6 w-6 items-center justify-center rounded-full border-2 border-background bg-primary text-xs font-semibold text-primary-foreground shadow"
-					title={`Visit order: ${sequenceNumber}`}
+					className={cn(
+						"absolute -left-2 -top-2 flex h-6 w-6 items-center justify-center rounded-full border-2 border-background text-xs font-semibold shadow",
+						isLocked
+							? "bg-warning text-warning-foreground"
+							: "bg-primary text-primary-foreground"
+					)}
+					title={
+						isLocked
+							? "Locked — the technician has already timed in for this stop."
+							: `Visit order: ${sequenceNumber}`
+					}
 				>
-					{sequenceNumber}
+					{isLocked ? <Lock className="h-3 w-3" /> : sequenceNumber}
 				</div>
 			)}
 			<CardContent className="space-y-3 p-4">
 				<div className="flex items-start justify-between gap-2">
 					<div className="flex items-center gap-2">
 						{draggableReorder && (
-							<GripVertical className="h-4 w-4 shrink-0 text-muted-foreground" />
+							isLocked ? (
+								<Lock className="h-4 w-4 shrink-0 text-warning" />
+							) : (
+								<GripVertical className="h-4 w-4 shrink-0 text-muted-foreground" />
+							)
 						)}
 						<User className="h-4 w-4 text-muted-foreground" />
 						<p className="font-semibold capitalize leading-tight">
@@ -144,9 +180,25 @@ export function ScheduleCard({
 
 				<div className="flex items-center gap-2 text-sm text-muted-foreground">
 					<MapPin className="h-3.5 w-3.5 shrink-0" />
-					<span className="capitalize">
+					<span className="min-w-0 flex-1 truncate capitalize">
 						{schedule.client} — {schedule.location}
 					</span>
+					{onNavigate && (
+						<Button
+							variant="outline"
+							size="icon"
+							className="h-7 w-7 shrink-0"
+							disabled={navigateDisabled}
+							onClick={(e) => {
+								e.stopPropagation();
+								onNavigate();
+							}}
+							aria-label={navigateTitle ?? "Get directions"}
+							title={navigateTitle ?? "Get directions"}
+						>
+							<Navigation className="h-3.5 w-3.5 text-primary" />
+						</Button>
+					)}
 				</div>
 
 				<div className="flex items-center gap-2 text-sm text-muted-foreground">

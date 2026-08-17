@@ -93,6 +93,10 @@ export async function GET(req: Request) {
 			modelId: deployments.modelId,
 			modelName: models.name,
 			deploymentDate: deployments.deploymentDate,
+			// "Active" | "Missing" — see printers.status's doc comment in
+			// db/schema.ts. Set only via the Transfer Printer dialog's
+			// Mark Missing/Found actions.
+			status: printers.status,
 		})
 		.from(printers)
 		.innerJoin(clients, eq(clients.id, printers.deployedClient))

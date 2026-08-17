@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { MasterDataManager } from "@/components/MasterDataManager";
 import { ImportCsvModalButton } from "@/components/ImportCsvModalButton";
 import { Button } from "@/components/ui/button";
-import { Printer, ArrowLeftRight } from "lucide-react";
+import { Printer, ArrowLeftRight, MapPinOff } from "lucide-react";
 import { format } from "date-fns";
 import {
 	PrinterTransferDialog,
@@ -82,6 +82,19 @@ export default function PrintersPage() {
 									? format(new Date(String(r.deploymentDate)), "MM/dd/yyyy")
 									: "—",
 						},
+						{
+							key: "status",
+							label: "Status",
+							minWidth: "min-w-[100px]",
+							render: (r) =>
+								r.status === "Missing" ? (
+									<span className="inline-flex items-center gap-1 rounded-full bg-destructive/10 px-2 py-0.5 text-xs font-medium text-destructive">
+										<MapPinOff className="h-3 w-3" /> Missing
+									</span>
+								) : (
+									<span className="text-xs text-muted-foreground">Active</span>
+								),
+						},
 					]}
 					fields={[
 						{ name: "serialNo", label: "Serial Number", type: "text", required: true },
@@ -133,6 +146,7 @@ export default function PrintersPage() {
 									locationName: row.locationName
 										? String(row.locationName)
 										: null,
+									status: row.status ? String(row.status) : null,
 								})
 							}
 							aria-label={`Transfer ${String(row.serialNo)}`}
