@@ -1,9 +1,9 @@
 # Fiix web app updates — apply into your repo at these exact paths
 
 Supersedes nothing earlier — this is on top of your existing repo, plus
-everything from the prior six delivery rounds. Organized by round below so
-you can tell what's new in THIS zip vs. what you should already have
-applied. Rounds 4 through 7 have no database changes — skip straight to
+everything from the prior seven delivery rounds. Organized by round below
+so you can tell what's new in THIS zip vs. what you should already have
+applied. Rounds 4 through 8 have no database changes — skip straight to
 whichever round you need if you've already applied earlier ones.
 
 ## ⚠️ Read this before touching db/schema.ts
@@ -66,7 +66,58 @@ land — check you saved the right file.
 
 ---
 
-## Round 7 — SMS Recipients: any role, Active status only
+## Round 8 — Missed Schedules replaced by an Unmaintained-Printers list
+
+No database changes. `/api/missed-schedules/route.ts` is left on disk,
+untouched and unused, same "don't delete, just stop calling it" approach
+as the Technician web lockout — nothing else references it anymore.
+
+### New files
+- `app/api/unmaintained-printers/route.ts` — the new backing data: every
+  currently deployed printer whose LATEST maintenance record (across its
+  entire history, any past deployment, not just the current site) is 7+
+  days old, or that's never been maintained at all (falls back to its
+  deployment date). Sorted longest-overdue first. A printer disappears
+  from this the moment a new report is filed for it — the filter is a
+  live computed day-count, not a status flag that needs resolving.
+- `components/UnmaintainedPrintersPanel.tsx` — the replacement card for
+  the Schedule page, in the same collapsible style the old Missed
+  Schedules card used. Each entry has a "Schedule" button reusing the
+  same Assign dialog Pending Maintenance uses (now exported from
+  `PendingMaintenancePanel.tsx` — see below) to create a fresh schedule
+  for that printer; not tied to any specific maintenance report, since
+  this is a forward-looking "please visit this printer" action.
+
+### Replaces an existing file
+- `components/pages/PendingMaintenancePanel.tsx` — substantial cleanup:
+  - The "Missed Schedules" card, its query, and its "Reschedule" flow are
+    gone entirely — replaced by the file above.
+  - Added a `readOnly` prop: hides the Resolve button and skips mounting
+    `ResolveDialog` when true. Assign is unaffected — the request asked
+    specifically to remove Resolve, not the whole panel's interactivity.
+  - `AssignTarget`, `Technician`, `Priority`, and `AssignScheduleModal`
+    are now exported so `UnmaintainedPrintersPanel` can reuse the same
+    scheduling dialog instead of duplicating it.
+  - The Assign dialog's "reschedule" mode/wording is gone too — it was
+    only ever reachable from the now-deleted Missed Schedules card, so it
+    was dead code once that card was removed. `/api/schedule/assign`'s
+    `rescheduledFromScheduleId` param still exists server-side and still
+    works if you have another use for it; nothing client-side sends it
+    anymore.
+- `components/pages/Schedule.tsx` — mounts `<UnmaintainedPrintersPanel />`
+  where the old Missed Schedules card used to render, and passes
+  `readOnly` to its embedded `<PendingMaintenancePanel />` so Resolve only
+  ever appears on the standalone Pending Maintenance nav page.
+- `components/pages/PendingMaintenance.tsx` — comment-only update
+  (explains the new split); already had no `readOnly` prop and no Missed
+  Schedules card reference, so no functional change was needed here —
+  removing Missed Schedules from the shared panel component
+  automatically removed it from this page too, satisfying that part of
+  the request for free.
+
+---
+
+
 
 No database changes.
 

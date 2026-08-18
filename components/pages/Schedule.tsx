@@ -68,6 +68,7 @@ import { OpenIssueComponent } from "../OpenIssueComponents";
 import { LoadingSpinnerModal } from "../ui/loading-modal";
 import { PrinterStatusCard } from "../PrinterStatusCard";
 import PendingMaintenancePanel from "./PendingMaintenancePanel";
+import { UnmaintainedPrintersPanel } from "@/components/UnmaintainedPrintersPanel";
 import { ScheduleCard } from "../ScheduleCard";
 import { ListOrdered, Lock } from "lucide-react";
 import { apiPath } from "@/lib/base-path";
@@ -1592,7 +1593,9 @@ export default function SchedulePage() {
 
 	return (
 		<div className="space-y-6">
-			<PendingMaintenancePanel />
+			<UnmaintainedPrintersPanel />
+
+			<PendingMaintenancePanel readOnly />
 
 			<Card className="rounded-2xl border shadow-sm">
 				<CardContent className="p-6 space-y-4">
