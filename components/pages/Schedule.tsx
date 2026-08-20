@@ -71,6 +71,7 @@ import PendingMaintenancePanel from "./PendingMaintenancePanel";
 import { UnmaintainedPrintersPanel } from "@/components/UnmaintainedPrintersPanel";
 import { ScheduleCard } from "../ScheduleCard";
 import { ListOrdered, Lock } from "lucide-react";
+import { NEEDS_ATTENTION_STATUS_LIST } from "@/lib/maintenance-status";
 import { apiPath } from "@/lib/base-path";
 import {
 	hasCoordinates,
@@ -525,16 +526,14 @@ export default function SchedulePage() {
 		isErrorPriorities ||
 		isErrorOpenIssues;
 
-	// 1. Define the status list for filtering
+	// Single source of truth for "needs a technician" — see
+	// lib/maintenance-status.ts. This used to be its own hardcoded copy
+	// (the exact kind of duplication that lib file's own comment says it
+	// was written to prevent, just never actually wired up here), which
+	// meant adding a status there alone wouldn't have been enough — this
+	// client-side filter would have silently dropped it right back out.
 	const TARGET_STATUSES: ReadonlySet<string> = useMemo(
-		() =>
-			new Set([
-				"Replacement (Parts)",
-				"Replacement (Unit)",
-				"Pulled Out",
-				"For Replacement Printer Part",
-				"For Replacement of Printer",
-			]),
+		() => new Set(NEEDS_ATTENTION_STATUS_LIST),
 		[]
 	);
 

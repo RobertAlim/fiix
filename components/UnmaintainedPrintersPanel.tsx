@@ -23,6 +23,7 @@ import {
 	type Technician,
 	type Priority,
 } from "@/components/pages/PendingMaintenancePanel";
+import { PrinterHistoryDialog } from "@/components/PrinterHistoryDialog";
 
 interface UnmaintainedPrinter {
 	printerId: number;
@@ -44,6 +45,7 @@ export function UnmaintainedPrintersPanel() {
 	// actually decided to look at it.
 	const [isOpen, setIsOpen] = useState(false);
 	const [assignTarget, setAssignTarget] = useState<AssignTarget | null>(null);
+	const [historyPrinterId, setHistoryPrinterId] = useState<number | null>(null);
 
 	const { data: printers = [], isLoading } = useQuery<UnmaintainedPrinter[]>({
 		queryKey: ["unmaintained-printers"],
@@ -111,7 +113,8 @@ export function UnmaintainedPrintersPanel() {
 						{printers.map((p) => (
 							<Card
 								key={p.printerId}
-								className="rounded-xl border shadow-none transition-shadow hover:shadow-sm"
+								className="cursor-pointer rounded-xl border shadow-none transition-shadow hover:shadow-sm"
+								onClick={() => setHistoryPrinterId(p.printerId)}
 							>
 								<CardContent className="space-y-3 p-4">
 									<div className="flex items-start justify-between gap-2">
@@ -153,7 +156,8 @@ export function UnmaintainedPrintersPanel() {
 									<div className="flex justify-end pt-1">
 										<Button
 											size="sm"
-											onClick={() =>
+											onClick={(e) => {
+												e.stopPropagation();
 												setAssignTarget({
 													// No originating maintain record — this is a
 													// forward-looking "please visit this printer"
@@ -166,8 +170,8 @@ export function UnmaintainedPrintersPanel() {
 													locationId: p.locationId,
 													client: p.client,
 													location: p.location,
-												})
-											}
+												});
+										}}
 										>
 											<CalendarPlus className="h-4 w-4" />
 											Schedule
@@ -191,6 +195,13 @@ export function UnmaintainedPrintersPanel() {
 					queryClient.invalidateQueries({ queryKey: ["printers"] });
 					queryClient.invalidateQueries({ queryKey: ["schedules"] });
 					setAssignTarget(null);
+				}}
+			/>
+
+			<PrinterHistoryDialog
+				printerId={historyPrinterId}
+				onOpenChange={(open) => {
+					if (!open) setHistoryPrinterId(null);
 				}}
 			/>
 		</Card>

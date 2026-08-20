@@ -1,10 +1,12 @@
 # Fiix web app updates — apply into your repo at these exact paths
 
 Supersedes nothing earlier — this is on top of your existing repo, plus
-everything from the prior seven delivery rounds. Organized by round below
+everything from the prior nine delivery rounds. Organized by round below
 so you can tell what's new in THIS zip vs. what you should already have
-applied. Rounds 4 through 8 have no database changes — skip straight to
-whichever round you need if you've already applied earlier ones.
+applied. Rounds 4 through 10 have no database SCHEMA changes (Round 10
+does recommend a manual data cleanup query — see that section) — skip
+straight to whichever round you need if you've already applied earlier
+ones.
 
 ## ⚠️ Read this before touching db/schema.ts
 
@@ -66,7 +68,110 @@ land — check you saved the right file.
 
 ---
 
-## Round 8 — Missed Schedules replaced by an Unmaintained-Printers list
+## Round 10 — Fix: "duplicate key" React error on Schedule / Pending Maintenance
+
+No database changes, but read this one carefully — it's a data issue, not
+just a code fix.
+
+### Root cause
+`deployments.deployedHere = true` is supposed to mark exactly one row per
+printer (its current site) — the Transfer route already retires the old
+row before inserting a new one. Several queries across this app assumed
+that invariant always holds and joined straight to `deployments` filtered
+on `deployedHere = true` with no further deduplication. In production, at
+least one printer has ended up with MORE than one `deployedHere = true`
+row, which silently duplicated that printer's row in four different API
+responses — on the Printers list, that likely means an inflated "total"
+count and a repeated row; on Pending Maintenance / Unmaintained Printers /
+Open Issues, it's exactly what produced the React "two children with the
+same key" crash you saw.
+
+**Find the affected printer(s):**
+```sql
+SELECT "printerId", COUNT(*) AS active_deployment_count
+FROM deployments
+WHERE "deployedHere" = true
+GROUP BY "printerId"
+HAVING COUNT(*) > 1;
+```
+Then inspect the actual duplicate rows for whichever printerId(s) that
+returns:
+```sql
+SELECT id, "printerId", "clientId", "locationId", "deploymentDate", "deployedHere"
+FROM deployments
+WHERE "printerId" = <id from above>
+ORDER BY id;
+```
+Once you can see the duplicates, you'll likely want to manually set
+`deployedHere = false` on whichever older row shouldn't still be active
+(keep the one that actually reflects where the printer is now). I didn't
+do this for you — it's a one-time data cleanup on production I don't have
+visibility to make safely without you confirming which row is correct.
+
+### The code fix (applied either way, since the underlying data condition
+could recur)
+Four routes now defensively deduplicate to "the most recently created
+deployedHere row" via a `selectDistinctOn`-based CTE, instead of trusting
+an inner/left join on `deployedHere = true` to always return one row:
+- `app/api/pending-maintenance/route.ts`
+- `app/api/unmaintained-printers/route.ts` (new this round in Round 9 —
+  the freshest suspect, but not unique to it)
+- `app/api/open-issues/route.ts`
+- `app/api/admin/master/printers/route.ts` (both the page query and the
+  count query — the duplicate was also inflating the "total" pagination
+  count here)
+
+This makes the symptom (crashing grids) go away even if the underlying
+data anomaly isn't cleaned up, but the SQL above is still worth running —
+a printer with two "current" deployments can produce other quieter
+inconsistencies (e.g. which client/location wins depends on `deployments.id`
+ordering) that this fix papers over rather than actually resolves.
+
+---
+
+
+
+No database changes.
+
+### Replaces an existing file
+- `lib/maintenance-status.ts` — added `"For Replacement (Printer Part)"`
+  (with parentheses) to `NEEDS_ATTENTION_STATUSES` alongside the existing
+  `"For Replacement Printer Part"` (no parens) — both are kept since I
+  don't know which one your live `status` table actually uses, and having
+  both costs nothing.
+- `components/pages/Schedule.tsx` — **found and fixed real drift while
+  making that change**: the Open Issues filter here had its own
+  hardcoded copy of the status list (`TARGET_STATUSES`) instead of
+  importing the shared one, despite `lib/maintenance-status.ts`'s own
+  comment claiming this exact site had already been fixed. It hadn't.
+  Adding the new status to the shared list alone would NOT have shown up
+  in Open Issues — this local copy would have silently filtered it back
+  out. Now imports `NEEDS_ATTENTION_STATUS_LIST` instead of duplicating
+  it, which also incidentally fixes a pre-existing lint warning about
+  this constant.
+- `components/UnmaintainedPrintersPanel.tsx` — cards are now clickable,
+  opening `PrinterHistoryDialog` for that printer. The Schedule button
+  stops the click from bubbling into the card (`e.stopPropagation()`), so
+  both actions coexist.
+- `components/pages/PendingMaintenancePanel.tsx` — same pattern: cards
+  are clickable → Printer History modal; both the Assign button and the
+  Resolve button (still gated by `readOnly`/`canResolve` exactly as
+  before — untouched by this change) stop propagation so they keep
+  working independently of the new card click.
+- `components/PrinterHistoryDialog.tsx` — the "Maintenance history" grid
+  rows (both the desktop table and the mobile card layout) are now
+  clickable, opening the actual Maintenance Report PDF for that specific
+  record. This reuses the exact mechanism already used in two other
+  places rather than building something new: `components/tracker/
+  task-tracker.tsx`'s `handleRowClick` and `components/pages/Report.tsx`'s
+  `handlePrintMaintenance` both just call `window.open(apiPath(
+  `/api/pdf?mtId=${id}`), "_blank")` — this does the same, using each
+  history row's own `id` (which is `maintain.id`), so the report opened
+  always matches the exact row clicked.
+
+---
+
+
 
 No database changes. `/api/missed-schedules/route.ts` is left on disk,
 untouched and unused, same "don't delete, just stop calling it" approach

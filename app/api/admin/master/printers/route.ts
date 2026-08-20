@@ -68,31 +68,55 @@ export async function GET(req: Request) {
 			? Math.floor(requestedPage)
 			: 1;
 
+	// The printer's CURRENT deployment. Should always be at most one row
+	// per printer (deployedHere: true is meant to be exclusive), but a
+	// stray duplicate has shown up in production at least once — an
+	// (outer-joined) match on just `deployedHere = true` silently
+	// duplicates that printer's row (and inflates the count query's
+	// total) when it happens. This makes the query itself hold the
+	// invariant, deterministically picking the most-recently-created
+	// deployedHere row, instead of trusting the data to already be clean.
+	const currentDeployment = db.$with("current_deployment").as(
+		db
+			.selectDistinctOn([deployments.printerId], {
+				printerId: deployments.printerId,
+				clientId: deployments.clientId,
+				locationId: deployments.locationId,
+				departmentId: deployments.departmentId,
+				modelId: deployments.modelId,
+				deploymentDate: deployments.deploymentDate,
+			})
+			.from(deployments)
+			.where(eq(deployments.deployedHere, true))
+			.orderBy(deployments.printerId, sql`${deployments.id} desc`)
+	);
+
 	// The joins are repeated verbatim between the page query and the count
 	// query because the filters can target any joined table (client, location,
 	// department, model) — counting off `printers` alone would over-report as
 	// soon as one of those filters is active.
 	const rowsQuery = db
+		.with(currentDeployment)
 		.select({
 			id: printers.id,
 			serialNo: printers.serialNo,
 			// Current client: sourced from the active deployment, updates
 			// whenever the printer is transferred. Named to match the
 			// editable "Client" form field (editing it = a transfer).
-			clientId: deployments.clientId,
+			clientId: currentDeployment.clientId,
 			clientName: currentClient.name,
 			// Original client: set once at creation, immutable — read-only
 			// display field, not part of the edit form. See the design note
 			// in the PATCH handler for why this is never updated.
 			originalClientId: printers.deployedClient,
 			originalClientName: clients.name,
-			locationId: deployments.locationId,
+			locationId: currentDeployment.locationId,
 			locationName: locations.name,
-			departmentId: deployments.departmentId,
+			departmentId: currentDeployment.departmentId,
 			departmentName: departments.name,
-			modelId: deployments.modelId,
+			modelId: currentDeployment.modelId,
 			modelName: models.name,
-			deploymentDate: deployments.deploymentDate,
+			deploymentDate: currentDeployment.deploymentDate,
 			// "Active" | "Missing" — see printers.status's doc comment in
 			// db/schema.ts. Set only via the Transfer Printer dialog's
 			// Mark Missing/Found actions.
@@ -100,31 +124,26 @@ export async function GET(req: Request) {
 		})
 		.from(printers)
 		.innerJoin(clients, eq(clients.id, printers.deployedClient))
-		.leftJoin(
-			deployments,
-			and(eq(deployments.printerId, printers.id), eq(deployments.deployedHere, true))
-		)
-		.leftJoin(currentClient, eq(currentClient.id, deployments.clientId))
-		.leftJoin(locations, eq(locations.id, deployments.locationId))
-		.leftJoin(departments, eq(departments.id, deployments.departmentId))
-		.leftJoin(models, eq(models.id, deployments.modelId))
+		.leftJoin(currentDeployment, eq(currentDeployment.printerId, printers.id))
+		.leftJoin(currentClient, eq(currentClient.id, currentDeployment.clientId))
+		.leftJoin(locations, eq(locations.id, currentDeployment.locationId))
+		.leftJoin(departments, eq(departments.id, currentDeployment.departmentId))
+		.leftJoin(models, eq(models.id, currentDeployment.modelId))
 		.where(where)
 		.orderBy(asc(printers.serialNo))
 		.limit(pageSize)
 		.offset((page - 1) * pageSize);
 
 	const countQuery = db
+		.with(currentDeployment)
 		.select({ value: sql<number>`count(*)::int` })
 		.from(printers)
 		.innerJoin(clients, eq(clients.id, printers.deployedClient))
-		.leftJoin(
-			deployments,
-			and(eq(deployments.printerId, printers.id), eq(deployments.deployedHere, true))
-		)
-		.leftJoin(currentClient, eq(currentClient.id, deployments.clientId))
-		.leftJoin(locations, eq(locations.id, deployments.locationId))
-		.leftJoin(departments, eq(departments.id, deployments.departmentId))
-		.leftJoin(models, eq(models.id, deployments.modelId))
+		.leftJoin(currentDeployment, eq(currentDeployment.printerId, printers.id))
+		.leftJoin(currentClient, eq(currentClient.id, currentDeployment.clientId))
+		.leftJoin(locations, eq(locations.id, currentDeployment.locationId))
+		.leftJoin(departments, eq(departments.id, currentDeployment.departmentId))
+		.leftJoin(models, eq(models.id, currentDeployment.modelId))
 		.where(where);
 
 	const [rows, [count]] = await Promise.all([rowsQuery, countQuery]);

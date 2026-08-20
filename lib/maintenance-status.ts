@@ -10,6 +10,7 @@ export const NEEDS_ATTENTION_STATUSES = [
 	"Replacement (Unit)",
 	"Pulled Out",
 	"For Replacement Printer Part",
+	"For Replacement (Printer Part)",
 	"For Replacement of Printer",
 ] as const;
 

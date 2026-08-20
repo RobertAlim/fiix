@@ -28,7 +28,7 @@ import {
 	departments,
 	deployments,
 } from "@/db/schema";
-import { eq, and, sql, desc, inArray } from "drizzle-orm";
+import { eq, sql, desc, inArray } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { requireRole } from "@/lib/require-role";
 import { NEEDS_ATTENTION_STATUS_LIST } from "@/lib/maintenance-status";
@@ -56,8 +56,28 @@ export async function GET() {
 			.orderBy(deployments.printerId, desc(maintain.createdAt), desc(maintain.id))
 	);
 
+	// See the identical CTE in app/api/pending-maintenance/route.ts and
+	// app/api/unmaintained-printers/route.ts — this defends against the
+	// same production data issue (a printer with more than one
+	// `deployments` row marked deployedHere: true), which otherwise
+	// duplicates that printer's row here too and causes a React
+	// "duplicate key" error on any grid keyed by this route's `id`.
+	const currentDeployment = db.$with("current_deployment").as(
+		db
+			.selectDistinctOn([deployments.printerId], {
+				printerId: deployments.printerId,
+				clientId: deployments.clientId,
+				locationId: deployments.locationId,
+				departmentId: deployments.departmentId,
+				modelId: deployments.modelId,
+			})
+			.from(deployments)
+			.where(eq(deployments.deployedHere, true))
+			.orderBy(deployments.printerId, desc(deployments.id))
+	);
+
 	const data = await db
-		.with(latestMaintain)
+		.with(latestMaintain, currentDeployment)
 		.select({
 			id: latestMaintain.mtId,
 			serialNo: printers.serialNo,
@@ -76,17 +96,11 @@ export async function GET() {
 		// Display fields come from the printer's CURRENT deployment, not the
 		// deployment the old report was filed against — a transferred printer
 		// should show where it is now.
-		.innerJoin(
-			deployments,
-			and(
-				eq(deployments.printerId, printers.id),
-				eq(deployments.deployedHere, true)
-			)
-		)
-		.innerJoin(clients, eq(clients.id, deployments.clientId))
-		.innerJoin(locations, eq(locations.id, deployments.locationId))
-		.innerJoin(departments, eq(departments.id, deployments.departmentId))
-		.innerJoin(models, eq(models.id, deployments.modelId))
+		.innerJoin(currentDeployment, eq(currentDeployment.printerId, printers.id))
+		.innerJoin(clients, eq(clients.id, currentDeployment.clientId))
+		.innerJoin(locations, eq(locations.id, currentDeployment.locationId))
+		.innerJoin(departments, eq(departments.id, currentDeployment.departmentId))
+		.innerJoin(models, eq(models.id, currentDeployment.modelId))
 		.innerJoin(users, eq(users.id, latestMaintain.userId))
 		.where(inArray(latestMaintain.statusName, NEEDS_ATTENTION_STATUS_LIST))
 		.orderBy(desc(latestMaintain.createdAt));

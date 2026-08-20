@@ -32,6 +32,7 @@ import { fetchData } from "@/lib/fetchData";
 import { showAppToast } from "@/components/ui/apptoast";
 import { apiPath } from "@/lib/base-path";
 import { useUserStore } from "@/state/userStore";
+import { PrinterHistoryDialog } from "@/components/PrinterHistoryDialog";
 
 interface PendingMaintenanceItem {
 	id: number; // maintain.id
@@ -101,6 +102,7 @@ export default function PendingMaintenancePanel({
 	const [resolveTarget, setResolveTarget] = useState<PendingMaintenanceItem | null>(
 		null
 	);
+	const [historyPrinterId, setHistoryPrinterId] = useState<number | null>(null);
 
 	const { data: pendingItems = [], isLoading } = useQuery<PendingMaintenanceItem[]>({
 		queryKey: ["pending-maintenance"],
@@ -159,7 +161,8 @@ export default function PendingMaintenancePanel({
 						{pendingItems.map((item) => (
 							<Card
 								key={item.id}
-								className="rounded-xl border shadow-none hover:shadow-sm transition-shadow"
+								className="cursor-pointer rounded-xl border shadow-none hover:shadow-sm transition-shadow"
+								onClick={() => setHistoryPrinterId(item.printerId)}
 							>
 								<CardContent className="space-y-3 p-4">
 									<div className="flex items-start justify-between gap-2">
@@ -211,7 +214,8 @@ export default function PendingMaintenancePanel({
 											{!item.isScheduled && (
 												<Button
 													size="sm"
-													onClick={() =>
+													onClick={(e) => {
+														e.stopPropagation();
 														setAssignTarget({
 															maintainId: item.id,
 															printerId: item.printerId,
@@ -221,8 +225,8 @@ export default function PendingMaintenancePanel({
 															client: item.client,
 															locationId: item.locationId,
 															location: item.location,
-														})
-													}
+														});
+													}}
 												>
 													Assign
 												</Button>
@@ -237,7 +241,10 @@ export default function PendingMaintenancePanel({
 												<Button
 													size="sm"
 													variant="outline"
-													onClick={() => setResolveTarget(item)}
+													onClick={(e) => {
+														e.stopPropagation();
+														setResolveTarget(item);
+													}}
 												>
 													<CheckCircle2 className="h-4 w-4" />
 													Resolve
@@ -278,6 +285,13 @@ export default function PendingMaintenancePanel({
 				/>
 			)}
 		</Card>
+
+		<PrinterHistoryDialog
+			printerId={historyPrinterId}
+			onOpenChange={(open) => {
+				if (!open) setHistoryPrinterId(null);
+			}}
+		/>
 		</div>
 	);
 }

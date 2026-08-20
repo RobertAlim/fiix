@@ -23,7 +23,7 @@ import {
 	models,
 	maintain,
 } from "@/db/schema";
-import { eq, and, desc, sql } from "drizzle-orm";
+import { eq, desc, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { requireRole } from "@/lib/require-role";
 
@@ -47,6 +47,31 @@ export async function GET() {
 			.orderBy(deployments.printerId, desc(maintain.createdAt), desc(maintain.id))
 	);
 
+	// The printer's CURRENT deployment. This should always be at most one
+	// row per printer (deployedHere: true is meant to be exclusive — see
+	// the Transfer route, which retires the old one before inserting a
+	// new one) — but a stray duplicate has shown up in production at
+	// least once, and an INNER JOIN straight to `deployments` on just
+	// `deployedHere = true` silently turns that into a duplicated output
+	// row (same printerId twice), which is what was crashing this page
+	// with a React "duplicate key" error. This makes the query itself
+	// hold the invariant — deterministically picking the most-recently-
+	// created deployedHere row — rather than trusting the data to already
+	// be clean.
+	const currentDeployment = db.$with("current_deployment").as(
+		db
+			.selectDistinctOn([deployments.printerId], {
+				printerId: deployments.printerId,
+				clientId: deployments.clientId,
+				locationId: deployments.locationId,
+				modelId: deployments.modelId,
+				deploymentDate: deployments.deploymentDate,
+			})
+			.from(deployments)
+			.where(eq(deployments.deployedHere, true))
+			.orderBy(deployments.printerId, desc(deployments.id))
+	);
+
 	// Days since the reference point (latest maintenance, or — for a
 	// printer that's never been serviced at all — its deployment date) up
 	// to today, both sides computed as Manila-local dates so the
@@ -55,12 +80,12 @@ export async function GET() {
 		(now() AT TIME ZONE 'Asia/Manila')::date
 		- COALESCE(
 			(${latestMaintain.createdAt} AT TIME ZONE 'Asia/Manila')::date,
-			${deployments.deploymentDate}
+			${currentDeployment.deploymentDate}
 		)
 	)`;
 
 	const rows = await db
-		.with(latestMaintain)
+		.with(latestMaintain, currentDeployment)
 		.select({
 			printerId: printers.id,
 			serialNo: printers.serialNo,
@@ -73,13 +98,10 @@ export async function GET() {
 			daysSinceMaintenance: daysSince,
 		})
 		.from(printers)
-		.innerJoin(
-			deployments,
-			and(eq(deployments.printerId, printers.id), eq(deployments.deployedHere, true))
-		)
-		.innerJoin(clients, eq(clients.id, deployments.clientId))
-		.innerJoin(locations, eq(locations.id, deployments.locationId))
-		.innerJoin(models, eq(models.id, deployments.modelId))
+		.innerJoin(currentDeployment, eq(currentDeployment.printerId, printers.id))
+		.innerJoin(clients, eq(clients.id, currentDeployment.clientId))
+		.innerJoin(locations, eq(locations.id, currentDeployment.locationId))
+		.innerJoin(models, eq(models.id, currentDeployment.modelId))
 		.leftJoin(latestMaintain, eq(latestMaintain.printerId, printers.id))
 		.where(sql`${daysSince} >= ${MIN_OVERDUE_DAYS}`)
 		.orderBy(desc(daysSince));

@@ -45,6 +45,7 @@ import {
 	MapPinOff,
 } from "lucide-react";
 import { fetchData } from "@/lib/fetchData";
+import { apiPath } from "@/lib/base-path";
 import { formatPhDateTime } from "@/lib/formatDate";
 import { getStatusTheme, STATUS_THEME_CLASSES } from "@/lib/printer-history-status";
 import { cn } from "@/lib/utils";
@@ -86,6 +87,18 @@ export function PrinterHistoryDialog({
 		enabled: printerId != null,
 		staleTime: 30_000,
 	});
+
+	// Opens the actual Maintenance Report PDF for a history row — same
+	// mechanism already used by the Task Tracker (components/tracker/
+	// task-tracker.tsx's handleRowClick) and the Report nav page
+	// (components/pages/Report.tsx's handlePrintMaintenance): both just
+	// open /api/pdf?mtId=<id> in a new tab. `h.id` here is that same
+	// maintain.id (see the history route's select), so this opens the
+	// exact report for the row that was clicked, not just "a" report for
+	// this printer.
+	const handleOpenReport = (mtId: number) => {
+		window.open(apiPath(`/api/pdf?mtId=${mtId}`), "_blank");
+	};
 
 	return (
 		<Dialog open={printerId != null} onOpenChange={onOpenChange}>
@@ -220,7 +233,11 @@ export function PrinterHistoryDialog({
 														return (
 															<TableRow
 																key={h.id}
-																className={STATUS_THEME_CLASSES[theme].row}
+																onClick={() => handleOpenReport(h.id)}
+																className={cn(
+																	"cursor-pointer",
+																	STATUS_THEME_CLASSES[theme].row
+																)}
 															>
 																<TableCell className="align-top font-medium">
 																	<span className="break-words">
@@ -266,8 +283,9 @@ export function PrinterHistoryDialog({
 												return (
 													<div
 														key={h.id}
+														onClick={() => handleOpenReport(h.id)}
 														className={cn(
-															"rounded-xl border p-4",
+															"cursor-pointer rounded-xl border p-4",
 															theme === "red" &&
 																"border-destructive/30 bg-destructive/5",
 															theme === "green" &&

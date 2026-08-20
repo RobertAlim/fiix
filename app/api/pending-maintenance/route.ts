@@ -24,7 +24,7 @@ import {
 	schedules,
 	users,
 } from "@/db/schema";
-import { eq, and, desc, inArray, sql } from "drizzle-orm";
+import { eq, desc, inArray, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { NextResponse } from "next/server";
 import { requireRole } from "@/lib/require-role";
@@ -51,8 +51,33 @@ export async function GET() {
 			.orderBy(deployments.printerId, desc(maintain.createdAt), desc(maintain.id))
 	);
 
+	// The printer's CURRENT deployment. This should always be at most one
+	// row per printer (deployedHere: true is meant to be exclusive — see
+	// the Transfer route, which retires the old one before inserting a
+	// new one) — but a stray duplicate has shown up in production at
+	// least once, and an INNER JOIN straight to `deployments` on just
+	// `deployedHere = true` silently turns that into a duplicated output
+	// row (same maintain id twice), which is what was crashing the
+	// Pending Maintenance grid with a React "duplicate key" error. This
+	// makes the query itself hold the invariant — deterministically
+	// picking the most-recently-created deployedHere row — rather than
+	// trusting the data to already be clean.
+	const currentDeployment = db.$with("current_deployment").as(
+		db
+			.selectDistinctOn([deployments.printerId], {
+				printerId: deployments.printerId,
+				clientId: deployments.clientId,
+				locationId: deployments.locationId,
+				departmentId: deployments.departmentId,
+				modelId: deployments.modelId,
+			})
+			.from(deployments)
+			.where(eq(deployments.deployedHere, true))
+			.orderBy(deployments.printerId, desc(deployments.id))
+	);
+
 	const rows = await db
-		.with(latestMaintain)
+		.with(latestMaintain, currentDeployment)
 		.select({
 			id: latestMaintain.mtId,
 			printerId: printers.id,
@@ -76,20 +101,15 @@ export async function GET() {
 		})
 		.from(latestMaintain)
 		.innerJoin(printers, eq(printers.id, latestMaintain.printerId))
-		.innerJoin(deployments, eq(deployments.printerId, printers.id))
-		.innerJoin(clients, eq(clients.id, deployments.clientId))
-		.innerJoin(locations, eq(locations.id, deployments.locationId))
-		.innerJoin(departments, eq(departments.id, deployments.departmentId))
-		.innerJoin(models, eq(models.id, deployments.modelId))
+		.innerJoin(currentDeployment, eq(currentDeployment.printerId, printers.id))
+		.innerJoin(clients, eq(clients.id, currentDeployment.clientId))
+		.innerJoin(locations, eq(locations.id, currentDeployment.locationId))
+		.innerJoin(departments, eq(departments.id, currentDeployment.departmentId))
+		.innerJoin(models, eq(models.id, currentDeployment.modelId))
 		.leftJoin(scheduleDetails, eq(scheduleDetails.originMTId, latestMaintain.mtId))
 		.leftJoin(schedules, eq(schedules.id, scheduleDetails.scheduleId))
 		.leftJoin(scheduledTechnician, eq(scheduledTechnician.id, schedules.technicianId))
-		.where(
-			and(
-				eq(deployments.deployedHere, true),
-				inArray(latestMaintain.statusName, NEEDS_ATTENTION_STATUS_LIST)
-			)
-		)
+		.where(inArray(latestMaintain.statusName, NEEDS_ATTENTION_STATUS_LIST))
 		.orderBy(desc(latestMaintain.createdAt));
 
 	return NextResponse.json(rows, { status: 200 });
