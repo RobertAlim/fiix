@@ -27,6 +27,8 @@ import {
 	CalendarCheck2,
 	Clock3,
 	CheckCircle2,
+	Bell,
+	ChevronDown,
 } from "lucide-react";
 import { fetchData } from "@/lib/fetchData";
 import { showAppToast } from "@/components/ui/apptoast";
@@ -103,6 +105,10 @@ export default function PendingMaintenancePanel({
 		null
 	);
 	const [historyPrinterId, setHistoryPrinterId] = useState<number | null>(null);
+	// Starts expanded — unlike Unmaintained Printers (which defaults
+	// collapsed since it's a newer, secondary list), Pending Maintenance
+	// is this panel's primary purpose on both pages it appears on.
+	const [isOpen, setIsOpen] = useState(true);
 
 	const { data: pendingItems = [], isLoading } = useQuery<PendingMaintenanceItem[]>({
 		queryKey: ["pending-maintenance"],
@@ -137,7 +143,19 @@ export default function PendingMaintenancePanel({
 	return (
 		<div className="space-y-4">
 		<Card className="rounded-2xl border shadow-sm">
-			<CardHeader className="flex flex-row items-center justify-between space-y-0">
+			<CardHeader
+				className="flex flex-row cursor-pointer items-center justify-between space-y-0"
+				onClick={() => setIsOpen((open) => !open)}
+				role="button"
+				tabIndex={0}
+				aria-expanded={isOpen}
+				onKeyDown={(e) => {
+					if (e.key === "Enter" || e.key === " ") {
+						e.preventDefault();
+						setIsOpen((open) => !open);
+					}
+				}}
+			>
 				<div>
 					<CardTitle className="text-base font-semibold">
 						Pending Maintenance
@@ -147,10 +165,23 @@ export default function PendingMaintenancePanel({
 						new ones.
 					</p>
 				</div>
-				<Badge className="bg-warning text-warning-foreground">
-					{unscheduled.length} outstanding
-				</Badge>
+				<div className="flex items-center gap-2">
+					{/* Bell — matches the topbar notification icon
+					    (components/OpenIssuesBell.tsx), since this badge is the
+					    same "how many need attention" concept applied to one
+					    section instead of the whole app. */}
+					<Badge className="gap-1 bg-warning text-warning-foreground">
+						<Bell className="h-3 w-3" />
+						{unscheduled.length} Pending
+					</Badge>
+					<ChevronDown
+						className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${
+							isOpen ? "rotate-180" : ""
+						}`}
+					/>
+				</div>
 			</CardHeader>
+			{isOpen && (
 			<CardContent>
 				{pendingItems.length === 0 ? (
 					<p className="py-6 text-center text-sm text-muted-foreground">
@@ -258,6 +289,7 @@ export default function PendingMaintenancePanel({
 					</div>
 				)}
 			</CardContent>
+			)}
 
 			<AssignScheduleModal
 				item={assignTarget}

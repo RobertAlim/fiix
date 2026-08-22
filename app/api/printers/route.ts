@@ -48,9 +48,19 @@ export async function GET(req: Request) {
 			);
 		}
 
+		// `scheduleDetails.printerId` should be unique within one schedule —
+		// a printer only needs to appear once per visit — but the write side
+		// (app/api/schedule/route.ts's create/edit flow) has been seen to
+		// insert it twice for the same schedule (the same class of issue as
+		// the `scheduleDetails.originMTId` duplication fixed in pending-
+		// maintenance and schedule/assign). A plain LEFT JOIN on printerId
+		// here would duplicate that printer's row — since this list is keyed
+		// by printer.id, that's exactly a React "two children with the same
+		// key" crash. Deduplicated here defensively, same as the
+		// `deployedHere` fix directly below.
 		const scheduleDetailsData = db.$with("scheduleDetails").as(
 			db
-				.select({
+				.selectDistinctOn([scheduleDetails.printerId], {
 					schedId: scheduleDetails.id,
 					printerId: scheduleDetails.printerId,
 					isMaintained: scheduleDetails.isMaintained,
@@ -71,6 +81,7 @@ export async function GET(req: Request) {
 						eq(schedules.id, scheduleId)
 					)
 				)
+				.orderBy(scheduleDetails.printerId, desc(scheduleDetails.id))
 		);
 
 		const latestMaintain = db.$with("latestMaintain").as(

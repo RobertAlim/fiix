@@ -73,6 +73,31 @@ export async function POST(req: Request) {
 			);
 		}
 
+		// A maintenance report should be linked from at most one
+		// scheduleDetails row — this used to have no guard at all, and a
+		// production data check found ~30 reports each linked twice
+		// (production report screenshot: printer XAGM080560 showing as two
+		// identical "Scheduled" cards on Pending Maintenance). Whatever the
+		// exact trigger (a fast double-click before the Assign button's
+		// disabled state took effect, two browser tabs, or a genuine repeat
+		// Assign on the same report), this closes it off at the source
+		// rather than relying on every downstream query to defend against
+		// it. maintainId is nullable (a reschedule of a routine, non-issue
+		// visit has none), so this only applies when one is actually given.
+		if (maintainId != null) {
+			const [alreadyLinked] = await db
+				.select({ id: scheduleDetails.id })
+				.from(scheduleDetails)
+				.where(eq(scheduleDetails.originMTId, maintainId))
+				.limit(1);
+			if (alreadyLinked) {
+				return NextResponse.json(
+					{ error: "This maintenance report is already linked to a schedule." },
+					{ status: 409 }
+				);
+			}
+		}
+
 		const [newSchedule] = await db
 			.insert(schedules)
 			.values({

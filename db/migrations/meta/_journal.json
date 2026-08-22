@@ -421,6 +421,13 @@
       "when": 1785991187552,
       "tag": "0060_printer_missing_status_and_resolved",
       "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "7",
+      "when": 1785991188552,
+      "tag": "0061_schedule_details_unique_printer",
+      "breakpoints": true
     }
   ]
 }

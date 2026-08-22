@@ -321,14 +321,33 @@ export async function POST(req: NextRequest) {
 
 			// Attach the printers immediately, instead of leaving a brand-new
 			// schedule empty until the user happens to click Update again.
+			// Deduplicated by printerId first — this is a fresh schedule, so
+			// there's nothing existing to conflict with, but the submitted
+			// list itself listing the same printer twice would still insert
+			// two scheduleDetails rows for one printer on one schedule.
+			// onConflictDoNothing is the real backstop (migration 0061's
+			// unique index on scheduleId+printerId) — atomic, unlike a
+			// select-then-insert check, which has a race window a fast
+			// double-submit can still slip through.
 			if (printersToAttach.length > 0) {
-				await db.insert(scheduleDetails).values(
-					printersToAttach.map((printer) => ({
-						scheduleId: newScheduleId!,
-						printerId: printer.printerId,
-						originMTId: printer.mtId,
-					}))
-				);
+				const seen = new Set<number>();
+				const uniqueToAttach = printersToAttach.filter((printer) => {
+					if (seen.has(printer.printerId)) return false;
+					seen.add(printer.printerId);
+					return true;
+				});
+				await db
+					.insert(scheduleDetails)
+					.values(
+						uniqueToAttach.map((printer) => ({
+							scheduleId: newScheduleId!,
+							printerId: printer.printerId,
+							originMTId: printer.mtId,
+						}))
+					)
+					.onConflictDoNothing({
+						target: [scheduleDetails.scheduleId, scheduleDetails.printerId],
+					});
 			}
 		} else {
 			const [updatedSchedule] = await db
@@ -390,7 +409,49 @@ export async function POST(req: NextRequest) {
 					originMTId: printer.mtId,
 				}));
 
-				await db.insert(scheduleDetails).values(printersToAdd);
+				// The conflict check above deliberately excludes THIS schedule
+				// (re-saving its own existing printers is normal, not a
+				// conflict) — but that also means nothing stopped a printer
+				// that's already on this schedule from being inserted a
+				// SECOND time if the client's added/removed diff was ever
+				// wrong (stale local state, a toggle-off-then-on, etc.), or
+				// if this whole edit request was submitted twice in quick
+				// succession. Production data confirmed exactly this: a
+				// schedule where every one of its ~10 printers had been
+				// duplicated, all at once — a double-submission, not a
+				// per-printer mistake.
+				//
+				// Filtering here first avoids a confusing partial success on
+				// the common case; onConflictDoNothing (migration 0061's
+				// unique index) is the real, atomic backstop for the race a
+				// select-then-filter check can still lose.
+				const alreadyOnSchedule = await db
+					.select({ printerId: scheduleDetails.printerId })
+					.from(scheduleDetails)
+					.where(
+						and(
+							eq(scheduleDetails.scheduleId, newScheduleId),
+							inArray(
+								scheduleDetails.printerId,
+								printersToAdd.map((p) => p.printerId)
+							)
+						)
+					);
+				const alreadyOnScheduleIds = new Set(
+					alreadyOnSchedule.map((r) => r.printerId)
+				);
+				const printersToInsert = printersToAdd.filter(
+					(p) => !alreadyOnScheduleIds.has(p.printerId)
+				);
+
+				if (printersToInsert.length > 0) {
+					await db
+						.insert(scheduleDetails)
+						.values(printersToInsert)
+						.onConflictDoNothing({
+							target: [scheduleDetails.scheduleId, scheduleDetails.printerId],
+						});
+				}
 			}
 
 			if (removed.length > 0) {

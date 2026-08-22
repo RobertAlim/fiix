@@ -171,14 +171,31 @@ export const schedules = pgTable("schedules", {
 		.default(sql`now()`),
 });
 
-export const scheduleDetails = pgTable("scheduleDetails", {
-	id: serial("id").primaryKey(),
-	scheduleId: integer("scheduleId").notNull(),
-	printerId: integer("printerId").notNull(),
-	originMTId: integer("mtId"),
-	isMaintained: boolean("isMaintained").notNull().default(false),
-	maintainedDate: timestamp("maintainedDate"),
-});
+export const scheduleDetails = pgTable(
+	"scheduleDetails",
+	{
+		id: serial("id").primaryKey(),
+		scheduleId: integer("scheduleId").notNull(),
+		printerId: integer("printerId").notNull(),
+		originMTId: integer("mtId"),
+		isMaintained: boolean("isMaintained").notNull().default(false),
+		maintainedDate: timestamp("maintainedDate"),
+	},
+	(table) => ({
+		// A printer appears on a given schedule at most once. Enforced here
+		// (not just checked in application code) after production data
+		// turned up several schedules where every printer had been
+		// duplicated — traced to the create/edit schedule routes' insert
+		// having no protection against being submitted twice for the same
+		// schedule in quick succession (a select-then-insert check has a
+		// race window; this closes it at the database layer instead). See
+		// migration 0061 and the onConflictDoNothing() calls in
+		// app/api/schedule/route.ts.
+		scheduleDetailsSchedulePrinterUnique: uniqueIndex(
+			"scheduleDetails_scheduleId_printerId_unique"
+		).on(table.scheduleId, table.printerId),
+	})
+);
 
 export const colors = pgTable("colors", {
 	id: serial("id").primaryKey(),

@@ -51,6 +51,27 @@ export async function GET() {
 			.orderBy(deployments.printerId, desc(maintain.createdAt), desc(maintain.id))
 	);
 
+	// The one schedule (if any) this report is linked to. `originMTId` is
+	// meant to point back to a maintenance report from AT MOST one
+	// scheduleDetails row — but a printer's report has been seen linked
+	// from two (screenshot: two identical "XAGM080560" cards, both
+	// "Scheduled · Mj Charles Lacosta"). A plain LEFT JOIN straight to
+	// `scheduleDetails` on `originMTId` multiplies the report's single row
+	// into one per match when that happens — same class of bug as
+	// `currentDeployment` below, just on a different table. This picks the
+	// most-recently-created scheduleDetails row deterministically instead
+	// of trusting there's only ever one.
+	const scheduleLink = db.$with("schedule_link").as(
+		db
+			.selectDistinctOn([scheduleDetails.originMTId], {
+				originMTId: scheduleDetails.originMTId,
+				scheduleDetailsId: scheduleDetails.id,
+				scheduleId: scheduleDetails.scheduleId,
+			})
+			.from(scheduleDetails)
+			.orderBy(scheduleDetails.originMTId, desc(scheduleDetails.id))
+	);
+
 	// The printer's CURRENT deployment. This should always be at most one
 	// row per printer (deployedHere: true is meant to be exclusive — see
 	// the Transfer route, which retires the old one before inserting a
@@ -77,7 +98,7 @@ export async function GET() {
 	);
 
 	const rows = await db
-		.with(latestMaintain, currentDeployment)
+		.with(latestMaintain, currentDeployment, scheduleLink)
 		.select({
 			id: latestMaintain.mtId,
 			printerId: printers.id,
@@ -91,7 +112,7 @@ export async function GET() {
 			status: latestMaintain.statusName,
 			notes: latestMaintain.notes,
 			createdAt: latestMaintain.createdAt,
-			isScheduled: sql<boolean>`${scheduleDetails.id} IS NOT NULL`,
+			isScheduled: sql<boolean>`${scheduleLink.scheduleDetailsId} IS NOT NULL`,
 			scheduledDate: sql<string | null>`to_char(${schedules.scheduledAt}, 'MM/DD/YYYY')`,
 			scheduledTechnicianName: sql<string | null>`
 				CASE WHEN ${scheduledTechnician.id} IS NOT NULL
@@ -106,8 +127,8 @@ export async function GET() {
 		.innerJoin(locations, eq(locations.id, currentDeployment.locationId))
 		.innerJoin(departments, eq(departments.id, currentDeployment.departmentId))
 		.innerJoin(models, eq(models.id, currentDeployment.modelId))
-		.leftJoin(scheduleDetails, eq(scheduleDetails.originMTId, latestMaintain.mtId))
-		.leftJoin(schedules, eq(schedules.id, scheduleDetails.scheduleId))
+		.leftJoin(scheduleLink, eq(scheduleLink.originMTId, latestMaintain.mtId))
+		.leftJoin(schedules, eq(schedules.id, scheduleLink.scheduleId))
 		.leftJoin(scheduledTechnician, eq(scheduledTechnician.id, schedules.technicianId))
 		.where(inArray(latestMaintain.statusName, NEEDS_ATTENTION_STATUS_LIST))
 		.orderBy(desc(latestMaintain.createdAt));

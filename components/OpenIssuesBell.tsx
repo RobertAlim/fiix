@@ -55,7 +55,7 @@ export function OpenIssuesBell({ enabled = true }: { enabled?: boolean }) {
 				>
 					<Bell className="h-5 w-5" />
 					{count > 0 && (
-						<span className="absolute -right-0.5 -top-0.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold leading-none text-destructive-foreground">
+						<span className="absolute -right-0.5 -top-0.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold leading-none text-white">
 							{count > 99 ? "99+" : count}
 						</span>
 					)}

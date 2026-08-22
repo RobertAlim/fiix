@@ -28,6 +28,7 @@ import type { ScheduleTrackerRow, ScheduleDetailRow } from "@/types/tracker";
 import { formatDateManila, formatTimeToAmPm } from "@/lib/formatDate";
 import { Loader2 } from "lucide-react";
 import { apiPath } from "@/lib/base-path";
+import { PrinterHistoryDialog } from "@/components/PrinterHistoryDialog";
 
 async function fetchJSON<T>(url: string): Promise<T> {
 	const res = await fetch(apiPath(url));
@@ -114,11 +115,15 @@ export default function TaskTracker() {
 		const url = apiPath(`/api/pdf?mtId=${mtId}`);
 		window.open(url, "_blank");
 	};
+	const [historyPrinterId, setHistoryPrinterId] = React.useState<number | null>(
+		null
+	);
 
 	return (
-		<div className="grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-2">
+		<>
+		<div className="grid grid-cols-1 gap-4 lg:min-h-0 lg:flex-1 lg:grid-cols-2">
 			{/* Left: Schedules */}
-			<Card className="flex min-h-0 flex-col overflow-hidden">
+			<Card className="flex max-h-[75vh] min-h-0 flex-col overflow-hidden lg:max-h-none">
 				<CardHeader className="space-y-1">
 					<CardTitle>Maintenance Task Tracker</CardTitle>
 					<CardDescription>
@@ -248,7 +253,7 @@ export default function TaskTracker() {
 			</Card>
 
 			{/* Right: Details */}
-			<Card className="flex min-h-0 flex-col overflow-hidden">
+			<Card className="flex max-h-[75vh] min-h-0 flex-col overflow-hidden lg:max-h-none">
 				<CardHeader>
 					<div className="flex items-center justify-between">
 						<div>
@@ -331,7 +336,22 @@ export default function TaskTracker() {
 										>
 											<TableCell>
 												<div className="flex flex-col">
-													<span className="font-medium">{d.serialNo}</span>
+													{/* Its own click target, separate from the row's — the
+													    row opens the Maintenance Report PDF (handleRowClick,
+													    only once maintained); this always opens the Printer
+													    History modal, the same one used on the Printers nav
+													    page, regardless of maintained state. stopPropagation
+													    keeps the two from firing together. */}
+													<button
+														type="button"
+														onClick={(e) => {
+															e.stopPropagation();
+															setHistoryPrinterId(d.printerId);
+														}}
+														className="w-fit text-left font-medium text-primary underline-offset-2 hover:underline"
+													>
+														{d.serialNo}
+													</button>
 													<span className="text-xs text-muted-foreground">
 														Printer ID: {d.printerId}
 													</span>
@@ -385,5 +405,13 @@ export default function TaskTracker() {
 				</CardContent>
 			</Card>
 		</div>
+
+		<PrinterHistoryDialog
+			printerId={historyPrinterId}
+			onOpenChange={(open) => {
+				if (!open) setHistoryPrinterId(null);
+			}}
+		/>
+		</>
 	);
 }
