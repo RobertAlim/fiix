@@ -22,6 +22,7 @@ import {
 	DialogDescription,
 	DialogFooter,
 } from "@/components/ui/dialog";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
 	AlertTriangle,
 	CalendarCheck2,
@@ -29,6 +30,7 @@ import {
 	CheckCircle2,
 	Bell,
 	ChevronDown,
+	Pencil,
 } from "lucide-react";
 import { fetchData } from "@/lib/fetchData";
 import { showAppToast } from "@/components/ui/apptoast";
@@ -100,6 +102,12 @@ export default function PendingMaintenancePanel({
 	// lib/permissions.ts's effectiveRoles/ROLE_IMPLIES.
 	const canResolve =
 		!readOnly && (users?.role === "Admin" || users?.role === "Super Admin");
+	// Editing Notes is intentionally narrower than canResolve above — Super
+	// Admin ONLY, no implication from Admin. This mirrors the backend check
+	// in app/api/pending-maintenance/[id]/notes/route.ts, which is the
+	// actual security boundary; this flag only controls whether the popover
+	// renders here.
+	const canEditNotes = !readOnly && users?.role === "Super Admin";
 	const [assignTarget, setAssignTarget] = useState<AssignTarget | null>(null);
 	const [resolveTarget, setResolveTarget] = useState<PendingMaintenanceItem | null>(
 		null
@@ -225,11 +233,7 @@ export default function PendingMaintenancePanel({
 										<p className="text-muted-foreground">{item.location}</p>
 									</div>
 
-									{item.notes && (
-										<p className="line-clamp-2 rounded-lg bg-muted p-2 text-xs text-muted-foreground">
-											{item.notes}
-										</p>
-									)}
+									<PendingItemNotes item={item} canEdit={canEditNotes} />
 
 									<div className="flex items-center justify-between pt-1">
 										<span className="flex items-center gap-1 text-xs text-muted-foreground">
@@ -331,6 +335,135 @@ export default function PendingMaintenancePanel({
 			}}
 		/>
 		</div>
+	);
+}
+
+/**
+ * The Notes cell on a Pending Maintenance card. Read-only for everyone
+ * except Super Admin (`canEdit`), who gets a Radix Popover with an
+ * editable textarea instead of plain text — clicking it opens the popover
+ * rather than the card's own onClick (printer history), and saving PATCHes
+ * app/api/pending-maintenance/[id]/notes, which re-enforces the Super
+ * Admin check server-side regardless of what `canEdit` says here.
+ */
+function PendingItemNotes({
+	item,
+	canEdit,
+}: {
+	item: PendingMaintenanceItem;
+	canEdit: boolean;
+}) {
+	const queryClient = useQueryClient();
+	const [open, setOpen] = useState(false);
+	const [draft, setDraft] = useState(item.notes ?? "");
+
+	const { mutate: saveNotes, isPending } = useMutation({
+		mutationFn: async () => {
+			const res = await fetch(
+				apiPath(`/api/pending-maintenance/${item.id}/notes`),
+				{
+					method: "PATCH",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({ notes: draft }),
+				}
+			);
+			const data = await res.json().catch(() => ({}));
+			if (!res.ok) {
+				throw new Error(data.error || "Could not save notes.");
+			}
+			return data as { id: number; notes: string | null };
+		},
+		onSuccess: () => {
+			showAppToast({
+				message: "Notes updated",
+				position: "top-right",
+				color: "success",
+			});
+			// Refreshes the displayed value from the server rather than
+			// trusting the optimistic draft — this list is shared with the
+			// Schedule page's read-only copy of this same panel.
+			queryClient.invalidateQueries({ queryKey: ["pending-maintenance"] });
+			setOpen(false);
+		},
+		onError: (err) => {
+			showAppToast({
+				message: "Couldn't save notes",
+				description: err instanceof Error ? err.message : "Please try again.",
+				position: "top-right",
+				color: "error",
+			});
+		},
+	});
+
+	if (!canEdit) {
+		return item.notes ? (
+			<p className="line-clamp-2 rounded-lg bg-muted p-2 text-xs text-muted-foreground">
+				{item.notes}
+			</p>
+		) : null;
+	}
+
+	return (
+		<Popover
+			open={open}
+			onOpenChange={(next) => {
+				// Re-sync the draft from the current server value every time
+				// the popover opens, so a stale edit from a previously
+				// cancelled session (or a refetch that landed while it was
+				// closed) never clobbers a newer value on save.
+				if (next) setDraft(item.notes ?? "");
+				setOpen(next);
+			}}
+		>
+			<PopoverTrigger asChild>
+				<button
+					type="button"
+					onClick={(e) => e.stopPropagation()}
+					className="flex w-full items-start gap-1.5 rounded-lg bg-muted p-2 text-left text-xs text-muted-foreground transition-colors hover:bg-muted/70"
+				>
+					<Pencil className="mt-0.5 h-3 w-3 shrink-0 opacity-60" />
+					{item.notes ? (
+						<span className="line-clamp-2">{item.notes}</span>
+					) : (
+						<span className="italic">Click to add notes…</span>
+					)}
+				</button>
+			</PopoverTrigger>
+			<PopoverContent
+				className="w-80"
+				onClick={(e) => e.stopPropagation()}
+			>
+				<div className="space-y-2">
+					<label className="text-sm font-medium">Notes</label>
+					<Textarea
+						value={draft}
+						onChange={(e) => setDraft(e.target.value)}
+						rows={4}
+						maxLength={2000}
+						placeholder="Add notes for this report…"
+						disabled={isPending}
+						autoFocus
+					/>
+					<div className="flex justify-end gap-2">
+						<Button
+							size="sm"
+							variant="outline"
+							onClick={() => setOpen(false)}
+							disabled={isPending}
+						>
+							Cancel
+						</Button>
+						<Button
+							size="sm"
+							onClick={() => saveNotes()}
+							disabled={isPending || draft.trim() === (item.notes ?? "").trim()}
+						>
+							{isPending ? "Saving…" : "Save"}
+						</Button>
+					</div>
+				</div>
+			</PopoverContent>
+		</Popover>
 	);
 }
 

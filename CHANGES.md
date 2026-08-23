@@ -1,4 +1,4 @@
-# FIIX — Printer Status + Scroll Area update
+# FIIX — Printer Status + Scroll Area + Pending Maintenance Notes update
 
 Delta package — copy these files into your project at the exact paths
 shown below (they mirror the project's folder structure 1:1). No other
@@ -73,10 +73,39 @@ This pulls in the two new dependencies added to `package.json` /
   shared `ScrollArea` container instead of three separate large browser
   scrollbars. The "Open Issues" side sheet's list also uses `ScrollArea`.
 
+### 4. Pending Maintenance — Notes editing (Super Admin only)
+- `app/api/pending-maintenance/[id]/notes/route.ts` (new) — `PATCH`
+  endpoint that updates `maintain.notes` for one report. Gated with
+  `requireRole(["Super Admin"])` — **not** `["Admin"]` — so this is
+  strictly narrower than every other action on this panel (Assign,
+  Resolve). Role implication in `lib/permissions.ts` only runs Super Admin
+  → Admin, never the reverse, so a plain Admin (or Scheduler, or an
+  unauthenticated request) gets a 403 even though they can see and use the
+  rest of the page. This check is the actual security boundary — treat it
+  as the one to trust, not the UI.
+- `components/pages/PendingMaintenancePanel.tsx` — added a
+  `PendingItemNotes` component. For everyone else, the Notes cell renders
+  exactly as before (plain read-only text, nothing shown when there's no
+  note). For Super Admin, it becomes a button that opens a Radix
+  `Popover` with an editable `Textarea`, plus Cancel/Save. Save PATCHes
+  the new route, shows a success/error toast, and invalidates the
+  `pending-maintenance` query so the card re-renders with the persisted
+  value (not the optimistic draft) once the save completes. The role gate
+  (`canEditNotes`) is `!readOnly && users?.role === "Super Admin"` — the
+  same `readOnly` prop that already hides the Resolve button when this
+  panel is embedded read-only on the Schedule page also hides Notes
+  editing there.
+
 ## Notes
 - No database migration is required — `printers.status` was already a
   plain `varchar`, so "Inactive" is just a new value, not a schema
-  change.
+  change. Likewise `maintain.notes` was already a nullable `text` column,
+  so the new Notes-editing feature needs no migration either.
 - The Transfer Printer dialog's Mark Missing/Found actions are untouched
   and continue to work exactly as before; the new Status selector and
   that dialog both write to the same `printers.status` column.
+- This codebase's roles are `Super Admin`, `Admin`, `Technician`, and
+  `Scheduler` — there's no role literally named "Super User". Per your
+  choice, Notes editing is restricted to `Super Admin` only (regular
+  Admins, who use this page day-to-day for Assign/Resolve, stay
+  read-only for Notes).
