@@ -26,9 +26,10 @@ import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import type { ScheduleTrackerRow, ScheduleDetailRow } from "@/types/tracker";
 import { formatDateManila, formatTimeToAmPm } from "@/lib/formatDate";
-import { Loader2 } from "lucide-react";
+import { Loader2, Copy } from "lucide-react";
 import { apiPath } from "@/lib/base-path";
 import { PrinterHistoryDialog } from "@/components/PrinterHistoryDialog";
+import { showAppToast } from "@/components/ui/apptoast";
 
 async function fetchJSON<T>(url: string): Promise<T> {
 	const res = await fetch(apiPath(url));
@@ -118,6 +119,28 @@ export default function TaskTracker() {
 	const [historyPrinterId, setHistoryPrinterId] = React.useState<number | null>(
 		null
 	);
+
+	// Copies the Serial Number for one Schedule Details row. showAppToast's
+	// default duration (5s) already gives the "temporary fading
+	// notification" the request asks for — no separate timer needed here.
+	const handleCopySerialNo = async (serialNo: string) => {
+		try {
+			await navigator.clipboard.writeText(serialNo);
+			showAppToast({
+				message: "Copied to clipboard",
+				description: serialNo,
+				position: "top-right",
+				color: "success",
+			});
+		} catch {
+			showAppToast({
+				message: "Couldn't copy",
+				description: "Your browser blocked clipboard access.",
+				position: "top-right",
+				color: "error",
+			});
+		}
+	};
 
 	return (
 		<>
@@ -294,9 +317,9 @@ export default function TaskTracker() {
 										<TableHead>Printer</TableHead>
 										<TableHead>Model</TableHead>
 										<TableHead>Status</TableHead>
-										<TableHead>Maintained</TableHead>
 										<TableHead>MT Id</TableHead>
 										<TableHead>Updated</TableHead>
+										<TableHead className="text-right">Action</TableHead>
 									</TableRow>
 								)}
 							</TableHeader>
@@ -366,10 +389,24 @@ export default function TaskTracker() {
 													</Badge>
 												)}
 											</TableCell>
-											<TableCell>{d.isMaintained ? "Yes" : "No"}</TableCell>
 											<TableCell>{d.mtId ?? "—"}</TableCell>
 											<TableCell>
 												{formatTimeToAmPm(d.maintainedDate!) ?? "—"}
+											</TableCell>
+											<TableCell className="text-right">
+												<Button
+													variant="ghost"
+													size="icon"
+													className="h-8 w-8"
+													onClick={(e) => {
+														e.stopPropagation();
+														handleCopySerialNo(d.serialNo);
+													}}
+													aria-label={`Copy serial number ${d.serialNo}`}
+													title="Copy serial number"
+												>
+													<Copy className="h-4 w-4" />
+												</Button>
 											</TableCell>
 										</TableRow>
 									);

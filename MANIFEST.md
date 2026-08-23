@@ -1,11 +1,11 @@
 # Fiix web app updates — apply into your repo at these exact paths
 
 Supersedes nothing earlier — this is on top of your existing repo, plus
-everything from the prior thirteen delivery rounds. Organized by round
+everything from the prior fourteen delivery rounds. Organized by round
 below so you can tell what's new in THIS zip vs. what you should already
-have applied. Rounds 4 through 13 have no database schema changes.
-**Round 14 does** — a schema change AND a data-deleting migration. Read
-that section in full before applying it.
+have applied. Rounds 4 through 13 and Round 15 have no database schema
+changes. **Round 14 does** — a schema change AND a data-deleting
+migration. Read that section in full before applying it.
 
 ## ⚠️ Read this before touching db/schema.ts
 
@@ -76,7 +76,28 @@ land — check you saved the right file.
 
 ---
 
-## ⚠️ Round 14 — HAS a database schema change AND a data-deleting migration
+## Round 15 — Task Tracker Schedule Details: remove Maintained column, add Action/Copy
+
+No database changes.
+
+### Replaces an existing file
+- `components/tracker/task-tracker.tsx` — the Schedule Details grid's
+  "Maintained" column (Yes/No) is gone — the Status column already
+  carries this. New "Action" column at the end with a Copy icon button
+  per row, copying that row's Serial Number to the clipboard via
+  `navigator.clipboard.writeText`. Reuses the existing `showAppToast`
+  component for the confirmation, which already auto-dismisses after 5
+  seconds by default — no new timer/fade logic needed, since that
+  "temporary fading notification" behavior already existed elsewhere in
+  the app. The copy button stops its click from bubbling to the row
+  (which already opens the Maintenance Report PDF once a row is
+  maintained) and from the Serial No. button added in an earlier round
+  (which opens Printer History) — all three actions on one row now
+  coexist independently.
+
+---
+
+
 
 Unlike every round before it, this one is not purely additive. Read this
 whole section before applying.
