@@ -11,6 +11,7 @@ import {
 	SheetTrigger,
 } from "@/components/ui/sheet";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { cn } from "@/lib/utils";
 
@@ -303,7 +304,8 @@ export default function DashboardPage() {
 		[users?.firstName, users?.lastName].filter(Boolean).join(" ") || "";
 
 	const NavList = () => (
-		<nav className="flex-1 min-h-0 overflow-y-auto space-y-1 px-3">
+		<nav className="flex-1 min-h-0">
+			<ScrollArea className="h-full" viewportClassName="space-y-1 px-3">
 			{navItems.map(({ key, label, icon: Icon }) => {
 				const active = activePage === key;
 				return (
@@ -323,6 +325,7 @@ export default function DashboardPage() {
 					</button>
 				);
 			})}
+			</ScrollArea>
 		</nav>
 	);
 
@@ -467,7 +470,8 @@ function SheetNav({
 	setActivePage: (p: PageKey) => void;
 }) {
 	return (
-		<nav className="flex-1 min-h-0 overflow-y-auto space-y-1 px-3">
+		<nav className="flex-1 min-h-0">
+			<ScrollArea className="h-full" viewportClassName="space-y-1 px-3">
 			{navItems.map(({ key, label, icon: Icon }) => {
 				const active = activePage === key;
 				return (
@@ -495,6 +499,7 @@ function SheetNav({
 			<div className="pt-1">
 				<SignOutBtn />
 			</div>
+			</ScrollArea>
 		</nav>
 	);
 }

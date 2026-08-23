@@ -35,6 +35,8 @@ import {
 	DropdownMenuLabel,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { RadioCardGroup, RadioCardItem, type RadioCardColor } from "@/components/ui/radio-card";
 import {
 	Plus,
 	Pencil,
@@ -49,8 +51,17 @@ import { fetchData } from "@/lib/fetchData";
 import { apiPath } from "@/lib/base-path";
 import { showAppToast } from "@/components/ui/apptoast";
 
-export type FieldType = "text" | "number" | "date" | "select" | "boolean";
+export type FieldType = "text" | "number" | "date" | "select" | "boolean" | "radio-card";
 export type DataRow = Record<string, unknown>;
+
+/** One selectable option for a "radio-card" field — a colored Radix
+ * RadioGroup card rather than a plain radio dot or dropdown. */
+export interface RadioCardOption {
+	value: string;
+	label: string;
+	color: RadioCardColor;
+	icon?: React.ReactNode;
+}
 
 export interface FieldConfig {
 	name: string;
@@ -63,12 +74,18 @@ export interface FieldConfig {
 	optionsQueryKey?: string[];
 	optionsEndpoint?: string;
 	optionsMap?: (row: DataRow) => ComboboxItem; // maps a raw API row to {value,label}
+	// For "radio-card" fields: the colored card choices.
+	radioOptions?: RadioCardOption[];
 	placeholder?: string;
 	// If true, this field is only editable at create time (e.g. priorities.id).
 	immutable?: boolean;
 	/** Initial value (as a form-state string) when creating a new record.
 	 * Mainly for "boolean" fields, e.g. defaulting isActive to "true". */
 	defaultValue?: string;
+	/** Fields sharing the same `row` key are laid out side by side (one grid
+	 * row) instead of stacked, in field-array order. Used to align a
+	 * "radio-card" field horizontally with the field it precedes. */
+	row?: string;
 }
 
 export interface ColumnConfig {
@@ -250,6 +267,117 @@ export function MasterDataManager({
 		return data.map(
 			field.optionsMap ??
 				((r) => ({ value: String(r.id), label: String(r.name) }))
+		);
+	};
+
+	// Fields sharing a `row` key are grouped into one horizontal row, in the
+	// order they appear in the `fields` array — e.g. a "radio-card" Status
+	// field placed right before, and aligned with, Serial Number.
+	const fieldGroups = React.useMemo(() => {
+		const groups: FieldConfig[][] = [];
+		const seen = new Set<string>();
+		for (const f of fields) {
+			if (seen.has(f.name)) continue;
+			if (f.row) {
+				const group = fields.filter((x) => x.row === f.row);
+				group.forEach((g) => seen.add(g.name));
+				groups.push(group);
+			} else {
+				seen.add(f.name);
+				groups.push([f]);
+			}
+		}
+		return groups;
+	}, [fields]);
+
+	const renderField = (f: FieldConfig) => {
+		const disabled = !!(editingRow && f.immutable);
+		if (f.type === "boolean") {
+			return (
+				<div
+					key={f.name}
+					className="flex items-center justify-between rounded-lg border px-3 py-2"
+				>
+					<label className="text-sm font-medium">{f.label}</label>
+					<Switch
+						checked={formValues[f.name] === "true"}
+						disabled={disabled}
+						onCheckedChange={(checked) =>
+							setFormValues((prev) => ({
+								...prev,
+								[f.name]: checked ? "true" : "false",
+							}))
+						}
+					/>
+				</div>
+			);
+		}
+		if (f.type === "radio-card") {
+			return (
+				<div key={f.name} className="min-w-0 space-y-1">
+					<label className="text-sm font-medium">
+						{f.label}
+						{f.required && " *"}
+					</label>
+					<RadioCardGroup
+						value={formValues[f.name] ?? ""}
+						onValueChange={(v) =>
+							setFormValues((prev) => ({ ...prev, [f.name]: v }))
+						}
+						className="grid-cols-3"
+						style={{
+							gridTemplateColumns: `repeat(${f.radioOptions?.length ?? 3}, minmax(0, 1fr))`,
+						}}
+					>
+						{(f.radioOptions ?? []).map((opt) => (
+							<RadioCardItem
+								key={opt.value}
+								value={opt.value}
+								label={opt.label}
+								color={opt.color}
+								icon={opt.icon}
+								disabled={disabled}
+							/>
+						))}
+					</RadioCardGroup>
+				</div>
+			);
+		}
+		if (f.type === "select") {
+			return (
+				<div key={f.name} className="min-w-0 space-y-1">
+					<label className="text-sm font-medium">
+						{f.label}
+						{f.required && " *"}
+					</label>
+					<ComboBoxResponsive
+						data={optionsFor(f)}
+						placeholder={f.placeholder ?? `Select ${f.label.toLowerCase()}`}
+						selectedValue={formValues[f.name] ?? null}
+						onValueChange={(v) =>
+							setFormValues((prev) => ({ ...prev, [f.name]: v ?? "" }))
+						}
+						emptyMessage="No options found."
+						disabled={disabled}
+					/>
+				</div>
+			);
+		}
+		return (
+			<div key={f.name} className="min-w-0 space-y-1">
+				<label className="text-sm font-medium">
+					{f.label}
+					{f.required && " *"}
+				</label>
+				<Input
+					type={f.type === "date" ? "date" : f.type === "number" ? "number" : "text"}
+					value={formValues[f.name] ?? ""}
+					disabled={disabled}
+					onChange={(e) =>
+						setFormValues((prev) => ({ ...prev, [f.name]: e.target.value }))
+					}
+				/>
+			</div>
 		);
 	};
 
@@ -439,10 +567,15 @@ export function MasterDataManager({
 					</div>
 				)}
 
-				{/* The table scrolls horizontally instead of compressing columns.
-				    `w-max` lets it grow past the container; the Actions column is
-				    pinned right so Edit/Delete stay reachable mid-scroll. */}
-				<div className="relative overflow-x-auto rounded-lg border">
+				{/* The table scrolls both ways inside a slim Radix ScrollArea
+				    instead of a full-width browser scrollbar. `w-max` lets it
+				    grow past the container; the Actions column is pinned right
+				    so Edit/Delete stay reachable mid-scroll. */}
+				<div className="relative rounded-lg border">
+					{/* Vertical scroll for row overflow; Table itself (ui/table.tsx)
+					    already wraps in its own horizontal ScrollArea, so this only
+					    needs to add the vertical axis. */}
+					<ScrollArea className="max-h-[65vh]">
 					<Table className="w-max min-w-full">
 						<TableHeader>
 							<TableRow>
@@ -514,6 +647,7 @@ export function MasterDataManager({
 							)}
 						</TableBody>
 					</Table>
+					</ScrollArea>
 				</div>
 
 				<div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -568,67 +702,26 @@ export function MasterDataManager({
 					<DialogHeader>
 						<DialogTitle>{editingRow ? `Edit ${title}` : `Add ${title}`}</DialogTitle>
 					</DialogHeader>
-					<div className="grid gap-4 py-2">
-						{fields.map((f) => {
-							const disabled = !!(editingRow && f.immutable);
-							if (f.type === "boolean") {
-								return (
+					<ScrollArea className="max-h-[70vh]" viewportClassName="pr-3">
+						<div className="grid gap-4 py-2">
+							{fieldGroups.map((group) =>
+								group.length > 1 ? (
 									<div
-										key={f.name}
-										className="flex items-center justify-between rounded-lg border px-3 py-2"
+										key={group.map((f) => f.name).join("+")}
+										className="grid grid-cols-1 gap-4 sm:flex sm:items-start"
 									>
-										<label className="text-sm font-medium">{f.label}</label>
-										<Switch
-											checked={formValues[f.name] === "true"}
-											disabled={disabled}
-											onCheckedChange={(checked) =>
-												setFormValues((prev) => ({
-													...prev,
-													[f.name]: checked ? "true" : "false",
-												}))
-											}
-										/>
+										{group.map((f) => (
+											<div key={f.name} className="sm:flex-1 min-w-0">
+												{renderField(f)}
+											</div>
+										))}
 									</div>
-								);
-							}
-							if (f.type === "select") {
-								return (
-									<div key={f.name} className="space-y-1">
-										<label className="text-sm font-medium">
-											{f.label}
-											{f.required && " *"}
-										</label>
-										<ComboBoxResponsive
-											data={optionsFor(f)}
-											placeholder={f.placeholder ?? `Select ${f.label.toLowerCase()}`}
-											selectedValue={formValues[f.name] ?? null}
-											onValueChange={(v) =>
-												setFormValues((prev) => ({ ...prev, [f.name]: v ?? "" }))
-											}
-											emptyMessage="No options found."
-											disabled={disabled}
-										/>
-									</div>
-								);
-							}
-							return (
-								<div key={f.name} className="space-y-1">
-									<label className="text-sm font-medium">
-										{f.label}
-										{f.required && " *"}
-									</label>
-									<Input
-										type={f.type === "date" ? "date" : f.type === "number" ? "number" : "text"}
-										value={formValues[f.name] ?? ""}
-										disabled={disabled}
-										onChange={(e) =>
-											setFormValues((prev) => ({ ...prev, [f.name]: e.target.value }))
-										}
-									/>
-								</div>
-							);
-						})}
-					</div>
+								) : (
+									renderField(group[0])
+								)
+							)}
+						</div>
+					</ScrollArea>
 					<DialogFooter>
 						<Button onClick={() => saveRecord()} disabled={isSaving}>
 							{isSaving ? "Saving…" : editingRow ? "Save Changes" : "Create"}

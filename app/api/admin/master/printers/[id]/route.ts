@@ -21,6 +21,9 @@ const bodySchema = z.object({
 	departmentId: z.number().int().positive(),
 	modelId: z.number().int().positive(),
 	deploymentDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Deployment date must be YYYY-MM-DD"),
+	// Sent by the Edit Printer form's Status radio cards. Optional so other
+	// callers of this route don't need to start passing it.
+	status: z.enum(["Active", "Inactive", "Missing"]).optional(),
 });
 
 function parseId(id: string) {
@@ -45,7 +48,7 @@ export async function PATCH(
 			{ status: 400 }
 		);
 	}
-	const { serialNo, clientId, locationId, departmentId, modelId, deploymentDate } =
+	const { serialNo, clientId, locationId, departmentId, modelId, deploymentDate, status } =
 		parsed.data;
 
 	const [[client], [location], [department], [model]] = await Promise.all([
@@ -76,9 +79,14 @@ export async function PATCH(
 	// and meant to stay unchanged even when the printer is later
 	// transferred. "Current client" lives entirely on the active
 	// deployment row below, which IS what changes on a transfer.
+	//
+	// `status` is only included in the update when the caller actually
+	// sent one — this keeps any future non-form caller (e.g. a bulk
+	// import) from accidentally clobbering a "Missing" flag set via the
+	// Transfer Printer dialog just by omitting the field.
 	const [updatedPrinter] = await db
 		.update(printers)
-		.set({ serialNo })
+		.set({ serialNo, ...(status ? { status } : {}) })
 		.where(eq(printers.id, id))
 		.returning();
 	if (!updatedPrinter) {

@@ -31,6 +31,7 @@ import {
 	TableHead,
 	TableCell,
 } from "@/components/ui/table";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
 	Printer as PrinterIcon,
 	Building2,
@@ -131,7 +132,10 @@ export function PrinterHistoryDialog({
 					</DialogDescription>
 				</DialogHeader>
 
-				<div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-8 sm:py-6">
+				<ScrollArea
+					className="min-h-0 flex-1"
+					viewportClassName="px-5 py-5 sm:px-8 sm:py-6"
+				>
 					{isLoading ? (
 						<div className="flex h-40 items-center justify-center text-muted-foreground">
 							<Loader2 className="h-5 w-5 animate-spin" />
@@ -331,7 +335,7 @@ export function PrinterHistoryDialog({
 							</div>
 						</div>
 					)}
-				</div>
+				</ScrollArea>
 			</DialogContent>
 		</Dialog>
 	);

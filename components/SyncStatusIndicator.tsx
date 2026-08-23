@@ -8,6 +8,7 @@ import {
 } from "@/components/ui/popover";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import {
 	CloudOff,
@@ -137,7 +138,8 @@ export function SyncStatusIndicator({ className }: { className?: string }) {
 				</div>
 
 				{active.length > 0 && (
-					<div className="mt-3 max-h-56 space-y-2 overflow-y-auto border-t pt-2">
+					<ScrollArea className="mt-3 max-h-56 border-t pt-2">
+					<div className="space-y-2">
 						{active.map((r) => (
 							<div key={r.uuid} className="text-xs">
 								<div className="flex items-center gap-2">
@@ -170,6 +172,7 @@ export function SyncStatusIndicator({ className }: { className?: string }) {
 							</div>
 						))}
 					</div>
+					</ScrollArea>
 				)}
 
 				{active.length === 0 && (

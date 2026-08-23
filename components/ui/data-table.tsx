@@ -17,6 +17,7 @@ import {
 	TableHeader,
 	TableRow,
 } from "@/components/ui/table";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 interface DataTableProps<TData> {
 	table: ReactTableInstance<TData>;
@@ -30,7 +31,11 @@ export const Datatable = //React.memo(
 		const { table, columns } = props;
 
 		return (
-			<div className="w-full overflow-auto rounded-md border">
+			<div className="w-full rounded-md border">
+				{/* Vertical scroll for row overflow; Table itself (ui/table.tsx)
+				    already wraps in its own horizontal ScrollArea for wide
+				    grids, so this only needs to add the vertical axis. */}
+				<ScrollArea className="max-h-[70vh] w-full">
 				<Table className="min-w-[600px] w-full table-auto text-sm">
 					<TableHeader>
 						{table.getHeaderGroups().map((headerGroup) => (
@@ -102,6 +107,7 @@ export const Datatable = //React.memo(
 						)}
 					</TableBody>
 				</Table>
+				</ScrollArea>
 			</div>
 		);
 	};

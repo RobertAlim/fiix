@@ -11,6 +11,7 @@ import {
 	SheetTitle,
 	SheetTrigger,
 } from "@/components/ui/sheet";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { OpenIssueComponent } from "@/components/OpenIssueComponents";
 import { fetchData } from "@/lib/fetchData";
 import { MaintenanceOpenIssues } from "@/types/index";
@@ -70,7 +71,7 @@ export function OpenIssuesBell({ enabled = true }: { enabled?: boolean }) {
 							: `${count} printer${count === 1 ? "" : "s"} still awaiting resolution.`}
 					</SheetDescription>
 				</SheetHeader>
-				<div className="flex-1 overflow-y-auto px-4 pb-4">
+				<ScrollArea className="min-h-0 flex-1" viewportClassName="px-4 pb-4">
 					<div className="grid gap-4">
 						{[...issues]
 							.sort(
@@ -82,7 +83,7 @@ export function OpenIssuesBell({ enabled = true }: { enabled?: boolean }) {
 								<OpenIssueComponent key={issue.id} {...issue} />
 							))}
 					</div>
-				</div>
+				</ScrollArea>
 			</SheetContent>
 		</Sheet>
 	);

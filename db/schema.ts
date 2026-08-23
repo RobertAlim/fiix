@@ -230,15 +230,16 @@ export const printers = pgTable("printers", {
 	serialNo: varchar("serialNo", { length: 50 }).notNull(),
 	deployedClient: integer("clientId").notNull(),
 	/**
-	 * "Active" | "Missing". A plain string rather than a foreign key into
-	 * `status` (which enumerates MAINTENANCE report statuses, e.g.
-	 * "Pulled Out") — this is a different, narrower concept entirely:
-	 * whether the physical unit can currently be located at all, set only
+	 * "Active" | "Inactive" | "Missing". A plain string rather than a
+	 * foreign key into `status` (which enumerates MAINTENANCE report
+	 * statuses, e.g. "Pulled Out") — this is a different, narrower concept
+	 * entirely: the printer's own deployment state. "Missing" is also set
 	 * from the Missing/Found actions in the Transfer Printer dialog
-	 * (components/PrinterTransferDialog.tsx). "Missing" means specifically
-	 * "not physically found at its recorded location, but still exists in
-	 * the system" — it is never set anywhere else, and a normal transfer
-	 * (the printer was found and moved) always clears it back to "Active".
+	 * (components/PrinterTransferDialog.tsx) — "not physically found at its
+	 * recorded location, but still exists in the system" — and a normal
+	 * transfer (the printer was found and moved) always clears it back to
+	 * "Active". "Active" / "Inactive" are otherwise editable directly from
+	 * the Edit Printer form's Status selector.
 	 */
 	status: varchar("status", { length: 20 }).notNull().default("Active"),
 	createdAt: timestamp("createdAt")

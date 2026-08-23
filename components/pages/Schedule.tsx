@@ -1,6 +1,7 @@
 //Schedule.tsx
 import React, { useEffect } from "react"; // Keep React imported
 import { Card, CardContent } from "@/components/ui/card";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { ComboBoxResponsive, ComboboxItem } from "@/components/ui/combobox";
 import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
@@ -1591,6 +1592,11 @@ export default function SchedulePage() {
 	};
 
 	return (
+		// Unmaintained Printers, Pending Maintenance, and the Schedule
+		// workflow below all live in one shared scroll container instead of
+		// each getting its own full-width browser scrollbar — a single slim
+		// Radix ScrollArea for the whole page section.
+		<ScrollArea className="h-[calc(100vh-140px)]" viewportClassName="pr-3">
 		<div className="space-y-6">
 			<UnmaintainedPrintersPanel />
 
@@ -1746,7 +1752,7 @@ export default function SchedulePage() {
 											being monitored or awaiting action.
 										</SheetDescription>
 									</SheetHeader>
-									<div className="flex-1 overflow-y-auto px-4">
+									<ScrollArea className="min-h-0 flex-1" viewportClassName="px-4">
 										{" "}
 										{/* Added h-full here for parent to occupy full height */}
 										<div className="grid gap-6">
@@ -1778,7 +1784,7 @@ export default function SchedulePage() {
 												)
 											}
 										</div>
-									</div>
+									</ScrollArea>
 									<SheetFooter>
 										{/* <Button type="submit">Save changes</Button> */}
 										{/* <SheetClose asChild>
@@ -2150,6 +2156,7 @@ export default function SchedulePage() {
 				/>
 			</Card>
 		</div>
+		</ScrollArea>
 	);
 }
 

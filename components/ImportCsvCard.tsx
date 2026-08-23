@@ -2,6 +2,7 @@
 
 import React, { useRef, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -163,7 +164,7 @@ export function ImportCsvCard({
 						</div>
 
 						{result.errors.length > 0 && (
-							<div className="max-h-40 overflow-y-auto rounded-md border bg-card p-2">
+							<ScrollArea className="max-h-40 rounded-md border bg-card p-2">
 								<ul className="space-y-1 text-xs text-muted-foreground">
 									{result.errors.map((e, i) => (
 										<li key={i}>
@@ -174,7 +175,7 @@ export function ImportCsvCard({
 										</li>
 									))}
 								</ul>
-							</div>
+							</ScrollArea>
 						)}
 					</div>
 				)}

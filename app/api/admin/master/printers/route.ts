@@ -25,6 +25,11 @@ const bodySchema = z.object({
 	departmentId: z.number().int().positive(),
 	modelId: z.number().int().positive(),
 	deploymentDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Deployment date must be YYYY-MM-DD"),
+	// Optional at create time — defaults to "Active" below, same as the
+	// column's own DB default. The Edit Printer form's Status radio cards
+	// always send one of these three; other callers (e.g. the CSV
+	// importer) can omit it.
+	status: z.enum(["Active", "Inactive", "Missing"]).optional(),
 });
 
 // Page size is capped server-side so a hand-edited ?pageSize= can't be used
@@ -117,9 +122,10 @@ export async function GET(req: Request) {
 			modelId: currentDeployment.modelId,
 			modelName: models.name,
 			deploymentDate: currentDeployment.deploymentDate,
-			// "Active" | "Missing" — see printers.status's doc comment in
-			// db/schema.ts. Set only via the Transfer Printer dialog's
-			// Mark Missing/Found actions.
+			// "Active" | "Inactive" | "Missing" — see printers.status's doc
+			// comment in db/schema.ts. Editable from the Edit Printer form's
+			// Status selector; "Missing" is also set via the Transfer
+			// Printer dialog's Mark Missing/Found actions.
 			status: printers.status,
 		})
 		.from(printers)
@@ -170,7 +176,7 @@ export async function POST(req: Request) {
 			{ status: 400 }
 		);
 	}
-	const { serialNo, clientId, locationId, departmentId, modelId, deploymentDate } =
+	const { serialNo, clientId, locationId, departmentId, modelId, deploymentDate, status } =
 		parsed.data;
 
 	// Validate referenced master data actually exists before writing.
@@ -199,7 +205,7 @@ export async function POST(req: Request) {
 
 	const [printer] = await db
 		.insert(printers)
-		.values({ serialNo, deployedClient: clientId })
+		.values({ serialNo, deployedClient: clientId, status: status ?? "Active" })
 		.returning();
 
 	await db.insert(deployments).values({

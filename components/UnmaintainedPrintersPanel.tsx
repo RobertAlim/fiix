@@ -109,6 +109,12 @@ export function UnmaintainedPrintersPanel() {
 			</CardHeader>
 			{isOpen && (
 				<CardContent>
+					{/* No scroll cap of its own — this panel, Pending Maintenance,
+					    and the Schedule workflow below all share ONE scroll
+					    container (the ScrollArea wrapping the whole page in
+					    components/pages/Schedule.tsx). A second, capped
+					    ScrollArea nested in here would clip its own content
+					    instead of scrolling it. */}
 					<div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
 						{printers.map((p) => (
 							<Card

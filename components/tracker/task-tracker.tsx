@@ -10,6 +10,7 @@ import {
 	CardContent,
 	CardFooter,
 } from "@/components/ui/card";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
 	Table,
 	TableBody,
@@ -162,7 +163,8 @@ export default function TaskTracker() {
 						{loadingSchedules && <Loader2 className="h-4 w-4 animate-spin" />}
 					</div>
 				</CardHeader>
-				<CardContent className="min-h-0 flex-1 overflow-y-auto px-0">
+				<CardContent className="min-h-0 flex-1 px-0">
+					<ScrollArea className="h-full">
 					<Table>
 						<TableHeader>
 							<TableRow>
@@ -244,6 +246,7 @@ export default function TaskTracker() {
 							)}
 						</TableBody>
 					</Table>
+					</ScrollArea>
 				</CardContent>
 				<CardFooter className="flex items-center justify-end space-x-4 py-4">
 					<div className="flex-1 text-sm text-muted-foreground">
@@ -304,7 +307,8 @@ export default function TaskTracker() {
 					</div>
 				</CardHeader>
 				<Separator />
-				<CardContent className="min-h-0 flex-1 overflow-y-auto px-0">
+				<CardContent className="min-h-0 flex-1 px-0">
+					<ScrollArea className="h-full">
 					{loadingDetails && selectedId != null ? (
 						<div className="flex items-center justify-center h-32 text-sm text-muted-foreground">
 							<Loader2 className="h-4 w-4 animate-spin mr-2" /> Loading details…
@@ -439,6 +443,7 @@ export default function TaskTracker() {
 							</TableBody>
 						</Table>
 					)}
+					</ScrollArea>
 				</CardContent>
 			</Card>
 		</div>

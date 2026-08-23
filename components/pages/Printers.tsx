@@ -5,7 +5,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { MasterDataManager } from "@/components/MasterDataManager";
 import { ImportCsvModalButton } from "@/components/ImportCsvModalButton";
 import { Button } from "@/components/ui/button";
-import { Printer, ArrowLeftRight, MapPinOff } from "lucide-react";
+import {
+	Printer,
+	ArrowLeftRight,
+	MapPinOff,
+	CircleCheck,
+	CircleDot,
+} from "lucide-react";
 import { format } from "date-fns";
 import {
 	PrinterTransferDialog,
@@ -90,16 +96,39 @@ export default function PrintersPage() {
 							minWidth: "min-w-[100px]",
 							render: (r) =>
 								r.status === "Missing" ? (
-									<span className="inline-flex items-center gap-1 rounded-full bg-destructive/10 px-2 py-0.5 text-xs font-medium text-destructive">
+									<span className="inline-flex items-center gap-1 rounded-full bg-red-500/10 px-2 py-0.5 text-xs font-medium text-red-600 dark:text-red-400">
 										<MapPinOff className="h-3 w-3" /> Missing
 									</span>
+								) : r.status === "Inactive" ? (
+									<span className="inline-flex items-center gap-1 rounded-full bg-blue-500/10 px-2 py-0.5 text-xs font-medium text-blue-600 dark:text-blue-400">
+										<CircleDot className="h-3 w-3" /> Inactive
+									</span>
 								) : (
-									<span className="text-xs text-muted-foreground">Active</span>
+									<span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-600 dark:text-emerald-400">
+										<CircleCheck className="h-3 w-3" /> Active
+									</span>
 								),
 						},
 					]}
 					fields={[
-						{ name: "serialNo", label: "Serial Number", type: "text", required: true },
+						{
+							name: "status",
+							label: "Status",
+							type: "radio-card",
+							required: true,
+							defaultValue: "Active",
+							radioOptions: [
+								{ value: "Active", label: "Active", color: "green", icon: <CircleCheck /> },
+								{ value: "Inactive", label: "Inactive", color: "blue", icon: <CircleDot /> },
+								{ value: "Missing", label: "Missing", color: "red", icon: <MapPinOff /> },
+							],
+						},
+						{
+							name: "serialNo",
+							label: "Serial Number",
+							type: "text",
+							required: true,
+						},
 						{
 							name: "clientId",
 							label: "Client (current)",
