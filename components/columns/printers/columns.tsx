@@ -28,6 +28,14 @@ export interface Printer {
 	maintainedDate: string;
 	isToggled: boolean;
 	onToggleChange: (newValue: boolean) => void;
+	/** Set (from /api/printers) when this printer is already on ANOTHER
+	 * technician's schedule for the same date — null/undefined when it's
+	 * free, or already on THIS schedule. Drives the "Assigned to <name>"
+	 * badge and the selection guard in PrinterStatusCard, so the Scheduler
+	 * can see and can't create a duplicate assignment before hitting the
+	 * save-time 409 from the backend. */
+	assignedTechnicianId?: number | null;
+	assignedTechnicianName?: string | null;
 }
 
 // delta of edits

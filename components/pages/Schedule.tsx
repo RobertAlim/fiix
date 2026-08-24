@@ -275,6 +275,22 @@ export default function SchedulePage() {
 			queryClient.invalidateQueries({ queryKey: ["printers"] }); // Refetch printer data
 			queryClient.invalidateQueries({ queryKey: ["schedules"] }); // If you have a separate schedule list
 
+			// `edits` (printer toggle state) was never cleared after a
+			// successful save — invalidating the `printers` query above
+			// refreshes any live useQuery caches, but `immediatePrinters` is
+			// local state set imperatively via fetchQuery, so it stays
+			// exactly as it was. Any toggles still sitting in `edits` after
+			// this save succeeds would get diffed against the NEXT schedule
+			// loaded (e.g. the Scheduler switching to a different technician
+			// for the same client) and silently reappear as "added" for a
+			// schedule the Scheduler never touched — surfacing later as a
+			// spurious "Printer ... already scheduled ... on a different
+			// schedule" 409, since that leaked printer really is already on
+			// the technician it was actually toggled for. See the matching
+			// comment on the `existingSchedule` effect for the fuller
+			// explanation.
+			setEdits({});
+
 			// setScheduleDate(undefined); // Clear date picker
 			// setSelectedTechnicianId(null); // Clear technician
 			// // // Reset client/location if desired after submission
@@ -436,10 +452,14 @@ export default function SchedulePage() {
 	});
 
 	// Determines Save vs Update automatically: is there already a schedule
-	// for this client + location + date, regardless of which technician is
-	// currently selected in the form? Drives the button label/action instead
-	// of the previous manual isEditing toggle, and also prevents creating a
-	// second, conflicting schedule for a company/date that already has one.
+	// for this client + location + TECHNICIAN + date? Scoped to the selected
+	// technician (not just client + location + date) so that a second
+	// technician assigned to the same client/location/date lands on a fresh
+	// "create their own itinerary" form instead of being silently switched
+	// into editing the first technician's schedule. Drives the button
+	// label/action instead of the previous manual isEditing toggle, and
+	// still prevents creating a second, conflicting schedule for the same
+	// client/location/technician/date that already has one.
 	const { data: existingScheduleCheck } = useQuery<{
 		exists: boolean;
 		schedule?: {
@@ -450,15 +470,26 @@ export default function SchedulePage() {
 			maintainAll: boolean;
 		};
 	}>({
-		queryKey: ["schedule-exists", selectedClientId, selectedLocationId, scheduleDate],
+		queryKey: [
+			"schedule-exists",
+			selectedClientId,
+			selectedLocationId,
+			selectedTechnicianId,
+			scheduleDate,
+		],
 		queryFn: () =>
 			fetchData(
-				`/api/schedule/exists?clientId=${selectedClientId}&locationId=${selectedLocationId}&scheduledAt=${format(
+				`/api/schedule/exists?clientId=${selectedClientId}&locationId=${selectedLocationId}&technicianId=${selectedTechnicianId}&scheduledAt=${format(
 					scheduleDate!,
 					"yyyy-MM-dd"
 				)}`
 			),
-		enabled: !!selectedClientId && !!selectedLocationId && !!scheduleDate,
+		enabled:
+			!!selectedClientId &&
+			!!selectedLocationId &&
+			!!selectedTechnicianId &&
+			selectedTechnicianId !== "0" &&
+			!!scheduleDate,
 		staleTime: 1000 * 30,
 	});
 
@@ -489,6 +520,22 @@ export default function SchedulePage() {
 			existingSchedule.id,
 		];
 
+		// `edits` (the per-printer toggle state from PrinterStatusCard) is
+		// keyed only by printer id, with no idea which technician/schedule it
+		// was recorded for. It used to never get cleared, so toggling
+		// printers for Technician A and saving, then switching to Technician
+		// B for the SAME client, silently carried A's toggles into B's diff —
+		// `diffPrinters` saw those printer ids missing from B's own printer
+		// list and reported them as newly "added" to B, even though the
+		// Scheduler never touched them for B. That's what produced "Printer
+		// X is already scheduled ... on a different schedule" for printers
+		// the Scheduler didn't actually mean to add — the conflict check
+		// itself was reporting a real conflict (correctly, post the
+		// technician-scoping fix), it was just being asked about the wrong
+		// printer. Clearing `edits` every time a DIFFERENT schedule's
+		// printers get loaded scopes it to one editing session at a time.
+		setEdits({});
+
 		queryClient
 			.fetchQuery<Printer[], Error>({
 				queryKey: fullQueryKey,
@@ -504,13 +551,27 @@ export default function SchedulePage() {
 
 	// No existing schedule for this combo — make sure we're in fresh
 	// "create" mode rather than left over in edit mode from a previous
-	// selection.
+	// selection. Also drop any leftover printer-toggle edits from whatever
+	// was being edited before — see the comment above `setEdits({})` in the
+	// effect above for why stale edits are dangerous, not just confusing.
 	useEffect(() => {
 		if (existingScheduleCheck && !existingScheduleCheck.exists) {
+			setEdits({});
 			setIsEditing(false);
 			setScheduleId(0);
 		}
 	}, [existingScheduleCheck]);
+
+	// Backstop for the two effects above: TanStack Query's structural
+	// sharing can return the SAME `existingScheduleCheck` object reference
+	// for two different technicians when both happen to have "no schedule
+	// yet" (identical `{exists: false}` shape), which means neither effect
+	// re-fires and its `setEdits({})` gets skipped. Technician switches are
+	// rare enough, and this is cheap enough, to just always clear edits
+	// here too rather than rely on the query result changing shape.
+	useEffect(() => {
+		setEdits({});
+	}, [selectedTechnicianId]);
 
 	// Combined Loading and Error states
 	const overallLoading =
@@ -1064,6 +1125,11 @@ export default function SchedulePage() {
 				setSelectedLocationId(String(scheduleToShow.locationId));
 				setScheduleDate(scheduleToShow.scheduleAt);
 				setIsShowDetails(true);
+				// Loading a DIFFERENT schedule's printers — drop any leftover
+				// toggle edits from whatever was being edited before (see the
+				// detailed comment on the `existingSchedule` effect above for
+				// why stale edits leak into the wrong schedule's diff).
+				setEdits({});
 
 				const fullQueryKey = [
 					"printers",
@@ -1168,6 +1234,10 @@ export default function SchedulePage() {
 			setNotes(clickedSchedule.notes || "");
 			setScheduleDate(new Date(clickedSchedule.scheduleAt));
 			setIsLoadingScheduleDetails(true);
+			// Switching to a DIFFERENT itinerary card — same reasoning as the
+			// other printer-fetch sites: clear leftover toggle edits so they
+			// can't leak into this schedule's added/removed diff.
+			setEdits({});
 
 			const fullQueryKey = [
 				"printers",

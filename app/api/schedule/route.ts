@@ -1,7 +1,7 @@
 // app/api/schedule-maintenance/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db"; // Adjust this path to your Drizzle client setup
-import { eq, and, sql, asc, inArray } from "drizzle-orm";
+import { eq, and, sql, asc, inArray, ne } from "drizzle-orm";
 import {
 	schedules,
 	scheduleDetails,
@@ -251,8 +251,16 @@ export async function POST(req: NextRequest) {
 			}
 
 			// A printer can only be in one place at a time, so it can never be
-			// scheduled twice for the same date — regardless of client. Checked
-			// across ALL schedules for that date.
+			// scheduled twice for the same date for two DIFFERENT technicians.
+			// Checked across all of that date's schedules, but scoped to
+			// `technicianId != this technician` — see the matching comment in
+			// the update branch below for why: with multiple technicians now
+			// allowed on the same client/date, a plain "any other schedule"
+			// check was catching this technician's OWN printers (e.g. a
+			// second schedule they hold for a different client that day) as
+			// if they belonged to someone else, which blocked perfectly
+			// legitimate saves. Only a genuinely different technician holding
+			// the printer that day is an actual conflict.
 			//
 			// Run BEFORE the schedule row is inserted: it used to run after,
 			// which left an empty orphan schedule behind every time it tripped.
@@ -271,7 +279,8 @@ export async function POST(req: NextRequest) {
 							inArray(
 								scheduleDetails.printerId,
 								printersToAttach.map((p) => p.printerId)
-							)
+							),
+							ne(schedules.technicianId, Number(technicianId))
 						)
 					);
 
@@ -365,9 +374,24 @@ export async function POST(req: NextRequest) {
 			// --- 3. Prepare and Insert associated printers ---
 			if (added.length > 0) {
 				// A printer can only be in one place at a time, so it can never be
-				// scheduled twice for the same date — regardless of client. Checked
-				// across ALL schedules for this date (excluding this schedule
-				// itself, so re-saving its own existing printers isn't a conflict).
+				// scheduled twice for the same date for two DIFFERENT
+				// technicians. Checked across this date's schedules, scoped to
+				// `technicianId != this technician` rather than merely
+				// `scheduleId != this schedule`.
+				//
+				// The old `scheduleId != newScheduleId` exclusion only ruled out
+				// THIS ONE schedule row. Under the current multi-technician
+				// model that's too narrow: this same technician can hold other
+				// schedules for the SAME date (a different client/location, or
+				// a stray duplicate row), and printers already on one of those
+				// were being flagged as "already scheduled ... on a different
+				// schedule" even though there's no real conflict — a printer
+				// isn't double-booked just because it's technically attached to
+				// a second row that happens to belong to the very technician
+				// being edited. Excluding by technician instead of by schedule
+				// id fixes that while still catching an actual double-booking:
+				// the same printer sitting on a DIFFERENT technician's schedule
+				// for this date.
 				const conflicting = await db
 					.select({
 						printerId: scheduleDetails.printerId,
@@ -383,7 +407,7 @@ export async function POST(req: NextRequest) {
 								scheduleDetails.printerId,
 								added.map((p) => p.printerId)
 							),
-							sql`${scheduleDetails.scheduleId} != ${newScheduleId}`
+							ne(schedules.technicianId, Number(technicianId))
 						)
 					);
 

@@ -15,6 +15,7 @@ import { format } from "date-fns";
 import { Printer } from "@/components/columns/printers/columns";
 import { showAppToast } from "./ui/apptoast";
 import { cn } from "@/lib/utils";
+import { UserRoundX } from "lucide-react";
 
 export function PrinterStatusCard({
 	id,
@@ -30,6 +31,7 @@ export function PrinterStatusCard({
 	maintainedDate,
 	isToggled: initialToggle,
 	onToggleChange,
+	assignedTechnicianName,
 }: Printer) {
 	const [localToggle, setLocalToggle] = useState<boolean>(initialToggle);
 
@@ -37,11 +39,28 @@ export function PrinterStatusCard({
 		setLocalToggle(initialToggle);
 	}, [initialToggle]);
 
+	// Same guard pattern as isMaintained below: a printer already on ANOTHER
+	// technician's schedule for this date can't also be toggled onto this
+	// one — the backend (app/api/schedule/route.ts) would reject it at save
+	// time anyway, this just surfaces that up front instead of after a
+	// failed save.
+	const isAssignedElsewhere = !!assignedTechnicianName;
+
 	const handleToggle = () => {
 		if (isMaintained) {
 			showAppToast({
 				message: "Maintenance Done",
 				description: "This printer is already maintained.",
+				color: "warning",
+				position: "top-right",
+			});
+			return;
+		}
+
+		if (isAssignedElsewhere) {
+			showAppToast({
+				message: "Already Assigned",
+				description: `This printer is already assigned to ${assignedTechnicianName} for this date.`,
 				color: "warning",
 				position: "top-right",
 			});
@@ -81,10 +100,22 @@ export function PrinterStatusCard({
 	return (
 		<Card
 			className={cn(
-				"w-full rounded-xl border transition-colors duration-200 cursor-pointer hover:shadow-sm",
-				localToggle ? "bg-success/10 border-success/40" : "bg-card"
+				"w-full rounded-xl border transition-colors duration-200 hover:shadow-sm",
+				isAssignedElsewhere
+					? "cursor-not-allowed bg-muted/40 opacity-75"
+					: "cursor-pointer",
+				!isAssignedElsewhere && localToggle
+					? "bg-success/10 border-success/40"
+					: !isAssignedElsewhere
+					? "bg-card"
+					: undefined
 			)}
 			onClick={() => handleToggle()}
+			title={
+				isAssignedElsewhere
+					? `Already assigned to ${assignedTechnicianName}`
+					: undefined
+			}
 		>
 			<CardHeader>
 				<div className="flex justify-between items-center">
@@ -119,6 +150,15 @@ export function PrinterStatusCard({
 				<CardDescription className="text-sm text-muted-foreground">
 					Serial No: {serialNo}
 				</CardDescription>
+				{isAssignedElsewhere && (
+					<Badge
+						variant="outline"
+						className="mt-2 flex w-fit items-center gap-1 border-warning/40 bg-warning/10 px-2 py-1 text-xs font-medium text-warning-foreground"
+					>
+						<UserRoundX className="h-3 w-3" />
+						Assigned to {assignedTechnicianName}
+					</Badge>
+				)}
 			</CardHeader>
 			<CardContent className="grid gap-4">
 				<div className="flex items-center space-x-4 p-2 rounded-md">

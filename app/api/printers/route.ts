@@ -10,8 +10,9 @@ import {
 	schedules,
 	scheduleDetails,
 	deployments,
+	users,
 } from "@/db/schema";
-import { eq, sql, and, desc } from "drizzle-orm";
+import { eq, sql, and, ne, desc } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { NextResponse } from "next/server";
 import { requireActiveUser } from "@/lib/require-role";
@@ -58,7 +59,23 @@ export async function GET(req: Request) {
 		// by printer.id, that's exactly a React "two children with the same
 		// key" crash. Deduplicated here defensively, same as the
 		// `deployedHere` fix directly below.
-		const scheduleDetailsData = db.$with("scheduleDetails").as(
+		//
+		// NOTE: this CTE is intentionally NOT named "scheduleDetails" (even
+		// though the variable holding it is `scheduleDetailsData`) — it used
+		// to be, and that collided with the real `scheduleDetails` table.
+		// A CTE is visible to every CTE defined after it in the same WITH
+		// list, so once the `otherAssignment` CTE below was added — which
+		// itself needs to select FROM the real `scheduleDetails` table —
+		// Postgres resolved that unqualified reference to THIS CTE instead
+		// of the real table (same name, defined first, so it wins). This
+		// CTE's columns (id/printerId/isMaintained/maintainedDate renamed to
+		// schedId/printerId/isMaintained/maintained_date) don't include
+		// `scheduleId`, so the otherAssignment CTE's join condition
+		// (`scheduleDetails.scheduleId`) failed with "column ... does not
+		// exist" — a 500 on every request that reached this code path (i.e.
+		// every click on a printer itinerary, since scheduleId is always set
+		// there). Giving this CTE a distinct SQL name fixes it.
+		const scheduleDetailsData = db.$with("scheduleDetailsCte").as(
 			db
 				.selectDistinctOn([scheduleDetails.printerId], {
 					schedId: scheduleDetails.id,
@@ -104,9 +121,83 @@ export async function GET(req: Request) {
 				)
 		);
 
+		// Multi-technician/client scheduling: two technicians can now both
+		// have a schedule for the SAME client on the SAME date (see
+		// app/api/schedule/exists/route.ts, which used to block that by
+		// matching on client+location+date alone, ignoring technician). A
+		// printer, though, can still only be double-booked if it's already
+		// on a DIFFERENT TECHNICIAN's schedule that day — the save-time
+		// guard in app/api/schedule/route.ts enforces exactly that (see the
+		// comments there), but without this the Scheduler had no way to SEE
+		// it before hitting that 409 on save. This looks up which OTHER
+		// TECHNICIAN'S schedule (same date, excluding this technician's own
+		// schedules) already has each printer, so the UI can show "Assigned
+		// to <technician>" and disable it up front instead of only failing
+		// late at save time.
+		let targetScheduledAt: string | null = null;
+		let targetTechnicianId: number | null = null;
+		if (scheduleId) {
+			const [targetSchedule] = await db
+				.select({
+					scheduledAt: schedules.scheduledAt,
+					technicianId: schedules.technicianId,
+				})
+				.from(schedules)
+				.where(eq(schedules.id, scheduleId))
+				.limit(1);
+			targetScheduledAt = targetSchedule?.scheduledAt ?? null;
+			targetTechnicianId = targetSchedule?.technicianId ?? null;
+		}
+
+		const otherAssignment =
+			targetScheduledAt && targetTechnicianId != null
+				? db.$with("otherAssignment").as(
+						db
+							.selectDistinctOn([scheduleDetails.printerId], {
+								printerId: scheduleDetails.printerId,
+								technicianId: schedules.technicianId,
+								// Raw `sql` fields selected from a subquery/CTE must carry an
+								// explicit alias — without `.as(...)` Drizzle has no column
+								// name to reference when the OUTER query later does
+								// `otherAssignment.technicianName`, and throws at request time
+								// (not at compile time, since this is only checked when the
+								// field is actually referenced). This is what caused the 500
+								// here even after the earlier CTE-name-collision fix.
+								technicianName: sql<string>`${users.firstName} || ' ' || ${users.lastName}`.as(
+									"technician_name"
+								),
+							})
+							.from(scheduleDetails)
+							.innerJoin(schedules, eq(schedules.id, scheduleDetails.scheduleId))
+							.innerJoin(users, eq(users.id, schedules.technicianId))
+							.where(
+								and(
+									eq(schedules.scheduledAt, targetScheduledAt),
+									// Excluding by TECHNICIAN rather than by this one
+									// schedule id: this technician can legitimately hold
+									// more than one schedule for this date (a different
+									// client/location, or the schedule currently being
+									// edited itself), and none of those are a real
+									// conflict. Only a genuinely different technician
+									// already holding the printer that day counts — this
+									// mirrors the same fix applied to the save-time check
+									// in app/api/schedule/route.ts, so the badge shown
+									// here and what actually gets rejected on save always
+									// agree.
+									ne(schedules.technicianId, targetTechnicianId)
+								)
+							)
+							.orderBy(scheduleDetails.printerId, desc(schedules.id))
+				  )
+				: null;
+
 		try {
-			const data = await db
-				.with(latestMaintain, scheduleDetailsData)
+			const baseCtes = otherAssignment
+				? [latestMaintain, scheduleDetailsData, otherAssignment]
+				: [latestMaintain, scheduleDetailsData];
+
+			let query = db
+				.with(...baseCtes)
 				.select({
 					id: printers.id,
 					department: departments.name,
@@ -121,12 +212,20 @@ export async function GET(req: Request) {
 					isMaintained: scheduleDetailsData.isMaintained,
 					maintainedDate: scheduleDetailsData.maintainedDate,
 					isToggled: sql`
-				CASE 
-					WHEN ${scheduleDetailsData.maintainedDate} IS NOT NULL OR ${scheduleDetailsData.schedId} IS NOT NULL 
+				CASE
+					WHEN ${scheduleDetailsData.maintainedDate} IS NOT NULL OR ${scheduleDetailsData.schedId} IS NOT NULL
 					THEN TRUE
 					ELSE FALSE
 				END
 				`.as("is_toggled"),
+					// Null when this printer is free for this date, or already on
+					// THIS schedule (self-matches are excluded by the `ne` above).
+					assignedTechnicianId: otherAssignment
+						? otherAssignment.technicianId
+						: sql<number | null>`NULL`,
+					assignedTechnicianName: otherAssignment
+						? otherAssignment.technicianName
+						: sql<string | null>`NULL`,
 				})
 				.from(deployments)
 				.innerJoin(printers, eq(printers.id, deployments.printerId))
@@ -139,6 +238,17 @@ export async function GET(req: Request) {
 					scheduleDetailsData,
 					eq(printers.id, scheduleDetailsData.printerId)
 				)
+				.$dynamic();
+
+			// Drizzle's $dynamic() builder has no `.if()` — the standard
+			// pattern for a conditional join is to reassign the query
+			// variable, guarded by a plain `if`, before chaining `.where()`.
+			if (otherAssignment) {
+				const oa = otherAssignment;
+				query = query.leftJoin(oa, eq(printers.id, oa.printerId));
+			}
+
+			const data = await query
 				.where(
 					and(
 						eq(deployments.clientId, clientId),
