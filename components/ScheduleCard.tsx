@@ -12,7 +12,7 @@ import {
 	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { MoreHorizontal, User, MapPin, CalendarDays, CheckSquare, GripVertical, Lock, Navigation } from "lucide-react";
+import { MoreHorizontal, User, MapPin, CalendarDays, CheckSquare, GripVertical, Lock, Navigation, Pencil } from "lucide-react";
 import { Schedule } from "@/components/columns/schedules/columns";
 import { cn } from "@/lib/utils";
 
@@ -23,6 +23,15 @@ interface ScheduleCardProps {
 	onShowDetailsClick: (schedId: number) => void;
 	onShowReschedClick: (schedId: number) => void;
 	onCardClick?: (schedule: Schedule) => void;
+	/** True when this is the itinerary currently loaded into the edit form
+	 * — the Scheduler clicked it (or it was opened for edit/reschedule some
+	 * other way) and its details are what "Save"/"Update" will act on right
+	 * now. Stays true for as long as that's the case, not just on the
+	 * click itself, so there's no ambiguity about which client/location is
+	 * being changed. Visually distinct from `isDropTarget` (a transient
+	 * hover state during drag-and-drop reordering) — both can theoretically
+	 * be true at once without looking the same. */
+	isSelected?: boolean;
 	/**
 	 * 1-based position in the current itinerary order, shown as a corner
 	 * badge. Only passed when the grid is actually reorderable (a
@@ -80,6 +89,7 @@ export function ScheduleCard({
 	onShowDetailsClick,
 	onShowReschedClick,
 	onCardClick,
+	isSelected,
 	sequenceNumber,
 	draggableReorder,
 	isDragging,
@@ -102,7 +112,17 @@ export function ScheduleCard({
 				onCardClick && "cursor-pointer",
 				draggable && "cursor-grab active:cursor-grabbing",
 				isDragging && "opacity-40",
-				isDropTarget && "ring-2 ring-primary"
+				// isSelected is the persistent "this is what you're editing"
+				// state — deliberately a heavier treatment (thicker ring,
+				// offset, tinted background, colored border) than
+				// isDropTarget's plain ring below, which is only ever shown
+				// for the instant a drag hovers over a card. The two are
+				// visually distinguishable even in the rare case both are
+				// true at once (dragging a different card over the selected
+				// one).
+				isSelected &&
+					"border-primary bg-primary/5 shadow-md ring-2 ring-primary ring-offset-2 ring-offset-background",
+				isDropTarget && !isSelected && "ring-2 ring-primary"
 			)}
 			onClick={() => onCardClick?.(schedule)}
 			draggable={draggable}
@@ -112,6 +132,15 @@ export function ScheduleCard({
 			onDrop={isLocked ? undefined : onDropCard}
 			onDragEnd={onDragEndCard}
 		>
+			{isSelected && (
+				<div
+					className="absolute -right-2 -top-2 z-10 flex items-center gap-1 rounded-full border-2 border-background bg-primary px-2 py-0.5 text-[10px] font-semibold text-primary-foreground shadow"
+					title="Currently selected for editing"
+				>
+					<Pencil className="h-3 w-3" />
+					Editing
+				</div>
+			)}
 			{sequenceNumber != null && (
 				<div
 					className={cn(

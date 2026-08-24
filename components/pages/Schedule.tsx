@@ -1866,6 +1866,17 @@ export default function SchedulePage() {
 												onShowDetailsClick={handleShowDetails}
 												onShowReschedClick={handleReschedule}
 												onCardClick={handleCardClick}
+												// `scheduleId` is the itinerary currently loaded
+												// into the edit form on the left (set by
+												// handleCardClick and every other path that opens
+												// a schedule for editing, cleared back to 0 on
+												// save/cancel) — reusing it here means the
+												// highlighted card and the one actually being
+												// edited can never drift apart.
+												isSelected={
+													scheduleId !== 0 &&
+													Number(schedule.id) === scheduleId
+												}
 												sequenceNumber={
 													orderedScheduleCards.length > 1
 														? idx + 1

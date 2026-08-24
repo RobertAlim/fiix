@@ -1,4 +1,4 @@
-# FIIX — Printer Status + Scroll Area + Pending Maintenance Notes update
+# FIIX — Printer Status + Scroll Area + Pending Maintenance Notes + Itinerary Selection update
 
 Delta package — copy these files into your project at the exact paths
 shown below (they mirror the project's folder structure 1:1). No other
@@ -95,6 +95,25 @@ This pulls in the two new dependencies added to `package.json` /
   same `readOnly` prop that already hides the Resolve button when this
   panel is embedded read-only on the Schedule page also hides Notes
   editing there.
+
+### 5. Schedule page — selected itinerary card highlight
+- `components/ScheduleCard.tsx` — added an `isSelected` prop. When true,
+  the card gets a heavier, persistent treatment (primary-colored border,
+  tinted background, a 2px ring with offset, and a raised shadow) plus a
+  small "Editing" pill badge in the top-right corner — deliberately
+  distinct from the existing `isDropTarget` ring (a plain ring shown only
+  for the instant a dragged card hovers over another one during
+  reordering), so the two states can never be confused even in the rare
+  case both are true at once.
+- `components/pages/Schedule.tsx` — passes
+  `isSelected={scheduleId !== 0 && Number(schedule.id) === scheduleId}`
+  to each `ScheduleCard`. `scheduleId` is the existing state variable that
+  already tracks which itinerary is loaded into the edit form on the left
+  (set by `handleCardClick` and every other path that opens a schedule for
+  edit/reschedule, reset to 0 on save/cancel) — reusing it means the
+  highlight can't drift out of sync with what's actually being edited, and
+  it stays lit for the whole time the Scheduler is viewing/editing that
+  itinerary, not just on the initial click.
 
 ## Notes
 - No database migration is required — `printers.status` was already a
