@@ -294,6 +294,35 @@ This pulls in the two new dependencies added to `package.json` /
   logic was already correct; this was purely a frontend state-leak that
   fed it the wrong printer ids to check.
 
+### 11. Fix — printer status badge colors on the "Printer Details List" cards
+- `components/PrinterStatusCard.tsx` — the status badge (and the "Current
+  Issue" box below it) previously used a 3-way rule: "Good Condition" ->
+  green, "Pulled Out" -> blue, **everything else** -> red. "Resolved" (a
+  real status set by the Pending Maintenance "Resolve" action) was never
+  one of the two recognized names, so it silently fell into that "red"
+  catch-all — showing a resolved printer with a red badge and a red
+  "Current Issue" box, which reads as a problem when it's actually
+  closed. Replaced with an explicit, case-insensitive color map matching
+  the mapping you gave:
+  - **Red** — Pulled Out, For Replacement (Printer Part), For
+    Replacement of Printer
+  - **Blue** — Change Unit, Refill Ink, For Reset
+  - **Green** — Good Condition, Resolved
+  - Anything not in that list (a status this card doesn't know a color
+    for) now renders neutral/gray instead of defaulting to red — a
+    status that isn't a recognized "needs attention" one shouldn't read
+    as an error just because it's unfamiliar.
+  - Note this flips "Pulled Out" from blue (its old color) to red, per
+    the mapping in your message — let us know if that one should stay
+    blue instead.
+- Same file — the small-screen badge abbreviation (PO/RM/etc., shown on
+  narrow viewports in place of the full status name) had the identical
+  "everything unrecognized defaults to one specific label" bug (it
+  defaulted to "RP", so "Resolved" abbreviated as if it meant
+  "Replacement Part"). Fixed alongside the color change with the same
+  kind of explicit, complete lookup table.
+- Purely a styling/labeling fix — no backend or data changes.
+
 ## Notes
 - No database migration is required — `printers.status` was already a
   plain `varchar`, so "Inactive" is just a new value, not a schema

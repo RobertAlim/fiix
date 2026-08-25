@@ -17,6 +17,69 @@ import { showAppToast } from "./ui/apptoast";
 import { cn } from "@/lib/utils";
 import { UserRoundX } from "lucide-react";
 
+// Which color theme each maintenance status gets on this card's badge and
+// "Current Issue" box. Previously this was a 3-way ternary (Good
+// Condition -> green, Pulled Out -> blue, EVERYTHING else -> red) — that
+// catch-all is why "Resolved" (a real status set by the Pending
+// Maintenance "Resolve" action, see app/api/pending-maintenance/[id]/
+// resolve/route.ts) rendered as a red badge instead of green: it was
+// never a recognized value, so it fell through to the red default along
+// with every other unrecognized status. Listed explicitly and matched
+// case-insensitively so new status names added later default to neutral
+// (see FALLBACK below) instead of silently reading as an error state.
+const RED_STATUSES = new Set(
+	["Pulled Out", "For Replacement (Printer Part)", "For Replacement of Printer"].map(
+		(s) => s.toLowerCase()
+	)
+);
+const BLUE_STATUSES = new Set(
+	["Change Unit", "Refill Ink", "For Reset"].map((s) => s.toLowerCase())
+);
+const GREEN_STATUSES = new Set(
+	["Good Condition", "Resolved"].map((s) => s.toLowerCase())
+);
+
+type StatusTheme = "red" | "blue" | "green" | "neutral";
+
+// Small-screen abbreviation for the badge (the layout swaps to this on
+// narrow viewports — see the two <span>s below). Previously a ternary
+// chain that only recognized "Good Condition" and "Pulled Out" by name,
+// with "Replacement (Unit)" as a third case and EVERYTHING else —
+// including "Resolved" — defaulting to "RP", which read as "Replacement
+// Part" for statuses that were nothing of the kind. Listed explicitly,
+// same as the color theme above, with a safe generic fallback instead of
+// a specific-but-wrong label for anything not in the list.
+const STATUS_ABBR: Record<string, string> = {
+	"good condition": "RM",
+	"pulled out": "PO",
+	"replacement (unit)": "RU",
+	"for replacement (printer part)": "RP",
+	"for replacement of printer": "RP",
+	"change unit": "CU",
+	"refill ink": "RI",
+	"for reset": "FR",
+	resolved: "RS",
+};
+
+function getStatusAbbreviation(status: string | null): string {
+	if (!status) return "NEW";
+	const normalized = status.trim().toLowerCase();
+	return STATUS_ABBR[normalized] ?? "•";
+}
+
+function getStatusTheme(status: string | null): StatusTheme {
+	const normalized = status?.trim().toLowerCase();
+	if (!normalized) return "neutral";
+	if (GREEN_STATUSES.has(normalized)) return "green";
+	if (BLUE_STATUSES.has(normalized)) return "blue";
+	if (RED_STATUSES.has(normalized)) return "red";
+	// A status not in any list above (a new one added in the database
+	// that this card doesn't know about yet) — neutral rather than
+	// silently red, since red should mean "needs attention," not
+	// "unrecognized."
+	return "neutral";
+}
+
 export function PrinterStatusCard({
 	id,
 	department,
@@ -74,28 +137,37 @@ export function PrinterStatusCard({
 		});
 	};
 
+	const statusTheme = getStatusTheme(status);
+
 	const badgeClass =
-		status === "Good Condition"
+		statusTheme === "green"
 			? "bg-success text-success-foreground"
-			: status === "Pulled Out"
+			: statusTheme === "blue"
 			? "bg-info text-info-foreground"
-			: status === null
-			? ""
-			: "bg-destructive text-white";
+			: statusTheme === "red"
+			? "bg-destructive text-white"
+			: // "neutral": either no status yet (New Unit) or a status this
+			  // card doesn't have a color for — no color is applied either
+			  // way, matching the previous New Unit treatment.
+			  "";
 
 	const issueBoxClass =
-		status === "Good Condition"
+		statusTheme === "green"
 			? "bg-success/10 border-success/30"
-			: status === "Pulled Out"
+			: statusTheme === "blue"
 			? "bg-info/10 border-info/30"
-			: "bg-destructive/10 border-destructive/30";
+			: statusTheme === "red"
+			? "bg-destructive/10 border-destructive/30"
+			: "bg-muted border-muted-foreground/20";
 
 	const issueTextClass =
-		status === "Good Condition"
+		statusTheme === "green"
 			? "text-success"
-			: status === "Pulled Out"
+			: statusTheme === "blue"
 			? "text-info"
-			: "text-destructive";
+			: statusTheme === "red"
+			? "text-destructive"
+			: "text-muted-foreground";
 
 	return (
 		<Card
@@ -135,15 +207,7 @@ export function PrinterStatusCard({
 							{status === null ? "New Unit" : status}
 						</span>
 						<span className="sm:hidden lg:hidden">
-							{status === null
-								? "NEW"
-								: status === "Good Condition"
-								? "RM"
-								: status === "Pulled Out"
-								? "PO"
-								: status === "Replacement (Unit)"
-								? "RU"
-								: "RP"}
+							{getStatusAbbreviation(status)}
 						</span>
 					</Badge>
 				</div>
