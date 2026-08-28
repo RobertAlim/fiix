@@ -36,6 +36,7 @@ export type ModuleKey =
 	| "report"
 	| "schedule"
 	| "pendingMaintenance"
+	| "relatedIssues"
 	| "timekeep"
 	| "roleAssignment"
 	| "dataImport"
@@ -67,6 +68,7 @@ const ADMIN_MODULES: ModuleKey[] = [
 	"report",
 	"schedule",
 	"pendingMaintenance",
+	"relatedIssues",
 	"timekeep",
 	"dataImport",
 	"printers",
@@ -90,6 +92,7 @@ export const MODULE_ACCESS: Record<Role, ModuleKey[]> = {
 		"report",
 		"schedule",
 		"pendingMaintenance",
+		"relatedIssues",
 		"timekeep",
 	],
 };

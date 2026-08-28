@@ -49,6 +49,7 @@ import { fetchData } from "@/lib/fetchData";
 import { apiPath } from "@/lib/base-path";
 import { formatPhDateTime } from "@/lib/formatDate";
 import { getStatusTheme, STATUS_THEME_CLASSES } from "@/lib/printer-history-status";
+import { containsKeyword, highlightMatches } from "@/lib/highlight-text";
 import { cn } from "@/lib/utils";
 
 interface PrinterHistoryResponse {
@@ -67,18 +68,46 @@ interface PrinterHistoryResponse {
 		notes: string | null;
 		replacementRepair: string | null;
 		createdAt: string;
+		/** The client/location this printer was assigned to AT THE TIME of
+		 * this specific report — not its current one. Read from the
+		 * deployment `maintain.deploymentId` points to, which a transfer
+		 * never edits in place (see app/api/admin/master/printers/[id]/
+		 * history/route.ts), so an older row keeps showing where the
+		 * printer actually was when the technician visited. Null only for
+		 * a very old record whose deployment row itself has since been
+		 * deleted, which shouldn't happen in normal use. */
+		client: string | null;
+		location: string | null;
 	}[];
 }
 
 export function PrinterHistoryDialog({
 	printerId,
 	onOpenChange,
+	highlightKeyword,
 }: {
 	/** Null closes the dialog — same open/close convention as the other
 	 * row-detail dialogs in this module (ResolveDialog, PrinterTransferDialog). */
 	printerId: number | null;
 	onOpenChange: (open: boolean) => void;
+	/** Set when this dialog is opened from a Related Issues search result
+	 * (components/pages/RelatedIssues.tsx) — every occurrence of this
+	 * keyword in each history row's Notes gets highlighted, and the FIRST
+	 * matching row is scrolled into view as soon as the data loads, so the
+	 * report the user searched for is immediately visible instead of
+	 * requiring them to scan/scroll through the whole history themselves.
+	 * Omit (or pass an empty string) for the normal, unfiltered view — the
+	 * existing behavior and design are otherwise unchanged. */
+	highlightKeyword?: string;
 }) {
+	// Two separate refs rather than one: the desktop table and the mobile
+	// card list both exist in the DOM at once (CSS `hidden`/`md:hidden`
+	// toggles which is actually visible, not conditional rendering), so
+	// only one ref object would get overwritten by whichever renders last.
+	// Calling scrollIntoView on the hidden one below is a harmless no-op.
+	const desktopMatchRef = React.useRef<HTMLTableRowElement | null>(null);
+	const mobileMatchRef = React.useRef<HTMLDivElement | null>(null);
+
 	const { data, isLoading, isError } = useQuery<PrinterHistoryResponse>({
 		queryKey: ["printer-history", printerId],
 		queryFn: () =>
@@ -88,6 +117,25 @@ export function PrinterHistoryDialog({
 		enabled: printerId != null,
 		staleTime: 30_000,
 	});
+
+	// The most recent (first, since `history` is newest-first) row whose
+	// Notes actually contain the searched keyword — this is what gets
+	// scrolled into view below, and it's what the "immediately visible, no
+	// manual searching" requirement is about.
+	const firstMatchId = React.useMemo(() => {
+		if (!highlightKeyword?.trim() || !data) return null;
+		return data.history.find((h) => containsKeyword(h.notes, highlightKeyword))
+			?.id ?? null;
+	}, [data, highlightKeyword]);
+
+	// Runs once per (printer, keyword) pair, right after the matching row's
+	// ref attaches — not on every render, so it doesn't fight the user if
+	// they've since scrolled elsewhere in a long history list.
+	React.useEffect(() => {
+		if (firstMatchId == null) return;
+		desktopMatchRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+		mobileMatchRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+	}, [firstMatchId]);
 
 	// Opens the actual Maintenance Report PDF for a history row — same
 	// mechanism already used by the Task Tracker (components/tracker/
@@ -220,13 +268,16 @@ export function PrinterHistoryDialog({
 											<Table className="table-fixed">
 												<TableHeader>
 													<TableRow>
-														<TableHead className="w-[14%]">Technician</TableHead>
-														<TableHead className="w-[13%]">Status</TableHead>
-														<TableHead className="w-[24%]">Notes</TableHead>
-														<TableHead className="w-[27%]">
+														<TableHead className="w-[12%]">Technician</TableHead>
+														<TableHead className="w-[12%]">Status</TableHead>
+														<TableHead className="w-[17%]">
+															Client at Maintenance
+														</TableHead>
+														<TableHead className="w-[20%]">Notes</TableHead>
+														<TableHead className="w-[23%]">
 															Replacement/Repair
 														</TableHead>
-														<TableHead className="w-[22%] text-right">
+														<TableHead className="w-[16%] text-right">
 															Date
 														</TableHead>
 													</TableRow>
@@ -234,13 +285,20 @@ export function PrinterHistoryDialog({
 												<TableBody>
 													{data.history.map((h) => {
 														const theme = getStatusTheme(h.status);
+														const isMatch = h.id === firstMatchId;
 														return (
 															<TableRow
 																key={h.id}
+																ref={isMatch ? desktopMatchRef : undefined}
 																onClick={() => handleOpenReport(h.id)}
 																className={cn(
 																	"cursor-pointer",
-																	STATUS_THEME_CLASSES[theme].row
+																	STATUS_THEME_CLASSES[theme].row,
+																	// The searched-for row gets a heavier ring on
+																	// top of its status tint, so it's obvious at
+																	// a glance which one the search was about —
+																	// not just "somewhere in view after scrolling".
+																	isMatch && "ring-2 ring-warning ring-inset"
 																)}
 															>
 																<TableCell className="align-top font-medium">
@@ -261,7 +319,14 @@ export function PrinterHistoryDialog({
 																</TableCell>
 																<TableCell className="align-top">
 																	<span className="block whitespace-normal break-words text-sm text-muted-foreground">
-																		{h.notes || "—"}
+																		{h.client ?? "—"}
+																	</span>
+																</TableCell>
+																<TableCell className="align-top">
+																	<span className="block whitespace-normal break-words text-sm text-muted-foreground">
+																		{h.notes
+																			? highlightMatches(h.notes, highlightKeyword)
+																			: "—"}
 																	</span>
 																</TableCell>
 																<TableCell className="align-top">
@@ -279,21 +344,26 @@ export function PrinterHistoryDialog({
 											</Table>
 										</div>
 
-										{/* Cards — below md, where a 5-column table would just
+										{/* Cards — below md, where a 6-column table would just
 										    force horizontal scrolling on every row. */}
 										<div className="space-y-3 md:hidden">
 											{data.history.map((h) => {
 												const theme = getStatusTheme(h.status);
+												const isMatch = h.id === firstMatchId;
 												return (
 													<div
 														key={h.id}
+														ref={isMatch ? mobileMatchRef : undefined}
 														onClick={() => handleOpenReport(h.id)}
 														className={cn(
 															"cursor-pointer rounded-xl border p-4",
 															theme === "red" &&
 																"border-destructive/30 bg-destructive/5",
 															theme === "green" &&
-																"border-success/30 bg-success/5"
+																"border-success/30 bg-success/5",
+															// Same "this is the one you searched for" treatment
+															// as the desktop table row above.
+															isMatch && "ring-2 ring-warning ring-inset"
 														)}
 													>
 														<div className="mb-2 flex items-start justify-between gap-2">
@@ -313,6 +383,12 @@ export function PrinterHistoryDialog({
 																<User className="h-3.5 w-3.5 shrink-0" />
 																{h.technician}
 															</div>
+															{h.client && (
+																<div className="flex items-center gap-1.5 text-muted-foreground">
+																	<Building2 className="h-3.5 w-3.5 shrink-0" />
+																	<span>{h.client}</span>
+																</div>
+															)}
 															{h.replacementRepair && (
 																<div className="flex items-start gap-1.5 text-muted-foreground">
 																	<Wrench className="mt-0.5 h-3.5 w-3.5 shrink-0" />
@@ -322,7 +398,7 @@ export function PrinterHistoryDialog({
 															{h.notes && (
 																<div className="flex items-start gap-1.5 text-muted-foreground">
 																	<FileText className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-																	<span>{h.notes}</span>
+																	<span>{highlightMatches(h.notes, highlightKeyword)}</span>
 																</div>
 															)}
 														</div>

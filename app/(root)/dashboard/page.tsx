@@ -36,6 +36,7 @@ import {
 	ClipboardList,
 	Timer,
 	Navigation,
+	Search,
 } from "lucide-react";
 import { useUserStore } from "@/state/userStore";
 import { useDBUser } from "@/hooks/use-db-user";
@@ -80,6 +81,9 @@ const GpsMonitoringPage = dynamic(
 const PendingMaintenancePage = dynamic(
 	() => import("@/components/pages/PendingMaintenance")
 );
+const RelatedIssuesPage = dynamic(
+	() => import("@/components/pages/RelatedIssues")
+);
 const TimekeepPage = dynamic(() => import("@/components/pages/Timekeep"));
 const StaffGpsLocationsPage = dynamic(
 	() => import("@/components/pages/StaffGpsLocations")
@@ -94,6 +98,7 @@ const ALL_NAV_ITEMS: { key: PageKey; label: string; icon: React.ElementType }[] 
 	{ key: "report", label: "Report", icon: FileText },
 	{ key: "schedule", label: "Schedule", icon: CalendarCheck },
 	{ key: "pendingMaintenance", label: "Pending Maintenance", icon: ClipboardList },
+	{ key: "relatedIssues", label: "Related Issues", icon: Search },
 	{ key: "timekeep", label: "Timekeep", icon: Timer },
 	{ key: "roleAssignment", label: "Role Assignment", icon: ShieldCheck },
 	{ key: "dataImport", label: "Data Import", icon: DatabaseZap },
@@ -113,6 +118,7 @@ const PAGE_TITLES: Record<PageKey, string> = {
 	report: "Report",
 	schedule: "Schedule",
 	pendingMaintenance: "Pending Maintenance",
+	relatedIssues: "Related Issues",
 	timekeep: "Timekeep",
 	roleAssignment: "Role Assignment",
 	dataImport: "Data Import",
@@ -272,6 +278,8 @@ export default function DashboardPage() {
 				return <SchedulePage />;
 			case "pendingMaintenance":
 				return <PendingMaintenancePage />;
+			case "relatedIssues":
+				return <RelatedIssuesPage />;
 			case "timekeep":
 				return <TimekeepPage />;
 			case "staffGpsLocations":

@@ -24,6 +24,7 @@ import {
 	printers,
 	deployments,
 	clients,
+	locations,
 	models,
 	maintain,
 	status,
@@ -102,11 +103,23 @@ export async function GET(
 			cleanPrinter: maintain.cleanPrinter,
 			cleanWasteTank: maintain.cleanWasteTank,
 			createdAt: maintain.createdAt,
+			// Client/location as of THIS report, not the printer's current
+			// one — read off the same deployment row `maintain.deploymentId`
+			// already points to (the join below), same as app/api/
+			// maintenance-history/route.ts and per the same reasoning as the
+			// `printer` block's doc comment above: a transfer opens a NEW
+			// deployment row rather than editing the old one in place, so a
+			// report filed before a transfer keeps showing the site the
+			// printer was actually at when the technician visited.
+			client: clients.name,
+			location: locations.name,
 		})
 		.from(maintain)
 		.innerJoin(deployments, eq(maintain.deploymentId, deployments.id))
 		.innerJoin(users, eq(users.id, maintain.userId))
 		.innerJoin(status, eq(status.id, maintain.statusId))
+		.leftJoin(clients, eq(clients.id, deployments.clientId))
+		.leftJoin(locations, eq(locations.id, deployments.locationId))
 		.where(eq(deployments.printerId, printerId))
 		.orderBy(desc(maintain.createdAt));
 
@@ -159,6 +172,9 @@ export async function GET(
 			// checked on this visit at all.
 			replacementRepair: services.join(", ") || null,
 			createdAt: r.createdAt,
+			// Historical client/location — see the select above.
+			client: r.client,
+			location: r.location,
 		};
 	});
 

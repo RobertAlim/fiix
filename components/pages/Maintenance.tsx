@@ -94,6 +94,13 @@ export default function MaintenancePage({
 	const [callingAction, setCallingAction] = useState("");
 	const [signature, setSignature] = useState<string | null>(null);
 	const [signatory, setSignatory] = useState<item[]>([]);
+	// Most recent print count already recorded for this printer (across all
+	// its maintenance reports, any deployment) — GET /api/maintain already
+	// computes and returns this as `lastPrintCount`; shown purely as context
+	// so the technician knows what value the count is expected to be at or
+	// above, matching the monotonic-increase check the server enforces on
+	// save (see app/api/maintain/route.ts's POST handler).
+	const [lastPrintCount, setLastPrintCount] = useState<number | null>(null);
 	const IconComponent = callingAction === "Replacement" ? Replace : Wrench;
 	const { users } = useUserStore();
 	const [today, setToday] = useState("");
@@ -223,6 +230,25 @@ export default function MaintenancePage({
 			showAppToast({
 				message: "Nozzle Check is required",
 				description: "Missing nozzle check image",
+				duration: 5000,
+				position: "bottom-right",
+				color: "warning",
+			});
+			setIsSaving(false);
+			return;
+		}
+
+		// `printCount` is optional at the shared zod-schema level (see
+		// validation/maintainSchema.ts — purgeMaintainSubmitSchema also
+		// extends that schema and deliberately has no print count field), so
+		// the real "required for a technician submission" rule has to be
+		// enforced here, before the offline-first local save — same blocking
+		// pattern as the nozzle check above, so a report can't be saved
+		// locally (and therefore can't sync) without it.
+		if (data.printCount === undefined || data.printCount === null) {
+			showAppToast({
+				message: "Print Count is required",
+				description: "Enter the printer's current print count",
 				duration: 5000,
 				position: "bottom-right",
 				color: "warning",
@@ -367,6 +393,12 @@ export default function MaintenancePage({
 			departmentId: number;
 			department: string;
 			replaceSerialNo?: string;
+			/** Most recent non-null printCount recorded for this printer
+			 * across any past maintenance report, regardless of deployment —
+			 * already computed and returned by GET /api/maintain, just not
+			 * previously read here. Null when this printer has no prior
+			 * print count on record. */
+			lastPrintCount?: number | null;
 		},
 		signatories: { value: string; label: string }[]
 	) => {
@@ -390,6 +422,7 @@ export default function MaintenancePage({
 		setValue("replaceSerialNo", maintenanceData.replaceSerialNo || "");
 		setValue("printerId", maintenanceData.id);
 		setValue("deploymentId", maintenanceData.deploymentId);
+		setLastPrintCount(maintenanceData.lastPrintCount ?? null);
 		setSignatory(signatories);
 	};
 
@@ -591,6 +624,29 @@ export default function MaintenancePage({
 											onChange={(e) => setToday(e.target.value)}
 											disabled
 										/>
+									</div>
+								</div>
+								<div className="grid lg:grid-cols-3 grid-cols-1 gap-4">
+									<div className="space-y-1">
+										<Label htmlFor="printCount">Print Count</Label>
+										<Input
+											id="printCount"
+											type="number"
+											min={0}
+											step={1}
+											placeholder="e.g. 12345"
+											{...register("printCount", { valueAsNumber: true })}
+										/>
+										{lastPrintCount != null && (
+											<p className="text-xs text-muted-foreground">
+												Last recorded: {lastPrintCount.toLocaleString()}
+											</p>
+										)}
+										{errors.printCount && (
+											<p className="text-xs text-destructive">
+												{errors.printCount.message}
+											</p>
+										)}
 									</div>
 								</div>
 

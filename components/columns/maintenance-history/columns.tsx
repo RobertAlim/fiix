@@ -19,6 +19,37 @@ export const maintenanceHistoryColumns: ColumnDef<MaintenanceHistory>[] = [
 		header: "Location",
 	},
 	{
+		// Not a new data field — `client`/`location` above are already the
+		// printer's HISTORICAL assignment for this specific maintenance
+		// record, not its current one. The API (app/api/maintenance-history/
+		// route.ts) joins through `maintain.deploymentId` -> `deployments`
+		// rather than through `printers` directly, and a printer transfer
+		// (app/api/admin/master/printers/[id]/transfer) retires the old
+		// deployment row (deployedHere = false) and opens a new one instead
+		// of editing it in place — specifically so that every past
+		// maintenance record keeps pointing at the deployment it actually
+		// happened under. So a printer transferred from Client A to Client B
+		// still shows "Client A — Location A" on its older rows here, and
+		// only newer rows (created after the transfer) show Client B.
+		//
+		// That said, two separate "Client" / "Location" columns don't make
+		// this obvious at a glance — they read like they could just be
+		// showing the printer's current client/location, same as elsewhere
+		// in the app. This combined, explicitly-labeled column exists purely
+		// to communicate that clearly, without changing what data is shown.
+		id: "clientLocationAtMaintenance",
+		header: "Client/Location at Maintenance",
+		accessorFn: (row) => `${row.client} — ${row.location}`,
+		cell: ({ row }) => {
+			const { client, location } = row.original;
+			return (
+				<div className="font-medium whitespace-nowrap">
+					{client} <span className="text-muted-foreground">—</span> {location}
+				</div>
+			);
+		},
+	},
+	{
 		accessorKey: "gpsLocation",
 		header: "GPS Location",
 		cell: ({ row }) => {
