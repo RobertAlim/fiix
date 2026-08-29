@@ -95,7 +95,16 @@ export function PrinterStatusCard({
 	isToggled: initialToggle,
 	onToggleChange,
 	assignedTechnicianName,
-}: Printer) {
+	readOnly,
+}: Printer & {
+	/** True when the schedule this printer belongs to is dated before
+	 * today — adding/removing printers is an edit like any other and stays
+	 * blocked for a past date, same reasoning as everywhere else on the
+	 * Schedule page. Not part of the `Printer` type itself (that's fetched
+	 * data / diffing shape), so this is a separate prop passed alongside
+	 * the spread `{...printer}`, the same way `onToggleChange` already is. */
+	readOnly?: boolean;
+}) {
 	const [localToggle, setLocalToggle] = useState<boolean>(initialToggle);
 
 	useEffect(() => {
@@ -110,6 +119,16 @@ export function PrinterStatusCard({
 	const isAssignedElsewhere = !!assignedTechnicianName;
 
 	const handleToggle = () => {
+		if (readOnly) {
+			showAppToast({
+				message: "This schedule can no longer be edited",
+				description: "Its date has already passed.",
+				color: "warning",
+				position: "top-right",
+			});
+			return;
+		}
+
 		if (isMaintained) {
 			showAppToast({
 				message: "Maintenance Done",
@@ -172,21 +191,29 @@ export function PrinterStatusCard({
 	return (
 		<Card
 			className={cn(
-				"w-full rounded-xl border transition-colors duration-200 hover:shadow-sm",
+				"w-full rounded-xl border transition-colors duration-200",
+				!readOnly && "hover:shadow-sm",
 				isAssignedElsewhere
 					? "cursor-not-allowed bg-muted/40 opacity-75"
-					: "cursor-pointer",
+					: readOnly
+						? "cursor-default"
+						: "cursor-pointer",
+				// Read-only still shows whether this printer was part of the
+				// schedule (the point of viewing it), just without the
+				// hover/click affordance of an editable card.
 				!isAssignedElsewhere && localToggle
 					? "bg-success/10 border-success/40"
 					: !isAssignedElsewhere
-					? "bg-card"
-					: undefined
+						? "bg-card"
+						: undefined
 			)}
 			onClick={() => handleToggle()}
 			title={
-				isAssignedElsewhere
-					? `Already assigned to ${assignedTechnicianName}`
-					: undefined
+				readOnly
+					? "This schedule's date has already passed — read only."
+					: isAssignedElsewhere
+						? `Already assigned to ${assignedTechnicianName}`
+						: undefined
 			}
 		>
 			<CardHeader>

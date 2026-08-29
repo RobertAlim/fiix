@@ -20,6 +20,7 @@ import { format } from "date-fns";
 import { ensureError } from "@/lib/errors";
 import { convertToPhilippineTimezone } from "@/lib/dateConverter";
 import { requireRole } from "@/lib/require-role";
+import { phTodayDateString } from "@/lib/attendance";
 
 // Define the expected structure of the incoming request body
 interface ScheduleMaintenancePayload {
@@ -172,6 +173,24 @@ export async function POST(req: NextRequest) {
 					return NextResponse.json(
 						{ message: "The schedule being rescheduled no longer exists." },
 						{ status: 404 }
+					);
+				}
+
+				// Same read-only-for-past-dates rule as everywhere else on this
+				// route (see the update branch and DELETE handler): Reschedule
+				// changes this record's outcome (it re-books the still-
+				// outstanding printers elsewhere), so it's an edit like any
+				// other and stays blocked once the original's date has passed
+				// — the client already hides/blocks this action for a
+				// read-only card (see handleReschedule in
+				// components/pages/Schedule.tsx).
+				if (original.scheduledAt < phTodayDateString()) {
+					return NextResponse.json(
+						{
+							message:
+								"This schedule can no longer be edited — its date has already passed.",
+						},
+						{ status: 403 }
 					);
 				}
 
@@ -359,6 +378,36 @@ export async function POST(req: NextRequest) {
 					});
 			}
 		} else {
+			// A schedule dated before today is read-only — see the matching
+			// client-side lock in components/pages/Schedule.tsx
+			// (`scheduledAtIsPast`) and its `areControlsEnabled`/Update button.
+			// Enforced here too since the UI disabling those controls is only
+			// ever a courtesy, not the actual boundary. Checked BEFORE the
+			// update below runs, not after — this schedule's date is
+			// immutable once created (the edit form only ever changes
+			// priority/notes/printers), so its currently-stored `scheduledAt`
+			// is exactly what will still be true post-update.
+			const [existingRow] = await db
+				.select({ scheduledAt: schedules.scheduledAt })
+				.from(schedules)
+				.where(eq(schedules.id, scheduleId!))
+				.limit(1);
+			if (!existingRow) {
+				return NextResponse.json(
+					{ message: "Schedule not found." },
+					{ status: 404 }
+				);
+			}
+			if (existingRow.scheduledAt < phTodayDateString()) {
+				return NextResponse.json(
+					{
+						message:
+							"This schedule can no longer be edited — its date has already passed.",
+					},
+					{ status: 403 }
+				);
+			}
+
 			const [updatedSchedule] = await db
 				.update(schedules)
 				.set({
@@ -780,6 +829,31 @@ export async function DELETE(req: NextRequest) {
 	}
 
 	try {
+		// Step 0: A schedule dated before today is read-only — see the
+		// matching client-side lock in components/pages/Schedule.tsx
+		// (`scheduledAtIsPast`). Enforced here too since the UI hiding the
+		// Delete action is only ever a courtesy, not the actual boundary.
+		const [scheduleRow] = await db
+			.select({ scheduledAt: schedules.scheduledAt })
+			.from(schedules)
+			.where(eq(schedules.id, scheduleIdNum))
+			.limit(1);
+		if (!scheduleRow) {
+			return NextResponse.json(
+				{ message: "Schedule not found." },
+				{ status: 404 }
+			);
+		}
+		if (scheduleRow.scheduledAt < phTodayDateString()) {
+			return NextResponse.json(
+				{
+					message:
+						"This schedule can no longer be edited — its date has already passed.",
+				},
+				{ status: 403 }
+			);
+		}
+
 		// Step 1: Check for existing maintained records
 		const maintainedRecords = await db
 			.select()

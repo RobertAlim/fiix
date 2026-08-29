@@ -74,6 +74,23 @@ export async function PATCH(req: Request) {
 		);
 	}
 
+	// A day before today is read-only — see the matching client-side lock
+	// in components/pages/Schedule.tsx (`scheduledAtIsPast`), which already
+	// makes every card on a past day undraggable. Enforced here too since
+	// that's only ever a courtesy; the actual boundary is server-side.
+	// (This supersedes the old "reordering history is allowed, for
+	// correcting old records" behavior below — the visit either happened
+	// or didn't, and its recorded order shouldn't change after the fact.)
+	if (scheduledAt < phTodayDateString()) {
+		return NextResponse.json(
+			{
+				error:
+					"This schedule can no longer be edited — its date has already passed.",
+			},
+			{ status: 403 }
+		);
+	}
+
 	const isToday = scheduledAt === phTodayDateString();
 
 	if (isToday) {
@@ -139,12 +156,10 @@ export async function PATCH(req: Request) {
 		.where(inArray(schedules.id, orderedScheduleIds));
 
 	// Best-effort notification — a delivery failure must never fail the
-	// reorder itself, which already succeeded above. Skipped entirely for a
-	// past date: reordering history (allowed — the date picker has no lower
-	// bound, for correcting old records) shouldn't tell a technician their
-	// itinerary "has been set" for a day that's already over.
-	const isPast = scheduledAt < phTodayDateString();
-	if (!isPast) {
+	// reorder itself, which already succeeded above. Past dates never reach
+	// here at all now (the guard above returns 403 first), so this always
+	// runs for a today-or-future reorder.
+	{
 		try {
 			const [technician] = await db
 				.select({ firstName: users.firstName, contactNo: users.contactNo })

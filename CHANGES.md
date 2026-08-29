@@ -1,75 +1,79 @@
 # Update — 2026-08-29
 
-Three UI/usability fixes: Printers Status filter, horizontal scrolling on
-six data grids, and mobile nav auto-close.
+Schedule page: past-dated schedules are now read-only.
 
-## 1. Printers — Status filter
+## What "past" means
 
-- `components/MasterDataManager.tsx` — `FilterConfig` gained an optional
-  `type?: "text" | "select"` (default `"text"`, so every existing filter
-  across the app is unchanged) and `options?: { value; label }[]`. A
-  `"select"` filter renders as a dropdown (shadcn `Select`) instead of a
-  free-text box — appropriate for a column with a small fixed set of
-  values, where a substring filter is both unnecessary and, for values
-  that are substrings of each other, actually wrong (see below).
-- `components/pages/Printers.tsx` — added a `status` filter (`type:
-  "select"`) with the same three options as the Status column's own badges
-  and the Edit Printer form: Active / Inactive / Missing.
-- `app/api/admin/master/printers/route.ts` — the `GET` handler now reads
-  `?status=` and filters with an **exact** match (`eq`, not `ilike`).
-  Deliberately not a substring match: "Active" is a substring of
-  "Inactive", so filtering for Active printers with `ilike` would have
-  incorrectly also returned Inactive ones. An unrecognized value is
-  silently ignored, same as any other filter here.
+A schedule dated strictly before today (Asia/Manila time — same source of
+"today" the page's existing first-stop lock already uses,
+`phTodayDateString()` from `lib/attendance.ts`) is treated as history. It
+either happened or it didn't; nothing about it should still be editable
+after the fact. Today's and future schedules are completely unaffected —
+this only locks a date once it's fully in the past.
 
-## 2. Fix horizontal scrolling — Task Tracker, Data Imports, Printers,
-   Client Locations, Staff GPS Location, SMS Recipients
+Viewing stays available throughout: schedule details, the itinerary, and
+per-printer status are all still visible for a past schedule. Only the
+controls that would CHANGE the record are gated.
 
-Root cause: every one of these grids' tables were wrapped in a Radix
-`ScrollArea` for vertical scrolling — but `Table` (`components/ui/table.tsx`)
-already wraps *itself* in its own horizontal Radix `ScrollArea`. Nesting a
-vertical-only `ScrollArea` around an already horizontal-scrolling `Table`
-breaks the horizontal scrolling: `@radix-ui/react-scroll-area`'s Viewport
-only ever sets `overflow-x: scroll` when a horizontal scrollbar is also
-mounted on that same `ScrollArea` instance — otherwise it sets
-`overflow-x: hidden`, unconditionally. A vertical-only outer `ScrollArea`
-therefore clips the inner `Table`'s wider content instead of letting it
-scroll, regardless of how correctly the inner `Table` computes its own
-overflow.
+## Client-side (`components/pages/Schedule.tsx`)
 
-- `components/MasterDataManager.tsx` — the outer `ScrollArea` wrapping every
-  grid's `Table` is now a plain `<div className="max-h-[65vh]
-  overflow-y-auto">`. This single shared component backs Data Imports,
-  Printers, Client Locations, Staff GPS Location, and SMS Recipients, so
-  fixing it here fixes all five pages at once. The inner `Table`'s own
-  horizontal Radix `ScrollArea` is untouched and now works exactly as it
-  does everywhere else it's used standalone — same column widths
-  (`minWidth`), same pinned Actions column, same responsive behavior.
-- `components/tracker/task-tracker.tsx` — Task Tracker has its own two
-  tables (Schedules and Schedule Details) with the identical nested-
-  `ScrollArea` pattern; both outer `ScrollArea`s are now the same plain
-  `overflow-y-auto` div, for the same reason. The now-unused `ScrollArea`
-  import was removed from this file (`MasterDataManager.tsx` still uses
-  `ScrollArea` elsewhere — its Add/Edit form dialog — so that import stays
-  there).
+- New derived flag `scheduledAtIsPast`, computed the same way as the
+  existing `scheduledAtIsToday`.
+- `areControlsEnabled` (gates the Client/Location/Priority/Notes fields in
+  the edit form) now also requires `!scheduledAtIsPast`. A brand-new
+  schedule is unaffected — it can't be dated in the past to begin with
+  (the existing `handleSchedule` guard already blocks that for both create
+  and update).
+- The Save/Update button is hidden (not just disabled) when editing an
+  existing schedule whose date has passed — there's nothing left to save.
+- The "Save Order" (drag-reorder) button is hidden for a past date.
+- `handleDeleteSchedule`, `handleReschedule`, `handleSaveOrder`, and
+  `handlePrinterToggle` each got an early-return guard + toast, as
+  defense-in-depth beyond just hiding the buttons that trigger them.
 
-No column layout, column widths, pinned-Actions behavior, or responsive
-breakpoints changed on any of these grids — only how the vertical scroll
-region is implemented, which no longer interferes with the horizontal one.
+## `components/ScheduleCard.tsx`
 
-## 3. Mobile navigation — auto-close menu on link selection
+- New `readOnly` prop. When set:
+  - The card's dropdown menu hides Edit, Delete, and Reschedule — "Show
+    Details" stays, since viewing is always allowed.
+  - The card becomes undraggable (same mechanism as the existing
+    `isLocked` first-stop lock, but for a different reason — the two are
+    independent).
+  - Shows a small "Read-only" indicator (lock icon) so it's visually
+    obvious without opening the menu.
 
-- `app/(root)/dashboard/page.tsx` — the mobile nav `Sheet` was previously
-  uncontrolled (Radix opened/closed it itself via the trigger, overlay
-  click, or Escape only). It's now controlled with a `mobileNavOpen` state,
-  and `SheetNav` takes a new `onNavigate` callback — called immediately
-  after `setActivePage(key)` on every nav item's `onClick`, and on the
-  Profile link's `onClick` — which closes the Sheet. Selecting any link now
-  dismisses the menu right away while the chosen page loads underneath,
-  instead of leaving the overlay open until separately dismissed. Applied
-  uniformly to every link in the mobile nav (all page nav items + Profile).
-  The desktop sidebar (`NavList`) is unaffected — it was never inside a
-  Sheet.
+## `components/PrinterStatusCard.tsx`
+
+- New `readOnly` prop (passed alongside the spread `{...printer}`, not
+  part of the `Printer` type itself). When set, clicking the card to
+  add/remove it from the schedule is blocked (with an explanatory toast,
+  same UX pattern as the existing "already maintained" / "already
+  assigned elsewhere" guards on this same card) and the hover/click
+  affordance is removed — while still showing whether the printer was
+  actually part of the schedule (the point of viewing it).
+
+## Server-side — the real boundary, not just UI
+
+Hiding/disabling buttons on the client is only ever a courtesy; each of
+these already had (or now has) the actual enforcement server-side:
+
+- `app/api/schedule/route.ts`
+  - The "Update Schedule" branch of `POST` now looks up the existing
+    schedule's date BEFORE writing, and rejects with 403 if it's already
+    past.
+  - The `Reschedule` branch (also `POST`) rejects with 403 if the
+    original schedule being rescheduled is dated in the past — rescheduling
+    changes that record's outcome, so it's an edit like any other.
+  - `DELETE` now checks the schedule's date first and rejects with 403 if
+    it's past (previously only checked for already-completed maintenance
+    tasks).
+  - `handleSchedule` on the client already blocked backdating any
+    create/update — unchanged, kept as a first-line check.
+- `app/api/schedule/sequence/route.ts` (the itinerary drag-reorder PATCH)
+  now rejects with 403 if the day being reordered is in the past. This
+  supersedes an old, now-outdated comment/behavior that deliberately
+  *allowed* reordering history "for correcting old records" — under the
+  new requirement that's no longer the intended behavior.
 
 ## Verification
 
@@ -80,11 +84,11 @@ region is implemented, which no longer interferes with the horizontal one.
 ## Files in this delta
 
 ```
-app/(root)/dashboard/page.tsx                    (modified)
-app/api/admin/master/printers/route.ts           (modified)
-components/MasterDataManager.tsx                 (modified)
-components/pages/Printers.tsx                    (modified)
-components/tracker/task-tracker.tsx              (modified)
+components/pages/Schedule.tsx              (modified)
+components/ScheduleCard.tsx                (modified)
+components/PrinterStatusCard.tsx           (modified)
+app/api/schedule/route.ts                  (modified)
+app/api/schedule/sequence/route.ts         (modified)
 ```
 
 Copy these files into your project at the exact same relative paths — no

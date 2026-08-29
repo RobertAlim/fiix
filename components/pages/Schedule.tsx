@@ -685,6 +685,15 @@ export default function SchedulePage() {
 	// for a future day; it's moot for a past one).
 	const scheduledAtStr = scheduleDate ? format(scheduleDate, "yyyy-MM-dd") : undefined;
 	const scheduledAtIsToday = scheduledAtStr === phTodayDateString();
+	// --- Read-only for past dates -------------------------------------------
+	// A date strictly before today (Manila time, same source of "today" as
+	// the first-stop lock above) is history at this point — the visit either
+	// happened or didn't, and editing it after the fact would misrepresent
+	// what actually occurred. Viewing (details/itinerary) stays available;
+	// this only gates the things that CHANGE a schedule: the edit form,
+	// Edit/Delete/Reschedule, drag-reorder, and adding/removing printers.
+	// String comparison is safe here since both sides are "yyyy-MM-dd".
+	const scheduledAtIsPast = !!scheduledAtStr && scheduledAtStr < phTodayDateString();
 	const { data: technicianStatus } = useQuery<{ timedInToday: boolean }>({
 		queryKey: ["technician-status", selectedTechnicianId],
 		queryFn: () =>
@@ -853,6 +862,20 @@ export default function SchedulePage() {
 		) {
 			return;
 		}
+		// Defense-in-depth: the "Save Order" button is already hidden for a
+		// past date (see its render condition), and every card is undraggable
+		// once read-only, so `itineraryOrder` shouldn't even be dirty — but
+		// guard the actual write too rather than relying solely on the UI
+		// being unreachable.
+		if (scheduledAtIsPast) {
+			showAppToast({
+				message: "This schedule can no longer be edited",
+				description: "Its date has already passed.",
+				position: "top-right",
+				color: "warning",
+			});
+			return;
+		}
 		setIsSavingOrder(true);
 		try {
 			const res = await fetch(apiPath("/api/schedule/sequence"), {
@@ -928,7 +951,14 @@ export default function SchedulePage() {
 	// form any time the schedules query had no data yet (initial fetch, a
 	// refetch with no cached result, an errored request), which is the freeze
 	// that showed up right after Change Technician & Date.
-	const areControlsEnabled = isEditing || isAdding;
+	// `&& !scheduledAtIsPast` closes the read-only-for-past-dates gap: this
+	// flag already only unlocks the form during an active create/edit
+	// session, but editing an EXISTING schedule dated before today must stay
+	// locked even then. Doesn't affect genuine creates — a brand-new
+	// schedule can't be dated in the past to begin with (see the guard in
+	// handleSchedule below), so `isAdding` is never true together with
+	// `scheduledAtIsPast`.
+	const areControlsEnabled = (isEditing || isAdding) && !scheduledAtIsPast;
 
 	const handleEditSchedule = React.useCallback(
 		(schedId: number) => {
@@ -1043,6 +1073,20 @@ export default function SchedulePage() {
 
 	const handleDeleteSchedule = React.useCallback(
 		async (schedId: number) => {
+			// Defense-in-depth: the Delete menu item is already hidden on a
+			// read-only (past-date) card, but guard the actual mutation too.
+			// Every card on screen shares the one selected `scheduleDate`, so
+			// the page-level `scheduledAtIsPast` flag applies to `schedId`
+			// regardless of which card it came from.
+			if (scheduledAtIsPast) {
+				showAppToast({
+					message: "This schedule can no longer be edited",
+					description: "Its date has already passed.",
+					position: "top-right",
+					color: "warning",
+				});
+				return;
+			}
 			// Prompt the user for confirmation before proceeding
 			const confirmed = window.confirm(
 				"Are you sure you want to delete this schedule? This action cannot be undone."
@@ -1101,7 +1145,7 @@ export default function SchedulePage() {
 				}
 			}
 		},
-		[queryClient]
+		[queryClient, scheduledAtIsPast]
 	);
 
 	const handleShowDetails = React.useCallback(
@@ -1287,11 +1331,25 @@ export default function SchedulePage() {
 
 	const handleReschedule = React.useCallback(
 		(schedId: number) => {
+			// Defense-in-depth: the "Reschedule" menu item is already hidden
+			// on a read-only (past-date) card. Rescheduling changes the
+			// existing record's technician/date, so it's an edit like any
+			// other and stays blocked for a past date — a genuinely missed
+			// visit is re-booked by creating a brand-new schedule instead.
+			if (scheduledAtIsPast) {
+				showAppToast({
+					message: "This schedule can no longer be edited",
+					description: "Its date has already passed.",
+					position: "top-right",
+					color: "warning",
+				});
+				return;
+			}
 			setScheduleId(schedId);
 			setIsSetupModalOpen(true);
 			setAction("ClickFromGrid");
 		},
-		[setPrinterDetailSerialNo]
+		[setPrinterDetailSerialNo, scheduledAtIsPast]
 	);
 
 	// IMPORTANT: Memoize the state object for useReactTable
@@ -1356,6 +1414,9 @@ export default function SchedulePage() {
 
 	const handlePrinterToggle = React.useCallback(
 		(id: string, newIsToggled: boolean) => {
+			// Defense-in-depth: PrinterStatusCard already blocks the click
+			// itself when read-only, but this is the actual state mutation.
+			if (scheduledAtIsPast) return;
 			setEdits((prev) => {
 				const existing = prev[id] || {};
 				// If the new value matches original, we can remove the edit entry to keep edits minimal
@@ -1373,7 +1434,7 @@ export default function SchedulePage() {
 				};
 			});
 		},
-		[immediatePrinters]
+		[immediatePrinters, scheduledAtIsPast]
 	);
 
 	const changedPrinters = useMemo(() => {
@@ -1864,26 +1925,38 @@ export default function SchedulePage() {
 								</SheetContent>
 							</Sheet>
 
-							<Button
-								variant="outline"
-								className="ml-2"
-								onClick={handleSchedule}
-								// Disabled until every piece of data this form depends on —
-								// the reference lists (clients/locations/technicians/
-								// priorities/open issues) AND, when a schedule card was
-								// clicked, that schedule's own printer details — has
-								// finished loading. Saving against partially-loaded data
-								// was possible before this: the button had no disabled
-								// logic active at all.
-								disabled={overallLoading || isLoadingScheduleDetails}
-							>
-								{existingSchedule ? "Update" : "Save"}
-							</Button>
+							{/* Hidden rather than disabled-and-confusing when editing an
+							    existing schedule dated before today — there's nothing
+							    left to save, since the visit already happened (or
+							    didn't) and the record is read-only from this point.
+							    A brand-new schedule (no `existingSchedule`) is
+							    unaffected — it can't be dated in the past to begin
+							    with (see the guard inside handleSchedule). */}
+							{!(existingSchedule && scheduledAtIsPast) && (
+								<Button
+									variant="outline"
+									className="ml-2"
+									onClick={handleSchedule}
+									// Disabled until every piece of data this form depends on —
+									// the reference lists (clients/locations/technicians/
+									// priorities/open issues) AND, when a schedule card was
+									// clicked, that schedule's own printer details — has
+									// finished loading. Saving against partially-loaded data
+									// was possible before this: the button had no disabled
+									// logic active at all.
+									disabled={overallLoading || isLoadingScheduleDetails}
+								>
+									{existingSchedule ? "Update" : "Save"}
+								</Button>
+							)}
 
 							{/* Only meaningful once a technician + date's cards are on
 							    screen to actually reorder — hidden rather than
-							    disabled-and-confusing when there's nothing to save. */}
-							{!!selectedTechnicianId &&
+							    disabled-and-confusing when there's nothing to save, and
+							    (same as above) when the date itself is in the past and
+							    read-only. */}
+							{!scheduledAtIsPast &&
+								!!selectedTechnicianId &&
 								selectedTechnicianId !== "0" &&
 								orderedScheduleCards.length > 1 && (
 									<Button
@@ -1967,6 +2040,7 @@ export default function SchedulePage() {
 												onDropCard={handleCardDrop(Number(schedule.id))}
 												onDragEndCard={handleCardDragEnd}
 												isLocked={firstStopLocked && idx === 0}
+												readOnly={scheduledAtIsPast}
 												onNavigate={() => handleNavigateStop(idx)}
 												navigateDisabled={
 													!coordsByLocationId.has(schedule.locationId) ||
@@ -2003,6 +2077,7 @@ export default function SchedulePage() {
 										<PrinterStatusCard
 											key={printer.id} // Use a unique key for each card
 											{...printer} // Spread all properties as props to PrinterStatusCard
+											readOnly={scheduledAtIsPast}
 											onToggleChange={(next) =>
 												handlePrinterToggle(String(printer.id), next)
 											}

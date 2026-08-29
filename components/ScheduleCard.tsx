@@ -69,6 +69,15 @@ interface ScheduleCardProps {
 	onNavigate?: () => void;
 	navigateDisabled?: boolean;
 	navigateTitle?: string;
+	/** True when this schedule's date is before today — the visit already
+	 * happened (or didn't), so the record is history and shouldn't be
+	 * changed after the fact. Hides Edit/Delete/Reschedule from the
+	 * dropdown (Show Details stays — viewing is always allowed) and makes
+	 * the card inert for drag-and-drop reordering, same as `isLocked` but
+	 * for a different reason (a past date, not "technician already timed
+	 * in today") — the two are independent and can never both apply to the
+	 * same card (isLocked only ever fires for today's first stop). */
+	readOnly?: boolean;
 }
 
 function priorityBadgeClass(priority: string): string {
@@ -103,8 +112,9 @@ export function ScheduleCard({
 	onNavigate,
 	navigateDisabled,
 	navigateTitle,
+	readOnly,
 }: ScheduleCardProps) {
-	const draggable = draggableReorder && !isLocked;
+	const draggable = draggableReorder && !isLocked && !readOnly;
 	return (
 		<Card
 			className={cn(
@@ -127,9 +137,9 @@ export function ScheduleCard({
 			onClick={() => onCardClick?.(schedule)}
 			draggable={draggable}
 			onDragStart={draggable ? onDragStartCard : undefined}
-			onDragOver={isLocked ? undefined : onDragOverCard}
-			onDragLeave={isLocked ? undefined : onDragLeaveCard}
-			onDrop={isLocked ? undefined : onDropCard}
+			onDragOver={isLocked || readOnly ? undefined : onDragOverCard}
+			onDragLeave={isLocked || readOnly ? undefined : onDragLeaveCard}
+			onDrop={isLocked || readOnly ? undefined : onDropCard}
 			onDragEnd={onDragEndCard}
 		>
 			{isSelected && (
@@ -145,24 +155,26 @@ export function ScheduleCard({
 				<div
 					className={cn(
 						"absolute -left-2 -top-2 flex h-6 w-6 items-center justify-center rounded-full border-2 border-background text-xs font-semibold shadow",
-						isLocked
+						isLocked || readOnly
 							? "bg-warning text-warning-foreground"
 							: "bg-primary text-primary-foreground"
 					)}
 					title={
 						isLocked
 							? "Locked — the technician has already timed in for this stop."
-							: `Visit order: ${sequenceNumber}`
+							: readOnly
+								? "Read-only — this date has passed."
+								: `Visit order: ${sequenceNumber}`
 					}
 				>
-					{isLocked ? <Lock className="h-3 w-3" /> : sequenceNumber}
+					{isLocked || readOnly ? <Lock className="h-3 w-3" /> : sequenceNumber}
 				</div>
 			)}
 			<CardContent className="space-y-3 p-4">
 				<div className="flex items-start justify-between gap-2">
 					<div className="flex items-center gap-2">
 						{draggableReorder && (
-							isLocked ? (
+							isLocked || readOnly ? (
 								<Lock className="h-4 w-4 shrink-0 text-warning" />
 							) : (
 								<GripVertical className="h-4 w-4 shrink-0 text-muted-foreground" />
@@ -186,23 +198,37 @@ export function ScheduleCard({
 						</DropdownMenuTrigger>
 						<DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
 							<DropdownMenuLabel>Actions</DropdownMenuLabel>
-							<DropdownMenuItem onClick={() => onEditClick(Number(schedule.id))}>
-								Edit
-							</DropdownMenuItem>
-							<DropdownMenuItem onClick={() => onDeleteClick(Number(schedule.id))}>
-								Delete
-							</DropdownMenuItem>
-							<DropdownMenuSeparator />
+							{/* Edit/Delete/Reschedule all change the record, so they're
+							    hidden (not just disabled) once the date is in the
+							    past — "Show Details" is the only action a read-only
+							    schedule keeps, since viewing is always allowed. */}
+							{!readOnly && (
+								<>
+									<DropdownMenuItem
+										onClick={() => onEditClick(Number(schedule.id))}
+									>
+										Edit
+									</DropdownMenuItem>
+									<DropdownMenuItem
+										onClick={() => onDeleteClick(Number(schedule.id))}
+									>
+										Delete
+									</DropdownMenuItem>
+									<DropdownMenuSeparator />
+								</>
+							)}
 							<DropdownMenuItem
 								onClick={() => onShowDetailsClick(Number(schedule.id))}
 							>
 								Show Details
 							</DropdownMenuItem>
-							<DropdownMenuItem
-								onClick={() => onShowReschedClick(Number(schedule.id))}
-							>
-								Reschedule
-							</DropdownMenuItem>
+							{!readOnly && (
+								<DropdownMenuItem
+									onClick={() => onShowReschedClick(Number(schedule.id))}
+								>
+									Reschedule
+								</DropdownMenuItem>
+							)}
 						</DropdownMenuContent>
 					</DropdownMenu>
 				</div>
@@ -242,9 +268,20 @@ export function ScheduleCard({
 				)}
 
 				<div className="flex items-center justify-between pt-1">
-					<Badge className={priorityBadgeClass(schedule.priority)}>
-						{schedule.priority}
-					</Badge>
+					<div className="flex items-center gap-2">
+						<Badge className={priorityBadgeClass(schedule.priority)}>
+							{schedule.priority}
+						</Badge>
+						{readOnly && (
+							<span
+								className="flex items-center gap-1 text-xs text-muted-foreground"
+								title="This date has passed — view only, no longer editable."
+							>
+								<Lock className="h-3 w-3" />
+								Read-only
+							</span>
+						)}
+					</div>
 					{schedule.maintainAll && (
 						<span className="flex items-center gap-1 text-xs text-success">
 							<CheckSquare className="h-3.5 w-3.5" />
