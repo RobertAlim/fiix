@@ -5,7 +5,7 @@
 // the JSON route the on-screen "Generate" grid uses — the two must never
 // disagree about what a given set of filters returns.
 import { NextResponse } from "next/server";
-import { requireSuperAdmin } from "@/lib/require-role";
+import { requireRole } from "@/lib/require-role";
 import ExcelJS from "exceljs";
 import {
 	renderedMinutes,
@@ -19,9 +19,9 @@ import {
 } from "@/lib/server/attendance-report-query";
 
 export async function GET(req: Request) {
-	// Payroll data — restricted to Admin, unlike the operational reports
-	// elsewhere in the app that Scheduler can also pull.
-	const auth = await requireSuperAdmin();
+	// Payroll data — restricted to Admin and Super Admin, unlike the
+	// operational reports elsewhere in the app that Scheduler can also pull.
+	const auth = await requireRole(["Admin", "Super Admin"]);
 	if (auth.error) return auth.error;
 
 	const parsed = parseAttendanceReportParams(new URL(req.url).searchParams);

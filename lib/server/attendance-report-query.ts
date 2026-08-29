@@ -85,6 +85,11 @@ export function parseAttendanceReportParams(
 }
 
 export interface AttendanceReportRow {
+	/** technicianAttendance.id — the stable identifier for THIS attendance
+	 * record, distinct from technicianId (the person). Needed so the
+	 * Sign Out edit endpoint can target one exact row instead of guessing
+	 * from (technicianId, workDate). */
+	id: number;
 	technicianId: number;
 	technicianFirstName: string;
 	technicianLastName: string;
@@ -113,6 +118,7 @@ export async function fetchAttendanceReportRows(
 
 	return db
 		.select({
+			id: technicianAttendance.id,
 			technicianId: technicianAttendance.technicianId,
 			technicianFirstName: users.firstName,
 			technicianLastName: users.lastName,

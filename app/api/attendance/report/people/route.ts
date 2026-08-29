@@ -11,10 +11,10 @@ import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { technicianAttendance, users } from "@/db/schema";
 import { eq, asc, sql } from "drizzle-orm";
-import { requireSuperAdmin } from "@/lib/require-role";
+import { requireRole } from "@/lib/require-role";
 
 export async function GET() {
-	const auth = await requireSuperAdmin();
+	const auth = await requireRole(["Admin", "Super Admin"]);
 	if (auth.error) return auth.error;
 
 	const people = await db

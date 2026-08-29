@@ -56,7 +56,6 @@ export type ModuleKey =
 export const SUPER_ADMIN_ONLY_MODULES: ModuleKey[] = [
 	"roleAssignment",
 	"smsRecipients",
-	"attendanceReport",
 	"purgeMaintenance",
 	"staffGpsLocations",
 ];
@@ -74,6 +73,12 @@ const ADMIN_MODULES: ModuleKey[] = [
 	"printers",
 	"locationGeofences",
 	"gpsMonitoring",
+	// Attendance Report is now shared: Admin can view it and edit the Sign
+	// Out value within the restrictions enforced server-side in
+	// app/api/attendance/report/[id]/time-out/route.ts; Super Admin keeps
+	// the unrestricted version. Moved out of SUPER_ADMIN_ONLY_MODULES so
+	// both the nav link and the underlying routes are reachable for Admin.
+	"attendanceReport",
 ];
 
 export const MODULE_ACCESS: Record<Role, ModuleKey[]> = {
