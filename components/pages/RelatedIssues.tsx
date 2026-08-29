@@ -6,20 +6,38 @@
 // Scheduler/Admin can find every past printer with a given symptom
 // ("gear", "jam", "roller"...) instead of only what's currently in
 // Pending Maintenance. Each result is a card (Model / Serial / Client up
-// top, the matching Notes below); clicking one opens the SAME Printer
+// top, the matching Notes below); clicking the card opens the SAME Printer
 // History modal used from the Printers grid (components/
 // PrinterHistoryDialog.tsx), pre-armed with the searched keyword so the
 // matching Notes entry is highlighted and scrolled into view the moment
 // the modal opens — no manual re-scanning required.
+//
+// The Notes area itself is a second, separate interactive element (a
+// Radix Popover, same pattern as PendingItemNotes in
+// components/pages/PendingMaintenancePanel.tsx) so a Super Admin can fix a
+// typo or add context inline without that click bubbling up and opening
+// the history modal instead.
 import React, { useEffect, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Search, Printer as PrinterIcon, Building2, Hash } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+	Search,
+	Printer as PrinterIcon,
+	Building2,
+	Hash,
+	Pencil,
+} from "lucide-react";
 import { fetchData } from "@/lib/fetchData";
+import { apiPath } from "@/lib/base-path";
 import { highlightMatches } from "@/lib/highlight-text";
 import { PrinterHistoryDialog } from "@/components/PrinterHistoryDialog";
+import { useUserStore } from "@/state/userStore";
+import { showAppToast } from "../ui/apptoast";
 
 interface RelatedIssueResult {
 	id: number;
@@ -37,6 +55,14 @@ interface RelatedIssuesResponse {
 }
 
 export default function RelatedIssuesPage() {
+	const { users } = useUserStore();
+	// Same boundary as PendingMaintenancePanel's canEditNotes: editing
+	// maintain.notes after the fact is a Super Admin-only correction. The
+	// real enforcement is server-side (app/api/pending-maintenance/[id]/
+	// notes/route.ts requires Super Admin regardless of this flag) — this
+	// only decides whether the edit affordance is shown at all.
+	const canEditNotes = users?.role === "Super Admin";
+
 	const [search, setSearch] = useState("");
 	// Typing shouldn't fire a request per keystroke — same 300ms debounce
 	// pattern already used by MasterDataManager's own search box.
@@ -113,11 +139,21 @@ export default function RelatedIssuesPage() {
 						)}
 						<div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
 							{results.map((r) => (
-								<button
+								// A plain div (not a <button>) — the Notes popover below
+								// renders its own trigger button, and a button can't
+								// legally nest inside another button.
+								<div
 									key={r.id}
-									type="button"
+									role="button"
+									tabIndex={0}
 									onClick={() => setHistoryPrinterId(r.printerId)}
-									className="flex flex-col gap-3 rounded-xl border p-4 text-left transition-colors hover:border-primary/50 hover:bg-muted/40"
+									onKeyDown={(e) => {
+										if (e.key === "Enter" || e.key === " ") {
+											e.preventDefault();
+											setHistoryPrinterId(r.printerId);
+										}
+									}}
+									className="flex cursor-pointer flex-col gap-3 rounded-xl border p-4 text-left transition-colors hover:border-primary/50 hover:bg-muted/40"
 								>
 									{/* Top section: Model, Serial Number, Client */}
 									<div className="space-y-1.5">
@@ -135,11 +171,14 @@ export default function RelatedIssuesPage() {
 										</div>
 									</div>
 
-									{/* Bottom section: the matching Notes */}
-									<p className="line-clamp-4 rounded-lg bg-muted p-2.5 text-sm text-muted-foreground">
-										{r.notes ? highlightMatches(r.notes, debouncedSearch) : "—"}
-									</p>
-								</button>
+									{/* Bottom section: the matching Notes — its own
+									    interactive element, see RelatedIssueNotes below. */}
+									<RelatedIssueNotes
+										item={r}
+										keyword={debouncedSearch}
+										canEdit={canEditNotes}
+									/>
+								</div>
 							))}
 						</div>
 					</>
@@ -154,5 +193,175 @@ export default function RelatedIssuesPage() {
 				}}
 			/>
 		</Card>
+	);
+}
+
+/**
+ * The Notes area of a Related Issues card. Read-only, highlighted preview
+ * text for everyone except Super Admin (`canEdit`), who gets a Radix
+ * Popover with an editable textarea instead — same UI/UX as
+ * PendingItemNotes in components/pages/PendingMaintenancePanel.tsx. Clicks
+ * here are stopped from bubbling up to the card's own onClick, so opening
+ * (or editing in) the popover never also opens the Printer History modal.
+ *
+ * Saves PATCH `/api/pending-maintenance/[id]/notes` — the same
+ * maintain.notes-editing endpoint Pending Maintenance already uses (it
+ * takes a maintain id and isn't specific to that page), so there's exactly
+ * one server-side edit path, one Super-Admin-only enforcement point, for
+ * this field.
+ */
+function RelatedIssueNotes({
+	item,
+	keyword,
+	canEdit,
+}: {
+	item: RelatedIssueResult;
+	keyword: string;
+	canEdit: boolean;
+}) {
+	const queryClient = useQueryClient();
+	const [open, setOpen] = useState(false);
+	const [draft, setDraft] = useState(item.notes ?? "");
+
+	const { mutate: saveNotes, isPending } = useMutation({
+		mutationFn: async () => {
+			const res = await fetch(
+				apiPath(`/api/pending-maintenance/${item.id}/notes`),
+				{
+					method: "PATCH",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({ notes: draft }),
+				}
+			);
+			const data = await res.json().catch(() => ({}));
+			if (!res.ok) {
+				throw new Error(data.error || "Could not save notes.");
+			}
+			return data as { id: number; notes: string | null };
+		},
+		onSuccess: (updated) => {
+			showAppToast({
+				message: "Notes updated",
+				position: "top-right",
+				color: "success",
+			});
+			// Update the cached search results in place rather than
+			// invalidating/refetching — a refetch re-runs the keyword search
+			// server-side, and an edit that removes the matched keyword
+			// would make the card vanish out from under the user right as
+			// they save. Patching the cache directly keeps the card in
+			// place with the new text, which is what "immediately reflect
+			// the updated value" means here.
+			queryClient.setQueriesData<RelatedIssuesResponse>(
+				{ queryKey: ["related-issues"] },
+				(old) =>
+					old
+						? {
+								...old,
+								results: old.results.map((r) =>
+									r.id === updated.id ? { ...r, notes: updated.notes } : r
+								),
+							}
+						: old
+			);
+			setOpen(false);
+		},
+		onError: (err) => {
+			showAppToast({
+				message: "Couldn't save notes",
+				description: err instanceof Error ? err.message : "Please try again.",
+				position: "top-right",
+				color: "error",
+			});
+		},
+	});
+
+	if (!canEdit) {
+		return (
+			<p className="line-clamp-4 rounded-lg bg-muted p-2.5 text-sm text-muted-foreground">
+				{item.notes ? highlightMatches(item.notes, keyword) : "—"}
+			</p>
+		);
+	}
+
+	return (
+		<Popover
+			open={open}
+			onOpenChange={(next) => {
+				// Re-sync the draft from the current cached value every time
+				// the popover opens, so a stale edit from a previously
+				// cancelled session never clobbers a newer value on save.
+				if (next) setDraft(item.notes ?? "");
+				setOpen(next);
+			}}
+		>
+			<PopoverTrigger asChild>
+				<button
+					type="button"
+					onClick={(e) => e.stopPropagation()}
+					// The card's role="button" onKeyDown treats Space/Enter as
+					// "open the history modal". React bubbles synthetic events
+					// along the COMPONENT tree, not the DOM tree — so a keydown
+					// on this trigger (or, below, inside the popover content,
+					// which Radix renders in a portal elsewhere in the DOM)
+					// still reaches the card's handler unless it's stopped
+					// here. Without this, pressing Space to activate this
+					// trigger button also "clicks" the card underneath it.
+					onKeyDown={(e) => e.stopPropagation()}
+					className="flex w-full items-start gap-1.5 rounded-lg bg-muted p-2.5 text-left text-sm text-muted-foreground transition-colors hover:bg-muted/70"
+				>
+					<Pencil className="mt-0.5 h-3 w-3 shrink-0 opacity-60" />
+					{item.notes ? (
+						<span className="line-clamp-4">
+							{highlightMatches(item.notes, keyword)}
+						</span>
+					) : (
+						<span className="italic">Click to add notes…</span>
+					)}
+				</button>
+			</PopoverTrigger>
+			<PopoverContent
+				className="w-80"
+				onClick={(e) => e.stopPropagation()}
+				// Same reasoning as the trigger's onKeyDown above: this content
+				// is portaled outside the card's DOM subtree, but React's
+				// synthetic events still bubble through the component tree —
+				// so typing in the textarea, or pressing Space/Enter on
+				// Save/Cancel, would otherwise also open the Printer History
+				// modal behind it. Stopped here, once, for every control
+				// inside (textarea, Cancel, Save).
+				onKeyDown={(e) => e.stopPropagation()}
+			>
+				<div className="space-y-2">
+					<label className="text-sm font-medium">Notes</label>
+					<Textarea
+						value={draft}
+						onChange={(e) => setDraft(e.target.value)}
+						rows={4}
+						maxLength={2000}
+						placeholder="Add notes for this report…"
+						disabled={isPending}
+						autoFocus
+					/>
+					<div className="flex justify-end gap-2">
+						<Button
+							size="sm"
+							variant="outline"
+							onClick={() => setOpen(false)}
+							disabled={isPending}
+						>
+							Cancel
+						</Button>
+						<Button
+							size="sm"
+							onClick={() => saveNotes()}
+							disabled={isPending || draft.trim() === (item.notes ?? "").trim()}
+						>
+							{isPending ? "Saving…" : "Save"}
+						</Button>
+					</div>
+				</div>
+			</PopoverContent>
+		</Popover>
 	);
 }

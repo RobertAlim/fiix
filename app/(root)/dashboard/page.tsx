@@ -150,6 +150,12 @@ export default function DashboardPage() {
 	const { users, setUsers } = useUserStore();
 	const [activePage, setActivePage] = useState<PageKey>("dashboard");
 	const [collapsed, setCollapsed] = useState(false);
+	// The mobile nav Sheet (below) is otherwise uncontrolled — Radix opens/
+	// closes it itself via the trigger/overlay/Escape. Controlling `open`
+	// here just adds one more way to close it: selecting a nav link should
+	// dismiss the menu immediately while the chosen page loads underneath,
+	// not leave the overlay sitting open over it.
+	const [mobileNavOpen, setMobileNavOpen] = useState(false);
 	const [selectedserialNo, setSelectedSerialNo] = useState<string>("");
 	const [selectedOriginMTId, setSelectedOriginMTId] = useState<number>(0);
 	const [selectedSchedDetailsId, setSelectedSchedDetailsId] = useState(0);
@@ -401,7 +407,7 @@ export default function DashboardPage() {
 				{/* Topbar */}
 				<header className="flex items-center justify-between gap-3 border-b bg-card px-4 py-3 md:px-6">
 					<div className="flex items-center gap-2">
-						<Sheet>
+						<Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
 							<SheetTrigger asChild>
 								<Button variant="ghost" size="icon" className="md:hidden">
 									<Menu className="h-5 w-5" />
@@ -422,6 +428,7 @@ export default function DashboardPage() {
 									navItems={navItems}
 									activePage={activePage}
 									setActivePage={setActivePage}
+									onNavigate={() => setMobileNavOpen(false)}
 								/>
 							</SheetContent>
 						</Sheet>
@@ -472,10 +479,17 @@ function SheetNav({
 	navItems,
 	activePage,
 	setActivePage,
+	onNavigate,
 }: {
 	navItems: { key: PageKey; label: string; icon: React.ElementType }[];
 	activePage: PageKey;
 	setActivePage: (p: PageKey) => void;
+	/** Called right after a nav link is selected — closes the mobile Sheet
+	 * so the menu dismisses immediately while the chosen page loads
+	 * underneath, instead of leaving the overlay open until the user
+	 * dismisses it separately. Applied to every link here (page nav items
+	 * and Profile), same behavior across the board. */
+	onNavigate: () => void;
 }) {
 	return (
 		<nav className="flex-1 min-h-0">
@@ -485,7 +499,10 @@ function SheetNav({
 				return (
 					<button
 						key={key}
-						onClick={() => setActivePage(key)}
+						onClick={() => {
+							setActivePage(key);
+							onNavigate();
+						}}
 						className={cn(
 							"flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors",
 							"text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
@@ -499,6 +516,7 @@ function SheetNav({
 			})}
 			<Link
 				href="/profile"
+				onClick={onNavigate}
 				className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-sidebar-foreground/80 hover:bg-sidebar-accent"
 			>
 				<CircleUserRound className="h-5 w-5 shrink-0" />

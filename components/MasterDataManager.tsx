@@ -29,6 +29,13 @@ import {
 } from "@/components/ui/dialog";
 import { ComboBoxResponsive, ComboboxItem } from "@/components/ui/combobox";
 import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@/components/ui/select";
+import {
 	DropdownMenu,
 	DropdownMenuContent,
 	DropdownMenuCheckboxItem,
@@ -105,6 +112,16 @@ export interface FilterConfig {
 	param: string;
 	label: string;
 	placeholder?: string;
+	/** "text" (default) renders a free-text search box, sent as a
+	 * substring/ilike match by convention. "select" renders a dropdown
+	 * constrained to `options` — for a column with a small fixed set of
+	 * values (e.g. a status enum) where a substring filter would be both
+	 * unnecessary and, for values that are substrings of each other (e.g.
+	 * "Active" of "Inactive"), actually wrong. */
+	type?: "text" | "select";
+	/** Required when `type` is "select" — the exact values the endpoint
+	 * accepts for this param. */
+	options?: { value: string; label: string }[];
 }
 
 /** Endpoints may return either a bare array (all rows — paginated in the
@@ -504,20 +521,54 @@ export function MasterDataManager({
 										<label className="text-xs font-medium text-muted-foreground">
 											{f.label}
 										</label>
-										<div className="relative">
-											<Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
-											<Input
-												className="h-9 pl-8 text-sm"
-												placeholder={f.placeholder ?? f.label}
-												value={filterValues[f.param] ?? ""}
-												onChange={(e) =>
+										{f.type === "select" ? (
+											<Select
+												value={filterValues[f.param] ?? "__all__"}
+												onValueChange={(v) =>
 													setFilterValues((prev) => ({
 														...prev,
-														[f.param]: e.target.value,
+														// The "any value" option can't itself be an
+														// empty-string SelectItem (Radix reserves that
+														// for "no selection"), so it's stored as
+														// "__all__" here and translated back to "no
+														// filter" (an absent/empty query param) the
+														// same way every text filter already clears.
+														[f.param]: v === "__all__" ? "" : v,
 													}))
 												}
-											/>
-										</div>
+											>
+												<SelectTrigger className="h-9 w-full text-sm">
+													<SelectValue
+														placeholder={f.placeholder ?? `All ${f.label.toLowerCase()}`}
+													/>
+												</SelectTrigger>
+												<SelectContent>
+													<SelectItem value="__all__">
+														All {f.label.toLowerCase()}
+													</SelectItem>
+													{(f.options ?? []).map((opt) => (
+														<SelectItem key={opt.value} value={opt.value}>
+															{opt.label}
+														</SelectItem>
+													))}
+												</SelectContent>
+											</Select>
+										) : (
+											<div className="relative">
+												<Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+												<Input
+													className="h-9 pl-8 text-sm"
+													placeholder={f.placeholder ?? f.label}
+													value={filterValues[f.param] ?? ""}
+													onChange={(e) =>
+														setFilterValues((prev) => ({
+															...prev,
+															[f.param]: e.target.value,
+														}))
+													}
+												/>
+											</div>
+										)}
 									</div>
 								))}
 							</div>
@@ -567,15 +618,24 @@ export function MasterDataManager({
 					</div>
 				)}
 
-				{/* The table scrolls both ways inside a slim Radix ScrollArea
-				    instead of a full-width browser scrollbar. `w-max` lets it
-				    grow past the container; the Actions column is pinned right
-				    so Edit/Delete stay reachable mid-scroll. */}
+				{/* The table scrolls both ways — vertically via this plain
+				    overflow-y-auto wrapper, horizontally via Table's own
+				    internal Radix ScrollArea (ui/table.tsx). `w-max` lets the
+				    table grow past the container; the Actions column is
+				    pinned right so Edit/Delete stay reachable mid-scroll.
+				    Deliberately NOT a second Radix ScrollArea here: nesting
+				    one inside another breaks horizontal scrolling, because a
+				    vertical-only Radix ScrollArea sets `overflow-x: hidden`
+				    on its own viewport (see @radix-ui/react-scroll-area's
+				    ScrollAreaViewport — overflowX is only ever "scroll" when
+				    a horizontal scrollbar is also mounted, "hidden"
+				    otherwise), which clips the inner Table's wider content
+				    instead of letting it scroll. A plain div's overflow-y
+				    doesn't touch overflow-x at all, so the inner Table's own
+				    horizontal scrolling works exactly as it does everywhere
+				    else it's used standalone. */}
 				<div className="relative rounded-lg border">
-					{/* Vertical scroll for row overflow; Table itself (ui/table.tsx)
-					    already wraps in its own horizontal ScrollArea, so this only
-					    needs to add the vertical axis. */}
-					<ScrollArea className="max-h-[65vh]">
+					<div className="max-h-[65vh] overflow-y-auto">
 					<Table className="w-max min-w-full">
 						<TableHeader>
 							<TableRow>
@@ -647,7 +707,7 @@ export function MasterDataManager({
 							)}
 						</TableBody>
 					</Table>
-					</ScrollArea>
+					</div>
 				</div>
 
 				<div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">

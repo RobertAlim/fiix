@@ -1,93 +1,91 @@
-# Update — 2026-08-28
+# Update — 2026-08-29
 
-Maintenance Print Count capture + new Related Issues search module.
+Three UI/usability fixes: Printers Status filter, horizontal scrolling on
+six data grids, and mobile nav auto-close.
 
-## 1. Maintenance — Save Print Count
+## 1. Printers — Status filter
 
-`maintain.printCount` already existed in the schema, and `app/api/maintain/route.ts`
-already required it on save (with a monotonic "can't be lower than last recorded"
-check) and returned the printer's last known count as `lastPrintCount`. The gap was
-purely on the frontend: the Maintenance form had no Print Count input at all, so the
-field was never populated and every save relied on the server rejecting a missing
-value.
+- `components/MasterDataManager.tsx` — `FilterConfig` gained an optional
+  `type?: "text" | "select"` (default `"text"`, so every existing filter
+  across the app is unchanged) and `options?: { value; label }[]`. A
+  `"select"` filter renders as a dropdown (shadcn `Select`) instead of a
+  free-text box — appropriate for a column with a small fixed set of
+  values, where a substring filter is both unnecessary and, for values
+  that are substrings of each other, actually wrong (see below).
+- `components/pages/Printers.tsx` — added a `status` filter (`type:
+  "select"`) with the same three options as the Status column's own badges
+  and the Edit Printer form: Active / Inactive / Missing.
+- `app/api/admin/master/printers/route.ts` — the `GET` handler now reads
+  `?status=` and filters with an **exact** match (`eq`, not `ilike`).
+  Deliberately not a substring match: "Active" is a substring of
+  "Inactive", so filtering for Active printers with `ilike` would have
+  incorrectly also returned Inactive ones. An unrecognized value is
+  silently ignored, same as any other filter here.
 
-- `components/pages/Maintenance.tsx`
-  - Added a **Print Count** number input, positioned in the row right below
-    Model / Serial Number / Date, wired via `register("printCount", { valueAsNumber: true })`.
-  - Reads the printer's `lastPrintCount` (already returned by `GET /api/maintain`,
-    previously unused) via an extended `applyMaintenanceData` signature, and shows it
-    under the input as "Last recorded: N" for reference.
-  - Added a client-side blocking check in `onSubmit` — "Print Count is required" toast
-    + early return — before the offline-first local save proceeds, mirroring the
-    existing Nozzle Check required-field pattern. This matters because the offline
-    save writes to IndexedDB immediately and syncs later, so the check has to happen
-    before that local save, not only on the server.
-  - No schema, validation, or API changes were needed — `validation/maintainSchema.ts`
-    and `app/api/maintain/route.ts` already supported this end-to-end.
+## 2. Fix horizontal scrolling — Task Tracker, Data Imports, Printers,
+   Client Locations, Staff GPS Location, SMS Recipients
 
-## 2–6. New "Related Issues" navigation module
+Root cause: every one of these grids' tables were wrapped in a Radix
+`ScrollArea` for vertical scrolling — but `Table` (`components/ui/table.tsx`)
+already wraps *itself* in its own horizontal Radix `ScrollArea`. Nesting a
+vertical-only `ScrollArea` around an already horizontal-scrolling `Table`
+breaks the horizontal scrolling: `@radix-ui/react-scroll-area`'s Viewport
+only ever sets `overflow-x: scroll` when a horizontal scrollbar is also
+mounted on that same `ScrollArea` instance — otherwise it sets
+`overflow-x: hidden`, unconditionally. A vertical-only outer `ScrollArea`
+therefore clips the inner `Table`'s wider content instead of letting it
+scroll, regardless of how correctly the inner `Table` computes its own
+overflow.
 
-A new nav link, positioned immediately after **Pending Maintenance**, that lets a
-Scheduler/Admin free-text search every past maintenance report's Notes for a symptom,
-part, or phrase (e.g. "gear", "jam", "roller") — surfacing every printer that's ever
-had it, not just what's currently outstanding in Pending Maintenance.
+- `components/MasterDataManager.tsx` — the outer `ScrollArea` wrapping every
+  grid's `Table` is now a plain `<div className="max-h-[65vh]
+  overflow-y-auto">`. This single shared component backs Data Imports,
+  Printers, Client Locations, Staff GPS Location, and SMS Recipients, so
+  fixing it here fixes all five pages at once. The inner `Table`'s own
+  horizontal Radix `ScrollArea` is untouched and now works exactly as it
+  does everywhere else it's used standalone — same column widths
+  (`minWidth`), same pinned Actions column, same responsive behavior.
+- `components/tracker/task-tracker.tsx` — Task Tracker has its own two
+  tables (Schedules and Schedule Details) with the identical nested-
+  `ScrollArea` pattern; both outer `ScrollArea`s are now the same plain
+  `overflow-y-auto` div, for the same reason. The now-unused `ScrollArea`
+  import was removed from this file (`MasterDataManager.tsx` still uses
+  `ScrollArea` elsewhere — its Add/Edit form dialog — so that import stays
+  there).
 
-- **`lib/permissions.ts`** — added `"relatedIssues"` to the `ModuleKey` union and to
-  both the Admin and Scheduler module lists, immediately after `"pendingMaintenance"`
-  in each, so access tracks the same audience as Pending Maintenance.
+No column layout, column widths, pinned-Actions behavior, or responsive
+breakpoints changed on any of these grids — only how the vertical scroll
+region is implemented, which no longer interferes with the horizontal one.
 
-- **`app/(root)/dashboard/page.tsx`** — added the **Related Issues** nav entry
-  (right after Pending Maintenance, `Search` icon), its `PAGE_TITLES` entry, a
-  `dynamic()` import for the new page, and the matching `case` in `renderContent()`'s
-  switch.
+## 3. Mobile navigation — auto-close menu on link selection
 
-- **`app/api/related-issues/route.ts`** (new) — `GET /api/related-issues?keyword=...`.
-  Case-insensitive `ilike` search over `maintain.notes`, joined through
-  `maintain.deploymentId → deployments → printers/models/clients` (not through the
-  printer's *current* deployment) so results show the client/model as of that
-  specific report — a later printer transfer opens a new deployment row rather than
-  editing the old one, so this keeps old reports historically accurate. Same
-  `requireRole(["Admin", "Scheduler"])` gate as Pending Maintenance. Capped at 100
-  results (newest first), with a `truncated` flag surfaced to the UI.
-
-- **`components/pages/RelatedIssues.tsx`** (new) — the page itself: a debounced
-  (300ms) search box, and matching reports rendered as cards — Printer Model /
-  Serial Number / Client up top, matching Notes (with the keyword highlighted) below.
-  Clicking a card opens the *same* `PrinterHistoryDialog` used from the Printers
-  grid, passing the printer id and the searched keyword.
-
-- **`lib/highlight-text.tsx`** (new) — shared `highlightMatches()` (wraps every
-  case-insensitive occurrence of a keyword in `<mark>`, safely escaping regex
-  metacharacters in user input) and `containsKeyword()` helpers, used by both the
-  Related Issues cards and the history modal below.
-
-- **`components/PrinterHistoryDialog.tsx`** — extended with an optional
-  `highlightKeyword` prop (omitted/empty = existing behavior, unchanged design):
-  when set, every occurrence of the keyword in each history row's Notes is
-  highlighted (desktop table and mobile card views both), the first matching row
-  gets a visible ring highlight, and the dialog auto-scrolls that row into view as
-  soon as the data loads — so the report the user searched for is immediately
-  visible without manually scanning the history.
+- `app/(root)/dashboard/page.tsx` — the mobile nav `Sheet` was previously
+  uncontrolled (Radix opened/closed it itself via the trigger, overlay
+  click, or Escape only). It's now controlled with a `mobileNavOpen` state,
+  and `SheetNav` takes a new `onNavigate` callback — called immediately
+  after `setActivePage(key)` on every nav item's `onClick`, and on the
+  Profile link's `onClick` — which closes the Sheet. Selecting any link now
+  dismisses the menu right away while the chosen page loads underneath,
+  instead of leaving the overlay open until separately dismissed. Applied
+  uniformly to every link in the mobile nav (all page nav items + Profile).
+  The desktop sidebar (`NavList`) is unaffected — it was never inside a
+  Sheet.
 
 ## Verification
 
 - `npx tsc --noEmit -p tsconfig.json` — clean, no errors.
-- `npx next lint` — no new warnings; only pre-existing warnings remain (unrelated
-  `<img>` usage, a few pre-existing `react-hooks/exhaustive-deps` warnings including
-  one already present on the `onHandleScan` effect in `Maintenance.tsx`, and missing
-  `alt` props in `MaintainReport.tsx`).
+- `npx next lint` — no new warnings; only the same pre-existing warnings as
+  before these changes.
 
 ## Files in this delta
 
 ```
-lib/permissions.ts                       (modified)
-lib/highlight-text.tsx                   (new)
-app/api/related-issues/route.ts          (new)
-app/(root)/dashboard/page.tsx            (modified)
-components/pages/Maintenance.tsx         (modified)
-components/pages/RelatedIssues.tsx       (new)
-components/PrinterHistoryDialog.tsx      (modified)
+app/(root)/dashboard/page.tsx                    (modified)
+app/api/admin/master/printers/route.ts           (modified)
+components/MasterDataManager.tsx                 (modified)
+components/pages/Printers.tsx                    (modified)
+components/tracker/task-tracker.tsx              (modified)
 ```
 
-Copy these files into your project at the exact same relative paths — no other files
-are touched.
+Copy these files into your project at the exact same relative paths — no
+other files are touched.

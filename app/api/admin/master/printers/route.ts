@@ -52,6 +52,7 @@ export async function GET(req: Request) {
 	const location = params.get("location");
 	const department = params.get("department");
 	const model = params.get("model");
+	const status = params.get("status");
 
 	const filters: SQL[] = [];
 	if (serialNo?.trim()) filters.push(ilike(printers.serialNo, `%${serialNo.trim()}%`));
@@ -59,6 +60,13 @@ export async function GET(req: Request) {
 	if (location?.trim()) filters.push(ilike(locations.name, `%${location.trim()}%`));
 	if (department?.trim()) filters.push(ilike(departments.name, `%${department.trim()}%`));
 	if (model?.trim()) filters.push(ilike(models.name, `%${model.trim()}%`));
+	// Exact match, not ilike — "Active" is a substring of "Inactive", so a
+	// substring match here would incorrectly also return Inactive printers
+	// when filtering for Active ones. Silently ignored if it's not one of
+	// the three real values, same as any other unrecognized filter input.
+	if (status?.trim() && ["Active", "Inactive", "Missing"].includes(status.trim())) {
+		filters.push(eq(printers.status, status.trim() as "Active" | "Inactive" | "Missing"));
+	}
 
 	const where = filters.length ? and(...filters) : undefined;
 

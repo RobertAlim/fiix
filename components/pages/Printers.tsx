@@ -65,6 +65,19 @@ export default function PrintersPage() {
 						{ param: "location", label: "Location" },
 						{ param: "department", label: "Department" },
 						{ param: "model", label: "Model" },
+						{
+							param: "status",
+							label: "Status",
+							type: "select",
+							// Same three values as the Status column's own badges
+							// and the Edit Printer form's radio-card options below —
+							// see printers.status's doc comment in db/schema.ts.
+							options: [
+								{ value: "Active", label: "Active" },
+								{ value: "Inactive", label: "Inactive" },
+								{ value: "Missing", label: "Missing" },
+							],
+						},
 					]}
 					defaultPageSize={25}
 					columns={[

@@ -10,7 +10,6 @@ import {
 	CardContent,
 	CardFooter,
 } from "@/components/ui/card";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import {
 	Table,
 	TableBody,
@@ -164,7 +163,15 @@ export default function TaskTracker() {
 					</div>
 				</CardHeader>
 				<CardContent className="min-h-0 flex-1 px-0">
-					<ScrollArea className="h-full">
+					{/* Plain overflow-y-auto, not a second Radix ScrollArea —
+					    Table (ui/table.tsx) already wraps itself in its own
+					    horizontal Radix ScrollArea, and nesting a vertical-only
+					    ScrollArea around it sets overflow-x:hidden on that
+					    outer viewport (Radix only enables overflow-x:"scroll"
+					    when a horizontal scrollbar is also mounted), which
+					    clips this table's horizontal overflow instead of
+					    letting it scroll. */}
+					<div className="h-full overflow-y-auto">
 					<Table>
 						<TableHeader>
 							<TableRow>
@@ -246,7 +253,7 @@ export default function TaskTracker() {
 							)}
 						</TableBody>
 					</Table>
-					</ScrollArea>
+					</div>
 				</CardContent>
 				<CardFooter className="flex items-center justify-end space-x-4 py-4">
 					<div className="flex-1 text-sm text-muted-foreground">
@@ -308,7 +315,11 @@ export default function TaskTracker() {
 				</CardHeader>
 				<Separator />
 				<CardContent className="min-h-0 flex-1 px-0">
-					<ScrollArea className="h-full">
+					{/* Same reasoning as the Schedules table above: a plain
+					    overflow-y-auto div, not a second Radix ScrollArea, so
+					    this Table's own horizontal scrolling isn't clipped by
+					    a vertical-only outer viewport's overflow-x:hidden. */}
+					<div className="h-full overflow-y-auto">
 					{loadingDetails && selectedId != null ? (
 						<div className="flex items-center justify-center h-32 text-sm text-muted-foreground">
 							<Loader2 className="h-4 w-4 animate-spin mr-2" /> Loading details…
@@ -443,7 +454,7 @@ export default function TaskTracker() {
 							</TableBody>
 						</Table>
 					)}
-					</ScrollArea>
+					</div>
 				</CardContent>
 			</Card>
 		</div>
