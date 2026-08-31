@@ -18,6 +18,7 @@ import {
 	type TransferTarget,
 } from "@/components/PrinterTransferDialog";
 import { PrinterHistoryDialog } from "@/components/PrinterHistoryDialog";
+import { PrinterQrCodeButton } from "@/components/PrinterQrCodeButton";
 
 export default function PrintersPage() {
 	const [transferTarget, setTransferTarget] = useState<TransferTarget | null>(
@@ -179,25 +180,28 @@ export default function PrintersPage() {
 					]}
 					displayName={(row) => String(row.serialNo)}
 					rowActions={(row) => (
-						<Button
-							variant="ghost"
-							size="icon"
-							onClick={() =>
-								setTransferTarget({
-									id: Number(row.id),
-									serialNo: String(row.serialNo),
-									clientName: row.clientName ? String(row.clientName) : null,
-									locationName: row.locationName
-										? String(row.locationName)
-										: null,
-									status: row.status ? String(row.status) : null,
-								})
-							}
-							aria-label={`Transfer ${String(row.serialNo)}`}
-							title="Transfer to another client / location"
-						>
-							<ArrowLeftRight className="h-4 w-4 text-primary" />
-						</Button>
+						<>
+							<PrinterQrCodeButton serialNo={String(row.serialNo)} />
+							<Button
+								variant="ghost"
+								size="icon"
+								onClick={() =>
+									setTransferTarget({
+										id: Number(row.id),
+										serialNo: String(row.serialNo),
+										clientName: row.clientName ? String(row.clientName) : null,
+										locationName: row.locationName
+											? String(row.locationName)
+											: null,
+										status: row.status ? String(row.status) : null,
+									})
+								}
+								aria-label={`Transfer ${String(row.serialNo)}`}
+								title="Transfer to another client / location"
+							>
+								<ArrowLeftRight className="h-4 w-4 text-primary" />
+							</Button>
+						</>
 					)}
 					onRowClick={(row) => setHistoryPrinterId(Number(row.id))}
 				/>

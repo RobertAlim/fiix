@@ -1,120 +1,77 @@
-# Update — 2026-08-29
+# Update — 2026-08-31
 
-Attendance Report: controlled editing of the Sign Out value, directly from
-the report grid.
+Printers → QR Code popover: a Copy button that copies the QR code itself
+as an image.
 
-## 1. Sign Out editing
+## What changed
 
-- `components/pages/AttendanceReport.tsx` — every row is now clickable
-  (the whole `<tr>`, not just an icon). Clicking opens a Popover anchored
-  to that row with a Sign Out editor: an `<input type="time">` prefilled
-  with the record's current Sign Out (Asia/Manila local time), plus
-  Cancel/Save. No other field on the report is editable — Name, Role,
-  Itinerary Date, Sign In, and Hours Rendered stay exactly as they were,
-  purely computed/read-only.
-- A small pencil or lock icon next to the Sign Out value hints, before
-  the row is even clicked, whether it's editable for the current viewer.
+Everything is contained in the one existing file:
 
-## 2 & 3. Role rules — Admin restricted, Super Admin unrestricted
+- `components/PrinterQrCodeButton.tsx` (modified) — the QR Code icon in
+  the Printers grid's Actions column, and the popover it opens, are
+  unchanged in behavior. Added:
+  - A **Copy** button at the bottom of the popover.
+  - Clicking it copies the generated QR code **as a PNG image** to the
+    system clipboard — not the Serial No. text, not the QR's encoded
+    payload as text. Pasting into an email, a chat, a Word doc, or an
+    image editor drops in the actual picture.
+  - A success toast — **"QR Code copied"** — confirms it, plus the
+    button's own icon/label briefly switches to a checkmark and "Copied".
+  - The generated image itself is now a fixed **1024×1024px** PNG
+    (previously generated smaller, since it only had to fill a 224px
+    preview). It's still displayed at the same 224×224px in the popover,
+    but the underlying resolution is now high enough that the copied
+    image stays clear and sharp if pasted somewhere much larger, printed,
+    or shared on to someone else — not just adequate for the popover
+    preview.
 
-Enforced identically in the UI (so the popover shows the right message
-up front) and, as the actual boundary, server-side:
+## Handling browsers that can't copy images
 
-- **Super Admin** can edit Sign Out on any record, for any role, whether
-  the current value is blank or already populated.
-- **Admin** can only edit a record where the person's current role is
-  exactly **Technician** — never another Admin's or a Super Admin's
-  record (nor their own, since an Admin doesn't hold the Technician
-  role). And only when a Sign Out value **already exists** — an Admin
-  can correct an existing time, but can't be the one to fill in a blank
-  one; that's reserved for Super Admin.
+Not every browser/device exposes the image-clipboard API (older Safari
+versions, some in-app/WebView browsers). Detected up front with a
+feature check (`navigator.clipboard.write` and `window.ClipboardItem`
+both need to exist) before attempting anything:
 
-If a row isn't editable for the current user, the popover still opens
-(so it can explain why) but shows a message instead of the input —
-satisfying "the popover should clearly reflect whether the current user
-is authorized," rather than the row silently doing nothing on click.
+- If unsupported: a clear warning toast explains it and suggests the
+  manual alternative (right-click/long-press the image → "Copy Image")
+  instead of silently doing nothing, throwing an unhandled error, or
+  quietly falling back to copying text as if that satisfied the request.
+- If the copy attempt itself fails for some other reason (e.g. the
+  browser blocks it, or the clipboard write is rejected): an error toast
+  says so and suggests retrying or the same manual right-click fallback,
+  instead of leaving the user guessing whether it worked.
 
-## 4. Security / guardrails — the real boundary is server-side
-
-Hiding/disabling the input in the popover is only ever a courtesy. The
-actual enforcement is a new endpoint:
-
-- **`app/api/attendance/report/[id]/time-out/route.ts`** (new) — `PATCH`,
-  requires `requireRole(["Admin", "Super Admin"])`, then re-derives and
-  re-checks every rule above from the database (never trusts anything
-  the client sent about roles or permissions):
-  - Looks up the target attendance record and the CURRENT role of the
-    person it belongs to.
-  - Super Admin: no further checks.
-  - Admin: 403 if the target's role isn't exactly `"Technician"`; 403 if
-    the record's existing Sign Out is null.
-  - The submitted time (`"HH:mm"`, validated with zod) is combined with
-    the record's own shift date and converted from Asia/Manila local
-    time to the correct UTC instant with `date-fns-tz`'s `fromZonedTime`
-    — the reverse of `convertToPhilippineTimezone` in
-    `lib/dateConverter.ts`, which only ever goes the other direction
-    (UTC → a Manila-formatted display string). Rejects with 400 if the
-    new Sign Out would land before Sign In.
-  - A direct API call with a forged/omitted role can't bypass any of
-    this — the check is against the caller's own DB-verified role and
-    the target record's own DB-verified data, not anything in the
-    request body.
-
-### Prerequisite: Admin could not reach this page at all before
-
-The task requires both Admin and Super Admin to use this feature, but
-Attendance Report was previously Super-Admin-only end to end. Opened up
-just enough for Admin to view the report and use this one editing path
-— nothing else about who can do what elsewhere in the app changed:
-
-- `lib/permissions.ts` — `"attendanceReport"` moved out of
-  `SUPER_ADMIN_ONLY_MODULES` into the regular Admin module list, so the
-  nav link and the page itself are reachable for Admin.
-- `app/api/attendance/report/data/route.ts` (on-screen grid),
-  `app/api/attendance/report/route.ts` (Excel export), and
-  `app/api/attendance/report/people/route.ts` (person picker) — gate
-  changed from `requireSuperAdmin()` to
-  `requireRole(["Admin", "Super Admin"])`. Super Admin's access is
-  unchanged; Admin can now view/generate/export the same report Super
-  Admin sees.
-- `lib/server/attendance-report-query.ts` — added `id`
-  (`technicianAttendance.id`) to the shared row shape. There was
-  previously no stable identifier for one specific attendance record;
-  the new PATCH endpoint needs it to target the exact row being edited.
-  `app/api/attendance/report/data/route.ts`'s JSON response now also
-  includes `workDate`, `timeInIso`, and `timeOutIso` alongside the
-  existing pre-formatted display strings — the popover needs the raw
-  instant to prefill correctly and to know whether a Sign Out value
-  exists at all, not just the "—" placeholder used for display.
+One Safari-specific detail worth calling out: the click handler calls
+`navigator.clipboard.write()` **synchronously** (not after an `await`),
+passing it a `Promise<Blob>` rather than an already-resolved one. Safari
+revokes the "user activation" a click carries the instant the handler
+yields to the event loop via `await`, and a clipboard write attempted
+after that point is silently rejected — passing a promise as the
+`ClipboardItem`'s value (which the spec supports, and every browser that
+implements `ClipboardItem` at all accepts) keeps the actual write call
+inside the synchronous part of the click handler while the image
+fetch/blob conversion still happens underneath it asynchronously.
 
 ## What did NOT change
 
-- The Excel export's columns and content are unchanged (Sign Out editing
-  only happens from the on-screen grid).
-- No change to how Time In/Sign In is recorded or displayed anywhere.
-- Scheduler and Technician access to Attendance Report is unchanged —
-  Scheduler never had it, Technician is web-blocked entirely (unrelated
-  to this change).
+- The QR Code button's placement, the popover's open/close behavior, and
+  the QR code's content (still just the Serial No.) are all unchanged.
+- No other page or component was touched — this is the same single
+  file from the previous Printers QR Code update.
 
 ## Verification
 
 - `npx tsc --noEmit -p tsconfig.json` — clean, no errors.
 - `npx next lint` — no new warnings; only the same pre-existing warnings
-  as before these changes (scan-qrcode `<img>`, a few `exhaustive-deps`
+  as before this change (scan-qrcode `<img>`, a few `exhaustive-deps`
   hooks in CameraCapture/Maintenance/Schedule, `alt-text` in
   MaintainReport).
 
 ## Files in this delta
 
 ```
-lib/permissions.ts                                    (modified)
-lib/server/attendance-report-query.ts                 (modified)
-app/api/attendance/report/data/route.ts                (modified)
-app/api/attendance/report/route.ts                     (modified)
-app/api/attendance/report/people/route.ts               (modified)
-app/api/attendance/report/[id]/time-out/route.ts        (new)
-components/pages/AttendanceReport.tsx                   (modified)
+components/PrinterQrCodeButton.tsx     (modified)
 ```
 
-Copy these files into your project at the exact same relative paths — no
+Copy this file into your project at the exact same relative path — no
 other files are touched.
