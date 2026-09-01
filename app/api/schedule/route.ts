@@ -15,6 +15,7 @@ import {
 	departments,
 	maintain,
 	status,
+	locationGeofences,
 } from "@/db/schema"; // Adjust this path to your Drizzle schema
 import { format } from "date-fns";
 import { ensureError } from "@/lib/errors";
@@ -680,29 +681,40 @@ export async function GET(req: Request) {
 			// via the printer's active deployment, since printers itself no longer
 			// carries those columns after the deployments split.
 			const scheduleRows = await db
-				.select({
-					id: schedules.id,
-					technicianId: schedules.technicianId,
-					clientId: schedules.clientId,
-					locationId: schedules.locationId,
-					priority: schedules.priority,
-					notes: schedules.notes,
-					maintainAll: schedules.maintainAll,
-					scheduledAt: schedules.scheduledAt,
-					sequence: schedules.sequence,
-					createdAt: schedules.createdAt,
-					technicianFirstName: users.firstName,
-					technicianLastName: users.lastName,
-					clientName: clients.name,
-					locationName: locations.name,
-					priorityName: priorities.name,
-				})
-				.from(schedules)
-				.innerJoin(users, eq(users.id, schedules.technicianId))
-				.innerJoin(clients, eq(clients.id, schedules.clientId))
-				.innerJoin(locations, eq(locations.id, schedules.locationId))
-				.innerJoin(priorities, eq(priorities.id, schedules.priority))
-				.where(whereClause);
+			.select({
+				id: schedules.id,
+				technicianId: schedules.technicianId,
+				clientId: schedules.clientId,
+				locationId: schedules.locationId,
+				priority: schedules.priority,
+				notes: schedules.notes,
+				maintainAll: schedules.maintainAll,
+				scheduledAt: schedules.scheduledAt,
+				sequence: schedules.sequence,
+				createdAt: schedules.createdAt,
+				technicianFirstName: users.firstName,
+				technicianLastName: users.lastName,
+				clientName: clients.name,
+				locationName: locations.name,
+				priorityName: priorities.name,
+				// NEW — powers the mobile app's per-stop "navigate to client"
+				// icon. Previously this route returned no coordinates at all,
+				// which is the actual cause of that icon going missing (it
+				// was never a flaky cross-endpoint join issue — there was
+				// simply nothing to join TO). Null when the location has no
+				// geofence pin configured yet; the mobile client already
+				// treats that as "hide the icon" rather than linking to
+				// (0, 0).
+				latitude: locationGeofences.latitude,
+				longitude: locationGeofences.longitude,
+			})
+			.from(schedules)
+			.innerJoin(users, eq(users.id, schedules.technicianId))
+			.innerJoin(clients, eq(clients.id, schedules.clientId))
+			.innerJoin(locations, eq(locations.id, schedules.locationId))
+			.innerJoin(priorities, eq(priorities.id, schedules.priority))
+			.leftJoin(locationGeofences, eq(locationGeofences.locationId, schedules.locationId))
+			.where(whereClause);
 
 			if (scheduleRows.length === 0) {
 				return NextResponse.json([]);
@@ -761,6 +773,8 @@ export async function GET(req: Request) {
 				client: { name: s.clientName },
 				location: { name: s.locationName },
 				priorityLevel: { name: s.priorityName },
+				latitude: s.latitude,
+				longitude: s.longitude,
 				scheduleDetails: (detailsBySchedule.get(s.id) ?? []).map((d) => ({
 					id: d.id,
 					scheduleId: d.scheduleId,

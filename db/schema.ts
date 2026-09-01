@@ -337,6 +337,87 @@ export const otps = pgTable("otps", {
 	expiresAt: timestamp("expires_at").notNull(),
 });
 
+/** Selectable Support Service categories (2307 BIR Form, Collection,
+ * Billing, Contracts, Others, ...) — an Admin-editable list rather than a
+ * hardcoded enum, same reasoning as `status`/`priorities` elsewhere in
+ * this schema. Seeded with the initial set in migration 0063; `isActive`
+ * lets one be retired without deleting history that references it. */
+export const supportServiceType = pgTable("supportServiceType", {
+	id: serial("id").primaryKey(),
+	name: text("name").notNull(),
+	isActive: boolean("isActive").notNull().default(true),
+	createdAt: timestamp("createdAt").notNull().default(sql`now()`),
+});
+
+/**
+ * A technician's non-maintenance scheduled work — client visits with no
+ * printer attached (BIR forms, collection, billing, contracts). One row
+ * serves as both the SCHEDULED assignment (created by a Scheduler, mirrors
+ * what a `schedules` row is for printer visits) and its own COMPLETION
+ * record (filled in by the technician) — there is no separate "log" table,
+ * matching how `scheduleDetails.isMaintained` plays the same dual role for
+ * a printer stop.
+ *
+ * Deliberately uses plain `integer(...).notNull()` for clientId/locationId/
+ * technicianId/supportServiceTypeId/signatoryId rather than `.references()`
+ * — matching `schedules`' own established convention in this same file
+ * (see schedules.clientId/locationId/technicianId above, none of which
+ * have a DB-level FK either). Referential integrity for this table is
+ * enforced the same way it already is for schedules: in application code,
+ * not the database.
+ */
+export const supportServices = pgTable("supportServices", {
+	id: serial("id").primaryKey(),
+	clientId: integer("clientId").notNull(),
+	locationId: integer("locationId").notNull(),
+	supportServiceTypeId: integer("supportServiceTypeId").notNull(),
+	technicianId: integer("technicianId").notNull(),
+	scheduledAt: date("scheduledAt").notNull(),
+	/** Visit order within the technician's day — same purpose and same
+	 * nullable-until-sequenced convention as `schedules.sequence`. Needed
+	 * so a day mixing printer stops and support errands can eventually be
+	 * ordered as ONE itinerary (see the `lastStop`/`lastGeofence` logic in
+	 * app/api/attendance/status/route.ts, which currently falls back to
+	 * "whichever source has entries" when this is still unset — see that
+	 * route's own comment for the gap this closes once a Scheduler UI
+	 * actually sets it). */
+	sequence: integer("sequence"),
+	/** Written by the Scheduler when assigning the activity — read-only to
+	 * the technician, mirrors `schedules.notes`. */
+	notes: text("notes"),
+	/** null while still outstanding. Set by the technician on completion —
+	 * same role `scheduleDetails.isMaintained` plays, just a two-value
+	 * outcome instead of a boolean since "couldn't be achieved" is a
+	 * meaningful, expected result here (e.g. nobody available to sign),
+	 * not a failure to record. */
+	status: varchar("status", { length: 20 }),
+	technicianNotes: text("technicianNotes"),
+	signatoryId: integer("signatoryId"),
+	photoUrl: text("photoUrl"),
+	/** Same "Unsigned" sentinel convention as maintain.signPath — see that
+	 * column's doc comment. Kept nullable here rather than NOT NULL with a
+	 * default: unlike a maintenance report, a "Not Achieved" support
+	 * activity legitimately has no signature at all (nobody to sign for
+	 * an errand that couldn't be completed), and forcing a sentinel value
+	 * onto that case would misrepresent it as "signature not yet
+	 * captured" rather than "not applicable." */
+	signatureUrl: text("signatureUrl"),
+	/** GPS fix captured at completion. Inline columns rather than a
+	 * separate join table (unlike maintain's `maintenanceLocation`) —
+	 * this workflow has no reverse-geocoding step, so there's nothing a
+	 * second table would need to hold beyond what fits here. */
+	gpsLatitude: doublePrecision("gpsLatitude"),
+	gpsLongitude: doublePrecision("gpsLongitude"),
+	gpsAccuracy: doublePrecision("gpsAccuracy"),
+	gpsCapturedAt: timestamp("gpsCapturedAt"),
+	/** Client-generated UUID for offline-first sync idempotency — same
+	 * purpose and same pattern as maintain.clientUuid. */
+	clientUuid: uuid("clientUuid").unique(),
+	completedAt: timestamp("completedAt"),
+	createdAt: timestamp("createdAt").notNull().default(sql`now()`),
+	updatedAt: timestamp("updatedAt").notNull().default(sql`now()`),
+});
+
 // Define relations for Drizzle ORM
 // --- RELATIONS ---
 

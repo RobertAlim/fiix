@@ -16,7 +16,16 @@ export const r2Client = new S3Client({
 
 // Only these buckets may ever be written to via the app.
 // Client-supplied bucket names are validated against this list.
-export const ALLOWED_BUCKETS = new Set([env.bucketName, "fiixdrive", "fiixnozzle"]);
+// "fiixsupport" — Support Services photo uploads (mobile app), separate
+// from "fiixnozzle" (maintenance photos) per the original request's
+// explicit bucket split; signatures for both flows still share
+// "fiixdrive".
+export const ALLOWED_BUCKETS = new Set([
+	env.bucketName,
+	"fiixdrive",
+	"fiixnozzle",
+	"fiixsupport",
+]);
 
 // Only these MIME types are accepted for uploads (signatures, nozzle photos, PDFs).
 export const ALLOWED_UPLOAD_CONTENT_TYPES = new Set([
