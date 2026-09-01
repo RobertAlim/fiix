@@ -33,7 +33,13 @@ export type ModuleKey =
 	| "dashboard"
 	| "maintenance"
 	| "taskTracker"
-	| "report"
+	// "report" used to be one flat module/page. It's now a parent nav
+	// entry with two sub-pages, each its own ModuleKey so access can still
+	// be checked (and, if ever needed, granted differently) per sub-page —
+	// see app/(root)/dashboard/page.tsx's REPORT_GROUP. Every role that
+	// used to list "report" below now lists both, so nothing lost access.
+	| "reportMaintenance"
+	| "reportMonitoring"
 	| "schedule"
 	| "pendingMaintenance"
 	| "relatedIssues"
@@ -46,7 +52,10 @@ export type ModuleKey =
 	| "smsRecipients"
 	| "attendanceReport"
 	| "purgeMaintenance"
-	| "gpsMonitoring";
+	| "gpsMonitoring"
+	// Area (South/North) and Client Group management for the Monitoring
+	// report — see components/pages/Clients.tsx.
+	| "clients";
 
 /**
  * Modules only a Super Admin may open. Admin keeps the regular operational
@@ -64,7 +73,8 @@ const ADMIN_MODULES: ModuleKey[] = [
 	"dashboard",
 	"maintenance",
 	"taskTracker",
-	"report",
+	"reportMaintenance",
+	"reportMonitoring",
 	"schedule",
 	"pendingMaintenance",
 	"relatedIssues",
@@ -79,6 +89,10 @@ const ADMIN_MODULES: ModuleKey[] = [
 	// the unrestricted version. Moved out of SUPER_ADMIN_ONLY_MODULES so
 	// both the nav link and the underlying routes are reachable for Admin.
 	"attendanceReport",
+	// Area (South/North) + Client Group assignment, feeding the Monitoring
+	// report — same audience as the rest of the operational master data
+	// (Printers, Client Locations), not reserved to Super Admin.
+	"clients",
 ];
 
 export const MODULE_ACCESS: Record<Role, ModuleKey[]> = {
@@ -94,7 +108,13 @@ export const MODULE_ACCESS: Record<Role, ModuleKey[]> = {
 	Scheduler: [
 		"dashboard",
 		"taskTracker",
-		"report",
+		"reportMaintenance",
+		// The Monitoring report exists specifically to help a Scheduler spot
+		// nearby clients (Area + Client Group) when building itineraries —
+		// see components/pages/Monitoring.tsx — so it's available here even
+		// though Scheduler doesn't get the "clients" module used to MANAGE
+		// those Areas/Groups.
+		"reportMonitoring",
 		"schedule",
 		"pendingMaintenance",
 		"relatedIssues",

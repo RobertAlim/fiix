@@ -24,6 +24,7 @@ import {
 	CalendarCheck,
 	CircleUserRound,
 	ChevronLeft,
+	ChevronDown,
 	Printer,
 	ShieldCheck,
 	Lock,
@@ -37,6 +38,7 @@ import {
 	Timer,
 	Navigation,
 	Search,
+	Building2,
 } from "lucide-react";
 import { useUserStore } from "@/state/userStore";
 import { useDBUser } from "@/hooks/use-db-user";
@@ -57,7 +59,13 @@ import {
 
 const MaintenancePage = dynamic(() => import("@/components/pages/Maintenance"));
 const TaskTrackerPage = dynamic(() => import("@/components/pages/TaskTracker"));
-const ReportPage = dynamic(() => import("@/components/pages/Report"));
+// This is the ORIGINAL Report page/component, completely unchanged — it now
+// lives under the Report ▸ Maintenance sub-nav (see REPORT_GROUP below)
+// instead of directly under a flat "Report" link. Its own content and
+// backend (/api/maintain-report) were not touched by that move.
+const ReportMaintenancePage = dynamic(() => import("@/components/pages/Report"));
+const MonitoringPage = dynamic(() => import("@/components/pages/Monitoring"));
+const ClientsPage = dynamic(() => import("@/components/pages/Clients"));
 const SchedulePage = dynamic(() => import("@/components/pages/Schedule"));
 const DashboardRealPage = dynamic(() => import("@/components/pages/Dashboard"));
 const RoleAssignmentPage = dynamic(
@@ -91,31 +99,70 @@ const StaffGpsLocationsPage = dynamic(
 
 type PageKey = ModuleKey;
 
-const ALL_NAV_ITEMS: { key: PageKey; label: string; icon: React.ElementType }[] = [
-	{ key: "dashboard", label: "Dashboard", icon: LayoutDashboard },
-	{ key: "maintenance", label: "Maintenance", icon: Wrench },
-	{ key: "taskTracker", label: "Task Tracker", icon: ListTodo },
-	{ key: "report", label: "Report", icon: FileText },
-	{ key: "schedule", label: "Schedule", icon: CalendarCheck },
-	{ key: "pendingMaintenance", label: "Pending Maintenance", icon: ClipboardList },
-	{ key: "relatedIssues", label: "Related Issues", icon: Search },
-	{ key: "timekeep", label: "Timekeep", icon: Timer },
-	{ key: "roleAssignment", label: "Role Assignment", icon: ShieldCheck },
-	{ key: "dataImport", label: "Data Import", icon: DatabaseZap },
-	{ key: "printers", label: "Printers", icon: Printer },
-	{ key: "locationGeofences", label: "Client Locations", icon: MapPin },
-	{ key: "staffGpsLocations", label: "Staff GPS Location", icon: Navigation },
-	{ key: "smsRecipients", label: "SMS Recipients", icon: MessageSquare },
-	{ key: "attendanceReport", label: "Attendance Report", icon: FileSpreadsheet },
-	{ key: "purgeMaintenance", label: "Purge Maintenance", icon: History },
-	{ key: "gpsMonitoring", label: "GPS Monitoring", icon: Satellite },
+/** A single, directly-navigable sidebar link. */
+interface NavLeaf {
+	type: "leaf";
+	key: PageKey;
+	label: string;
+	icon: React.ElementType;
+}
+
+/** A parent nav entry that isn't itself a page — clicking it (in the
+ * expanded, non-collapsed sidebar) just reveals `children`; there's
+ * nothing to render for the group itself. Report is the first of these
+ * (Maintenance / Monitoring); built as a general shape rather than a
+ * one-off special case so a future second grouped section doesn't need
+ * its own parallel implementation. */
+interface NavGroup {
+	type: "group";
+	/** Distinct from any PageKey — this never becomes `activePage`, it
+	 * only keys the expand/collapse state (see `expandedGroups` below). */
+	groupKey: string;
+	label: string;
+	icon: React.ElementType;
+	children: { key: PageKey; label: string }[];
+}
+
+type NavEntry = NavLeaf | NavGroup;
+
+const ALL_NAV_ITEMS: NavEntry[] = [
+	{ type: "leaf", key: "dashboard", label: "Dashboard", icon: LayoutDashboard },
+	{ type: "leaf", key: "maintenance", label: "Maintenance", icon: Wrench },
+	{ type: "leaf", key: "taskTracker", label: "Task Tracker", icon: ListTodo },
+	{
+		type: "group",
+		groupKey: "report",
+		label: "Report",
+		icon: FileText,
+		children: [
+			// The pre-existing Report page/content, unchanged — just moved
+			// under this sub-link. See ReportMaintenancePage above.
+			{ key: "reportMaintenance", label: "Maintenance" },
+			{ key: "reportMonitoring", label: "Monitoring" },
+		],
+	},
+	{ type: "leaf", key: "schedule", label: "Schedule", icon: CalendarCheck },
+	{ type: "leaf", key: "pendingMaintenance", label: "Pending Maintenance", icon: ClipboardList },
+	{ type: "leaf", key: "relatedIssues", label: "Related Issues", icon: Search },
+	{ type: "leaf", key: "timekeep", label: "Timekeep", icon: Timer },
+	{ type: "leaf", key: "roleAssignment", label: "Role Assignment", icon: ShieldCheck },
+	{ type: "leaf", key: "dataImport", label: "Data Import", icon: DatabaseZap },
+	{ type: "leaf", key: "printers", label: "Printers", icon: Printer },
+	{ type: "leaf", key: "locationGeofences", label: "Client Locations", icon: MapPin },
+	{ type: "leaf", key: "clients", label: "Clients", icon: Building2 },
+	{ type: "leaf", key: "staffGpsLocations", label: "Staff GPS Location", icon: Navigation },
+	{ type: "leaf", key: "smsRecipients", label: "SMS Recipients", icon: MessageSquare },
+	{ type: "leaf", key: "attendanceReport", label: "Attendance Report", icon: FileSpreadsheet },
+	{ type: "leaf", key: "purgeMaintenance", label: "Purge Maintenance", icon: History },
+	{ type: "leaf", key: "gpsMonitoring", label: "GPS Monitoring", icon: Satellite },
 ];
 
 const PAGE_TITLES: Record<PageKey, string> = {
 	dashboard: "Dashboard",
 	maintenance: "Maintenance",
 	taskTracker: "Task Tracker",
-	report: "Report",
+	reportMaintenance: "Report ▸ Maintenance",
+	reportMonitoring: "Report ▸ Monitoring",
 	schedule: "Schedule",
 	pendingMaintenance: "Pending Maintenance",
 	relatedIssues: "Related Issues",
@@ -124,6 +171,7 @@ const PAGE_TITLES: Record<PageKey, string> = {
 	dataImport: "Data Import",
 	printers: "Printers",
 	locationGeofences: "Client Locations",
+	clients: "Clients",
 	staffGpsLocations: "Staff GPS Location",
 	smsRecipients: "SMS Recipients",
 	attendanceReport: "Attendance Report",
@@ -201,14 +249,34 @@ export default function DashboardPage() {
 	// Frontend nav filtering — the real security boundary is the API layer
 	// (requireRole on each route), this only controls what's shown/reachable
 	// in the UI. Middleware has already confirmed the account is active and
-	// has a role before this component ever renders.
-	const navItems = useMemo(
+	// has a role before this component ever renders. A group is filtered by
+	// its CHILDREN individually (so a role that can only reach one of the
+	// two Report sub-pages still sees Report with just that one link) and
+	// dropped entirely once it has none left.
+	const navItems = useMemo<NavEntry[]>(
 		() =>
-			ALL_NAV_ITEMS.filter((item) =>
-				canAccessModule(users?.role, item.key, { superAdminBootstrapping })
-			),
+			ALL_NAV_ITEMS.flatMap((entry): NavEntry[] => {
+				if (entry.type === "leaf") {
+					return canAccessModule(users?.role, entry.key, { superAdminBootstrapping })
+						? [entry]
+						: [];
+				}
+				const children = entry.children.filter((c) =>
+					canAccessModule(users?.role, c.key, { superAdminBootstrapping })
+				);
+				return children.length > 0 ? [{ ...entry, children }] : [];
+			}),
 		[users?.role, superAdminBootstrapping]
 	);
+
+	// Which groups are expanded in the sidebar. Absent from this map means
+	// "not explicitly toggled yet" — NavEntries falls back to auto-expanding
+	// a group that contains the currently active page, so landing on
+	// Monitoring (e.g. via a role change or a future deep link) doesn't show
+	// Report collapsed with its own active child hidden inside it.
+	const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
+	const setGroupExpanded = (groupKey: string, next: boolean) =>
+		setExpandedGroups((prev) => ({ ...prev, [groupKey]: next }));
 
 	const isTechnician = users?.role === "Technician";
 
@@ -278,8 +346,12 @@ export default function DashboardPage() {
 				);
 			case "taskTracker":
 				return <TaskTrackerPage />;
-			case "report":
-				return <ReportPage />;
+			case "reportMaintenance":
+				return <ReportMaintenancePage />;
+			case "reportMonitoring":
+				return <MonitoringPage />;
+			case "clients":
+				return <ClientsPage />;
 			case "schedule":
 				return <SchedulePage />;
 			case "pendingMaintenance":
@@ -320,25 +392,14 @@ export default function DashboardPage() {
 	const NavList = () => (
 		<nav className="flex-1 min-h-0">
 			<ScrollArea className="h-full" viewportClassName="space-y-1 px-3">
-			{navItems.map(({ key, label, icon: Icon }) => {
-				const active = activePage === key;
-				return (
-					<button
-						key={key}
-						onClick={() => setActivePage(key)}
-						title={collapsed ? label : undefined}
-						className={cn(
-							"flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors",
-							"text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-							active &&
-								"bg-white text-primary shadow-sm hover:bg-white hover:text-primary"
-						)}
-					>
-						<Icon className="h-5 w-5 shrink-0" />
-						{!collapsed && <span>{label}</span>}
-					</button>
-				);
-			})}
+				<NavEntries
+					entries={navItems}
+					activePage={activePage}
+					setActivePage={setActivePage}
+					collapsed={collapsed}
+					expandedGroups={expandedGroups}
+					onToggleGroup={setGroupExpanded}
+				/>
 			</ScrollArea>
 		</nav>
 	);
@@ -428,6 +489,8 @@ export default function DashboardPage() {
 									navItems={navItems}
 									activePage={activePage}
 									setActivePage={setActivePage}
+									expandedGroups={expandedGroups}
+									onToggleGroup={setGroupExpanded}
 									onNavigate={() => setMobileNavOpen(false)}
 								/>
 							</SheetContent>
@@ -475,15 +538,155 @@ export default function DashboardPage() {
 	);
 }
 
+/**
+ * Renders one level of sidebar nav — shared between the desktop `NavList`
+ * and the mobile `SheetNav`, so a leaf and a group only have one rendering
+ * implementation each rather than two copies that could drift apart.
+ *
+ * A `NavGroup` (currently just Report) renders as a toggle button; clicking
+ * it reveals its children indented underneath, rather than navigating
+ * anywhere itself — there's no page behind "Report" alone, only behind its
+ * Maintenance/Monitoring children. In the desktop sidebar's collapsed
+ * (icon-only) mode there's no room to show indented children at all, so the
+ * group button instead jumps straight to its first child.
+ */
+function NavEntries({
+	entries,
+	activePage,
+	setActivePage,
+	collapsed = false,
+	expandedGroups,
+	onToggleGroup,
+	onNavigate,
+}: {
+	entries: NavEntry[];
+	activePage: PageKey;
+	setActivePage: (p: PageKey) => void;
+	/** Icon-only desktop sidebar mode. Always false for the mobile Sheet,
+	 * which is never collapsed. */
+	collapsed?: boolean;
+	expandedGroups: Record<string, boolean>;
+	onToggleGroup: (groupKey: string, next: boolean) => void;
+	/** Called right after a LEAF is selected (never for a group toggle,
+	 * which doesn't navigate) — closes the mobile Sheet so the menu
+	 * dismisses immediately while the chosen page loads underneath, instead
+	 * of leaving the overlay open until the user dismisses it separately.
+	 * Omitted on desktop, where there's no sheet to close. */
+	onNavigate?: () => void;
+}) {
+	return (
+		<>
+			{entries.map((entry) => {
+				if (entry.type === "leaf") {
+					const active = activePage === entry.key;
+					return (
+						<button
+							key={entry.key}
+							onClick={() => {
+								setActivePage(entry.key);
+								onNavigate?.();
+							}}
+							title={collapsed ? entry.label : undefined}
+							className={cn(
+								"flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors",
+								"text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+								active &&
+									"bg-white text-primary shadow-sm hover:bg-white hover:text-primary"
+							)}
+						>
+							<entry.icon className="h-5 w-5 shrink-0" />
+							{!collapsed && <span>{entry.label}</span>}
+						</button>
+					);
+				}
+
+				// Group (Report ▸ Maintenance / Monitoring, today — see
+				// ALL_NAV_ITEMS). Auto-expands when one of its children is the
+				// active page and hasn't been explicitly toggled otherwise, so
+				// navigating here some other way (a role change, a future deep
+				// link) never leaves the active page hidden inside a collapsed
+				// group.
+				const childActive = entry.children.some((c) => c.key === activePage);
+				const expanded = collapsed ? false : expandedGroups[entry.groupKey] ?? childActive;
+
+				return (
+					<div key={entry.groupKey}>
+						<button
+							onClick={() => {
+								if (collapsed) {
+									setActivePage(entry.children[0].key);
+									onNavigate?.();
+								} else {
+									onToggleGroup(entry.groupKey, !expanded);
+								}
+							}}
+							title={collapsed ? entry.label : undefined}
+							aria-expanded={collapsed ? undefined : expanded}
+							className={cn(
+								"flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors",
+								"text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+								collapsed &&
+									childActive &&
+									"bg-white text-primary shadow-sm hover:bg-white hover:text-primary"
+							)}
+						>
+							<entry.icon className="h-5 w-5 shrink-0" />
+							{!collapsed && (
+								<>
+									<span className="flex-1 text-left">{entry.label}</span>
+									<ChevronDown
+										className={cn(
+											"h-4 w-4 shrink-0 transition-transform",
+											expanded && "rotate-180"
+										)}
+									/>
+								</>
+							)}
+						</button>
+						{!collapsed && expanded && (
+							<div className="mt-1 ml-4 space-y-1 border-l border-sidebar-border pl-3">
+								{entry.children.map((child) => {
+									const active = activePage === child.key;
+									return (
+										<button
+											key={child.key}
+											onClick={() => {
+												setActivePage(child.key);
+												onNavigate?.();
+											}}
+											className={cn(
+												"flex w-full items-center rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+												"text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+												active &&
+													"bg-white text-primary shadow-sm hover:bg-white hover:text-primary"
+											)}
+										>
+											<span>{child.label}</span>
+										</button>
+									);
+								})}
+							</div>
+						)}
+					</div>
+				);
+			})}
+		</>
+	);
+}
+
 function SheetNav({
 	navItems,
 	activePage,
 	setActivePage,
+	expandedGroups,
+	onToggleGroup,
 	onNavigate,
 }: {
-	navItems: { key: PageKey; label: string; icon: React.ElementType }[];
+	navItems: NavEntry[];
 	activePage: PageKey;
 	setActivePage: (p: PageKey) => void;
+	expandedGroups: Record<string, boolean>;
+	onToggleGroup: (groupKey: string, next: boolean) => void;
 	/** Called right after a nav link is selected — closes the mobile Sheet
 	 * so the menu dismisses immediately while the chosen page loads
 	 * underneath, instead of leaving the overlay open until the user
@@ -494,26 +697,14 @@ function SheetNav({
 	return (
 		<nav className="flex-1 min-h-0">
 			<ScrollArea className="h-full" viewportClassName="space-y-1 px-3">
-			{navItems.map(({ key, label, icon: Icon }) => {
-				const active = activePage === key;
-				return (
-					<button
-						key={key}
-						onClick={() => {
-							setActivePage(key);
-							onNavigate();
-						}}
-						className={cn(
-							"flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors",
-							"text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-							active && "bg-white text-primary shadow-sm"
-						)}
-					>
-						<Icon className="h-5 w-5 shrink-0" />
-						<span>{label}</span>
-					</button>
-				);
-			})}
+			<NavEntries
+				entries={navItems}
+				activePage={activePage}
+				setActivePage={setActivePage}
+				expandedGroups={expandedGroups}
+				onToggleGroup={onToggleGroup}
+				onNavigate={onNavigate}
+			/>
 			<Link
 				href="/profile"
 				onClick={onNavigate}

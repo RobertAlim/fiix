@@ -19,9 +19,38 @@ import {
 import { InferSelectModel, relations } from "drizzle-orm";
 
 //RELATIONAL TABLES****************************************************************************************
+
+/** Proximity cluster of nearby clients — the gray group-separator rows in
+ * the Monitoring report (components/pages/Monitoring.tsx). Manually
+ * assigned (not computed from coordinates): a Scheduler creates a group
+ * for a neighborhood/building complex and adds the clients that belong to
+ * it, and can re-assign clients between groups any time locations change
+ * — see db/migrations/0062. */
+export const clientGroups = pgTable("clientGroups", {
+	id: serial("id").primaryKey(),
+	name: varchar("name", { length: 100 }).notNull(),
+	/** "South" | "North" — same two values as clients.area below. Carried
+	 * on the group itself (not just inferred from its members) so the
+	 * Monitoring report can place a group's separator row under the right
+	 * section header without depending on every member client agreeing. */
+	area: varchar("area", { length: 10 }).notNull(),
+	createdAt: timestamp("createdAt")
+		.notNull()
+		.default(sql`now()`),
+});
+
 export const clients = pgTable("clients", {
 	id: serial("id").primaryKey(),
 	name: varchar("name", { length: 100 }).notNull(),
+	/** "South" | "North" — which half of the Monitoring report this
+	 * client's rows appear under (db/migrations/0062). Nullable: an
+	 * unclassified client is unaffected everywhere else in the app, it
+	 * just doesn't show in either Monitoring section until this is set. */
+	area: varchar("area", { length: 10 }),
+	/** Proximity cluster this client belongs to, for the Monitoring
+	 * report's gray group-separator rows. Nullable: an ungrouped client
+	 * still shows under its Area, just with no group separator around it. */
+	clientGroupId: integer("clientGroupId").references(() => clientGroups.id),
 });
 
 export const locations = pgTable("locations", {

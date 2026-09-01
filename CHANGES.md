@@ -1,77 +1,30 @@
-# Update — 2026-08-31
+# Update 11 — Monitoring report: fix Client Group ordering (SG1, SG2, ... SG10)
 
-Printers → QR Code popover: a Copy button that copies the QR code itself
-as an image.
+Delta package. One file changed — copy it over the matching path in your
+project.
 
-## What changed
+## What was wrong
 
-Everything is contained in the one existing file:
+`lib/server/monitoring-report-query.ts`'s SQL sorted Client Groups with a
+plain Postgres text `ORDER BY cg."name"`, which is lexicographic (character
+by character), not numeric. That put "SG10" and "SG11" right after "SG1"
+and before "SG2", since '1' < '2' as a character regardless of what comes
+after it — giving the SG1, SG10, SG11, SG2, SG3... order you saw.
 
-- `components/PrinterQrCodeButton.tsx` (modified) — the QR Code icon in
-  the Printers grid's Actions column, and the popover it opens, are
-  unchanged in behavior. Added:
-  - A **Copy** button at the bottom of the popover.
-  - Clicking it copies the generated QR code **as a PNG image** to the
-    system clipboard — not the Serial No. text, not the QR's encoded
-    payload as text. Pasting into an email, a chat, a Word doc, or an
-    image editor drops in the actual picture.
-  - A success toast — **"QR Code copied"** — confirms it, plus the
-    button's own icon/label briefly switches to a checkmark and "Copied".
-  - The generated image itself is now a fixed **1024×1024px** PNG
-    (previously generated smaller, since it only had to fill a 224px
-    preview). It's still displayed at the same 224×224px in the popover,
-    but the underlying resolution is now high enough that the copied
-    image stays clear and sharp if pasted somewhere much larger, printed,
-    or shared on to someone else — not just adequate for the popover
-    preview.
+## The fix
 
-## Handling browsers that can't copy images
-
-Not every browser/device exposes the image-clipboard API (older Safari
-versions, some in-app/WebView browsers). Detected up front with a
-feature check (`navigator.clipboard.write` and `window.ClipboardItem`
-both need to exist) before attempting anything:
-
-- If unsupported: a clear warning toast explains it and suggests the
-  manual alternative (right-click/long-press the image → "Copy Image")
-  instead of silently doing nothing, throwing an unhandled error, or
-  quietly falling back to copying text as if that satisfied the request.
-- If the copy attempt itself fails for some other reason (e.g. the
-  browser blocks it, or the clipboard write is rejected): an error toast
-  says so and suggests retrying or the same manual right-click fallback,
-  instead of leaving the user guessing whether it worked.
-
-One Safari-specific detail worth calling out: the click handler calls
-`navigator.clipboard.write()` **synchronously** (not after an `await`),
-passing it a `Promise<Blob>` rather than an already-resolved one. Safari
-revokes the "user activation" a click carries the instant the handler
-yields to the event loop via `await`, and a clipboard write attempted
-after that point is silently rejected — passing a promise as the
-`ClipboardItem`'s value (which the spec supports, and every browser that
-implements `ClipboardItem` at all accepts) keeps the actual write call
-inside the synchronous part of the click handler while the image
-fetch/blob conversion still happens underneath it asynchronously.
-
-## What did NOT change
-
-- The QR Code button's placement, the popover's open/close behavior, and
-  the QR code's content (still just the Serial No.) are all unchanged.
-- No other page or component was touched — this is the same single
-  file from the previous Printers QR Code update.
+After the query runs, the rows are now re-sorted in JavaScript with
+`Intl.Collator(..., { numeric: true })`, which compares embedded numbers
+by value instead of character-by-character — the same fix used for
+"file2" vs "file10" style sorting anywhere else. That gives SG1, SG2,
+SG3, ..., SG10, SG11, and so on. Area grouping, ungrouped-clients-last
+placement, and the secondary client/location sort are all preserved
+exactly as before — only the Client Group ordering changed. Since this
+ordering is also what `components/pages/Monitoring.tsx`'s grouping logic
+relies on to decide which consecutive rows belong under the same header,
+this fix also guarantees each group's rows stay contiguous.
 
 ## Verification
 
-- `npx tsc --noEmit -p tsconfig.json` — clean, no errors.
-- `npx next lint` — no new warnings; only the same pre-existing warnings
-  as before this change (scan-qrcode `<img>`, a few `exhaustive-deps`
-  hooks in CameraCapture/Maintenance/Schedule, `alt-text` in
-  MaintainReport).
-
-## Files in this delta
-
-```
-components/PrinterQrCodeButton.tsx     (modified)
-```
-
-Copy this file into your project at the exact same relative path — no
-other files are touched.
+- `npx tsc --noEmit -p tsconfig.json` — clean.
+- `npx next lint` — no new warnings.
