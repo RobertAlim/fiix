@@ -16,6 +16,7 @@ import {
 	maintain,
 	status,
 	locationGeofences,
+	supportServices,
 } from "@/db/schema"; // Adjust this path to your Drizzle schema
 import { format } from "date-fns";
 import { ensureError } from "@/lib/errors";
@@ -707,6 +708,15 @@ export async function GET(req: Request) {
 				// (0, 0).
 				latitude: locationGeofences.latitude,
 				longitude: locationGeofences.longitude,
+				// NEW — whether this schedule (specifically a printer-less
+				// one) already has a documented Support Service. Null on
+				// every schedule that HAS printers (nothing ever links to
+				// those via scheduleId) and on a printer-less one that
+				// hasn't been documented yet. Powers the mobile Dashboard's
+				// completed/locked state for these cards, the same way
+				// scheduleDetails.isMaintained does for a printer stop.
+				supportServiceId: supportServices.id,
+				supportServiceStatus: supportServices.status,
 			})
 			.from(schedules)
 			.innerJoin(users, eq(users.id, schedules.technicianId))
@@ -714,6 +724,7 @@ export async function GET(req: Request) {
 			.innerJoin(locations, eq(locations.id, schedules.locationId))
 			.innerJoin(priorities, eq(priorities.id, schedules.priority))
 			.leftJoin(locationGeofences, eq(locationGeofences.locationId, schedules.locationId))
+			.leftJoin(supportServices, eq(supportServices.scheduleId, schedules.id))
 			.where(whereClause);
 
 			if (scheduleRows.length === 0) {
@@ -775,6 +786,10 @@ export async function GET(req: Request) {
 				priorityLevel: { name: s.priorityName },
 				latitude: s.latitude,
 				longitude: s.longitude,
+				supportServiceCompletion:
+					s.supportServiceId != null
+						? { id: s.supportServiceId, status: s.supportServiceStatus }
+						: null,
 				scheduleDetails: (detailsBySchedule.get(s.id) ?? []).map((d) => ({
 					id: d.id,
 					scheduleId: d.scheduleId,

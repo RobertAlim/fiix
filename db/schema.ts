@@ -373,6 +373,16 @@ export const supportServices = pgTable("supportServices", {
 	supportServiceTypeId: integer("supportServiceTypeId").notNull(),
 	technicianId: integer("technicianId").notNull(),
 	scheduledAt: date("scheduledAt").notNull(),
+	/** Non-null when this row originated from a `schedules` entry that had
+	 * NO printer attached — the "a Schedule has been set for a client but
+	 * no printer itinerary selected" case from the original request,
+	 * which is meant to be documentable through this exact workflow, not
+	 * just displayed read-only. Null for a row a Scheduler creates
+	 * directly as a dedicated Support Service (once that UI exists).
+	 * Purely a traceability link back to the originating schedule — this
+	 * table remains the single record of what was actually done, per the
+	 * original design (a different module, a different table). */
+	scheduleId: integer("scheduleId"),
 	/** Visit order within the technician's day — same purpose and same
 	 * nullable-until-sequenced convention as `schedules.sequence`. Needed
 	 * so a day mixing printer stops and support errands can eventually be
