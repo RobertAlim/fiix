@@ -1,5 +1,5 @@
 // lib/r2.ts
-import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client, PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import "server-only";
 import { env } from "@/lib/env";
@@ -78,4 +78,28 @@ export async function getSignedUrlForUpload(
 	// URL expires in 10 minutes — long enough for a mobile upload, short enough
 	// to limit misuse if the URL leaks.
 	return getSignedUrl(r2Client, command, { expiresIn: 600 });
+}
+
+/**
+ * Generates a presigned URL to VIEW/download an already-uploaded object —
+ * the read-side counterpart to getSignedUrlForUpload above. Same pattern
+ * app/api/pdf/route.tsx already uses for maintain.nozzlePath (a bare R2
+ * object key isn't independently servable as an <img src> — it needs a
+ * signed GET URL generated fresh per request), reused here as a shared
+ * helper rather than re-instantiating a second S3Client the way that
+ * route does.
+ *
+ * Short expiry (60s, matching the pdf route's own choice) since this is
+ * generated at render/response time for near-immediate display, not
+ * something meant to be cached or shared.
+ */
+export async function getSignedUrlForDownload(
+	key: string,
+	bucketName: string
+): Promise<string> {
+	if (!ALLOWED_BUCKETS.has(bucketName)) {
+		throw new Error("Bucket not allowed");
+	}
+	const command = new GetObjectCommand({ Bucket: bucketName, Key: key });
+	return getSignedUrl(r2Client, command, { expiresIn: 60 });
 }

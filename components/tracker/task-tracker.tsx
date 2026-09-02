@@ -30,6 +30,9 @@ import { Loader2, Copy } from "lucide-react";
 import { apiPath } from "@/lib/base-path";
 import { PrinterHistoryDialog } from "@/components/PrinterHistoryDialog";
 import { showAppToast } from "@/components/ui/apptoast";
+import { CollectionModal } from "@/components/tracker/collection-modal";
+import { ImageViewerModal } from "@/components/tracker/image-viewer-modal";
+import type { ScheduleSupportServiceDetail } from "@/types/tracker";
 
 async function fetchJSON<T>(url: string): Promise<T> {
 	const res = await fetch(apiPath(url));
@@ -56,15 +59,18 @@ export default function TaskTracker() {
 
 	const { data: details, isLoading: loadingDetails } = useQuery<{
 		data: ScheduleDetailRow[];
+		supportService: ScheduleSupportServiceDetail | null;
 	}>({
 		queryKey: ["schedule-details", selectedId],
 		queryFn: () =>
-			fetchJSON<{ data: ScheduleDetailRow[] }>(
+			fetchJSON<{ data: ScheduleDetailRow[]; supportService: ScheduleSupportServiceDetail | null }>(
 				`/api/schedules/${selectedId}/details`
 			),
 		enabled: selectedId != null,
 		staleTime: 60_000,
 	});
+
+	const [collectionModalOpen, setCollectionModalOpen] = React.useState(false);
 
 	const filtered = React.useMemo(() => {
 		const list = schedules?.data ?? [];
@@ -428,8 +434,18 @@ export default function TaskTracker() {
 								})}
 								{!loadingDetails && (details?.data?.length ?? 0) === 0 && (
 									<TableRow>
-										<TableCell colSpan={6} className="py-8">
-											{selectedSchedule ? (
+										{/* py-4 px-3 (was py-8, no horizontal padding override) —
+										    less wasted vertical space around the card now that
+										    it fills the available width instead of being
+										    centered/capped at max-w-md; see requirement 2. */}
+										<TableCell colSpan={6} className="px-3 py-4">
+											{details?.supportService ? (
+												<SupportServiceDetailsCard
+													supportService={details.supportService}
+													clientName={selectedSchedule?.client ?? ""}
+													onOpenCollection={() => setCollectionModalOpen(true)}
+												/>
+											) : selectedSchedule ? (
 												<div className="mx-auto max-w-md space-y-1 text-center">
 													<p className="text-sm font-medium text-muted-foreground">
 														No printers are assigned to this schedule yet.
@@ -440,7 +456,7 @@ export default function TaskTracker() {
 													<p className="text-sm text-foreground">
 														{selectedSchedule.notes?.trim()
 															? selectedSchedule.notes
-															: "No notes were entered for this schedule."}
+															: "No notes were entered for this schedule — the technician hasn't submitted a Support Service for it yet either."}
 													</p>
 												</div>
 											) : (
@@ -465,6 +481,143 @@ export default function TaskTracker() {
 				if (!open) setHistoryPrinterId(null);
 			}}
 		/>
+
+		{/* Only rendered once we actually have everything a collection
+		    needs — clientId, the support service id, and the schedule id.
+		    selectedSchedule/details are both loaded async, so this stays
+		    unmounted (rather than open with blank props) until both are
+		    ready, which also means closing+reopening for a different
+		    schedule always mounts fresh instead of showing a stale one. */}
+		{selectedSchedule && details?.supportService && (
+			<CollectionModal
+				open={collectionModalOpen}
+				onOpenChange={setCollectionModalOpen}
+				clientId={selectedSchedule.clientId}
+				clientName={selectedSchedule.client}
+				supportServiceId={details.supportService.id}
+				scheduleId={selectedSchedule.id}
+			/>
+		)}
 		</>
+	);
+}
+
+/** Requirement 3 (Schedule Details card: Notes + Photo, card-style) and
+ *  requirement 4 (Collection type → clickable, opens the modal) — kept
+ *  as its own component rather than inlined in the TableCell above
+ *  purely for readability; it's only ever used here. */
+function SupportServiceDetailsCard({
+	supportService,
+	clientName,
+	onOpenCollection,
+}: {
+	supportService: ScheduleSupportServiceDetail;
+	clientName: string;
+	onOpenCollection: () => void;
+}) {
+	const isCollection = supportService.supportServiceType === "Collection";
+	const [imageViewerOpen, setImageViewerOpen] = React.useState(false);
+	const statusBadge =
+		supportService.status === "Achieved" ? (
+			<Badge className="bg-emerald-600 hover:bg-emerald-600">Achieved</Badge>
+		) : supportService.status === "Not Achieved" ? (
+			<Badge variant="destructive">Not Achieved</Badge>
+		) : (
+			<Badge variant="outline">Pending</Badge>
+		);
+
+	return (
+		// No onClick on the Card itself anymore — that ambient
+		// "click-anywhere-to-open-Collection" behavior is exactly what
+		// fought with the image's own click no matter how many layers of
+		// stopPropagation got added around it (Radix's Dialog does its own
+		// outside-click detection in the CAPTURE phase, which runs before
+		// a descendant's bubble-phase stopPropagation ever gets a chance
+		// to matter). Rather than keep patching that fight, the Collection
+		// action is now its own explicit button below, entirely outside
+		// the image/notes area — there is no longer a shared clickable
+		// ancestor for the two to collide over, which fixes this
+		// structurally instead of defensively.
+		<Card className="w-full text-left">
+			<CardContent className="space-y-4 pt-4">
+				<div className="flex items-center justify-between">
+					<div>
+						<p className="text-sm font-semibold">{clientName}</p>
+						<Badge variant="secondary" className="mt-1">
+							{supportService.supportServiceType}
+						</Badge>
+					</div>
+					{statusBadge}
+				</div>
+
+				{/* Notes — given more room and a visually distinct block
+				    (border + padding + slightly larger text) instead of a
+				    plain paragraph, per "make ... Notes more prominent and
+				    readable." */}
+				<div className="rounded-md border bg-muted/30 p-3">
+					<p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground/70">
+						Technician&apos;s Notes
+					</p>
+					<p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">
+						{supportService.technicianNotes?.trim()
+							? supportService.technicianNotes
+							: "No notes were submitted."}
+					</p>
+				</div>
+
+				{supportService.photoUrl && (
+					<div>
+						<p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground/70">
+							Captured Photo
+						</p>
+						{/* Plain <img>, not next/image — this project's
+						    next.config has no remotePatterns configured for R2's
+						    domain, and the URL itself is a short-lived (60s)
+						    presigned link anyway, which next/image's own
+						    optimization/caching layer isn't a good fit for. */}
+						{/* eslint-disable-next-line @next/next/no-img-element */}
+						<img
+							src={supportService.photoUrl}
+							alt="Support Service submission"
+							// Much taller than before (max-h-64 → max-h-[32rem])
+							// now that there's no competing max-w-md card
+							// constraint to work around — see requirement 2
+							// ("Maximize Schedule Details Display").
+							className="max-h-[32rem] w-full cursor-zoom-in rounded-md border object-contain transition-opacity hover:opacity-90"
+							onClick={(e) => {
+								// No longer strictly load-bearing (there's no
+								// parent onClick left to fight), but kept as
+								// cheap insurance against a future wrapping
+								// handler reintroducing the same class of bug.
+								e.stopPropagation();
+								setImageViewerOpen(true);
+							}}
+						/>
+					</div>
+				)}
+
+				{isCollection && (
+					<Button
+						type="button"
+						variant="secondary"
+						className="w-full"
+						onClick={onOpenCollection}
+					>
+						{supportService.status === "Achieved"
+							? "Record the Collection for this task"
+							: "Open Collection form"}
+					</Button>
+				)}
+			</CardContent>
+
+			{supportService.photoUrl && (
+				<ImageViewerModal
+					open={imageViewerOpen}
+					onOpenChange={setImageViewerOpen}
+					imageUrl={supportService.photoUrl}
+					title={`${clientName} — ${supportService.supportServiceType} photo`}
+				/>
+			)}
+		</Card>
 	);
 }

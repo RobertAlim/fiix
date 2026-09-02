@@ -7,9 +7,12 @@ import {
 	maintain,
 	deployments,
 	models,
+	supportServices,
+	supportServiceType,
 } from "@/db/schema";
-import type { ScheduleDetailRow } from "@/types/tracker";
+import type { ScheduleDetailRow, ScheduleSupportServiceDetail } from "@/types/tracker";
 import { requireRole } from "@/lib/require-role";
+import { getSignedUrlForDownload } from "@/lib/r2";
 
 export async function GET(
 	_req: Request,
@@ -70,5 +73,60 @@ export async function GET(
 		signPath: r.signPath as string | null,
 	}));
 
-	return NextResponse.json({ data });
+	// Support Service detail — only meaningful when this schedule has NO
+	// printers (data.length === 0). Queried unconditionally rather than
+	// gated on that check purely for simplicity (one extra cheap query on
+	// a printer schedule just returns nothing); the FRONTEND is what
+	// decides whether to show the printer table or this card, based on
+	// which one actually has content.
+	const [supportRow] = await db
+		.select({
+			id: supportServices.id,
+			supportServiceTypeId: supportServices.supportServiceTypeId,
+			supportServiceType: supportServiceType.name,
+			status: supportServices.status,
+			technicianNotes: supportServices.technicianNotes,
+			photoUrl: supportServices.photoUrl,
+			completedAt: supportServices.completedAt,
+		})
+		.from(supportServices)
+		.innerJoin(
+			supportServiceType,
+			eq(supportServiceType.id, supportServices.supportServiceTypeId)
+		)
+		.where(eq(supportServices.scheduleId, scheduleId))
+		.limit(1);
+
+	let supportService: ScheduleSupportServiceDetail | null = null;
+	if (supportRow) {
+		// photoUrl in the DB is a bare R2 object key (see
+		// sync-engine.ts's uploadToR2 on the mobile side — it returns the
+		// key, not a URL) — not independently viewable as an <img src>
+		// without a signed GET URL, same reasoning as maintain.nozzlePath
+		// in app/api/pdf/route.tsx. Presigned fresh on every request
+		// rather than stored, so a leaked/cached link expires quickly.
+		let signedPhotoUrl: string | null = null;
+		if (supportRow.photoUrl) {
+			try {
+				signedPhotoUrl = await getSignedUrlForDownload(supportRow.photoUrl, "fiixsupport");
+			} catch (err) {
+				console.error(
+					`Error generating signed URL for support service photo "${supportRow.photoUrl}":`,
+					err
+				);
+				signedPhotoUrl = null;
+			}
+		}
+		supportService = {
+			id: supportRow.id,
+			supportServiceTypeId: supportRow.supportServiceTypeId,
+			supportServiceType: supportRow.supportServiceType,
+			status: supportRow.status as ScheduleSupportServiceDetail["status"],
+			technicianNotes: supportRow.technicianNotes,
+			photoUrl: signedPhotoUrl,
+			completedAt: (supportRow.completedAt as unknown as string) ?? null,
+		};
+	}
+
+	return NextResponse.json({ data, supportService });
 }

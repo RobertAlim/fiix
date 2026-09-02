@@ -449,6 +449,20 @@
       "when": 1788252940691,
       "tag": "0064_support_services_schedule_link",
       "breakpoints": true
+    },
+    {
+      "idx": 65,
+      "version": "7",
+      "when": 1788252941691,
+      "tag": "0065_collections",
+      "breakpoints": true
+    },
+    {
+      "idx": 66,
+      "version": "7",
+      "when": 1788252942691,
+      "tag": "0066_collections_amount_decimal",
+      "breakpoints": true
     }
   ]
 }

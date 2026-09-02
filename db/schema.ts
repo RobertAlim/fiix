@@ -12,6 +12,7 @@ import {
 	text,
 	date,
 	integer,
+	numeric,
 	boolean,
 	varchar,
 	AnyPgColumn,
@@ -427,6 +428,83 @@ export const supportServices = pgTable("supportServices", {
 	createdAt: timestamp("createdAt").notNull().default(sql`now()`),
 	updatedAt: timestamp("updatedAt").notNull().default(sql`now()`),
 });
+
+/**
+ * A payment/collection record for a "Collection"-type Support Service —
+ * created by an Admin/Scheduler from the Task Tracker's Schedule Details
+ * card once a technician has submitted a Collection Support Service as
+ * Achieved. One collection can be traced back to exactly one
+ * `supportServices` row (via `supportServiceId`) and, through that, the
+ * `schedules` row it originated from (via `scheduleId`, kept directly on
+ * this table too per the request — avoids a second join just to answer
+ * "which schedule was this collected under").
+ *
+ * `amount` is `numeric(12, 2)` — Postgres's `numeric` type is EXACT
+ * arbitrary-precision decimal, not floating point, so it stores
+ * "1500.00" / "25750.50" / "100.25" precisely with no rounding error.
+ * This table originally stored integer centavos specifically to avoid
+ * the classic floating-point-currency footgun (0.1 + 0.2 !== 0.3) — but
+ * that footgun is a property of `real`/`double precision` (and of
+ * JavaScript's own `number` type in transit), not of `numeric` itself.
+ * `numeric(12, 2)` gets the same safety AND stores the actual peso
+ * amount directly, which is what every consumer of this table (a report
+ * query, a DB admin looking at the row) actually wants to see. Values
+ * still arrive from/return to the client as plain JS numbers (e.g.
+ * `1500.00`) — safe here specifically because they only ever pass
+ * through Postgres's own exact decimal arithmetic, never float math on
+ * the JS side; see validation/collectionSchema.ts and
+ * app/api/collections/route.ts for where that boundary is enforced.
+ *
+ * No DB-level FK to clients/supportServices/schedules — same established
+ * convention as `schedules`/`supportServices` themselves in this file.
+ */
+export const collections = pgTable(
+	"collections",
+	{
+		id: serial("id").primaryKey(),
+		clientId: integer("clientId").notNull(),
+		supportServiceId: integer("supportServiceId").notNull(),
+		scheduleId: integer("scheduleId").notNull(),
+		year: integer("year").notNull(),
+		/** 1–12. Not a `date` column: the form collects a year+month pair,
+		 * not a specific day — modeling it as two integers avoids inventing
+		 * a fake day-of-month just to fit a date type. */
+		month: integer("month").notNull(),
+		/** Exact decimal peso amount — see this table's own doc comment
+		 * above for why `numeric(12, 2)` rather than a float OR integer
+		 * centavos. `mode: "number"` tells Drizzle to hand this back as a
+		 * JS `number` (e.g. `1500.5`) rather than its default string
+		 * representation — safe specifically because nothing on the JS
+		 * side ever does float ARITHMETIC on it (no summing, no
+		 * multiplying); it's read, validated, and written back whole. */
+		amount: numeric("amount", { precision: 12, scale: 2, mode: "number" }).notNull(),
+		status: varchar("status", { length: 10 }).notNull(), // "Paid" | "Unpaid"
+		modeOfPayment: varchar("modeOfPayment", { length: 20 }).notNull(),
+		/** Date the check/payment was received — distinct from `createdAt`
+		 * (when the Admin/Scheduler entered this record, possibly after
+		 * the fact). */
+		receivedAt: date("receivedAt").notNull(),
+		bankName: text("bankName"),
+		checkNo: text("checkNo"),
+		notes: text("notes"),
+		createdBy: integer("createdBy").notNull(),
+		createdAt: timestamp("createdAt").notNull().default(sql`now()`),
+		updatedAt: timestamp("updatedAt").notNull().default(sql`now()`),
+	},
+	(table) => ({
+		// THE duplicate-prevention requirement, enforced at the DB level —
+		// application-level validation (see POST /api/collections) is a
+		// friendlier first line of defense, but this constraint is what
+		// actually guarantees it under a race (two Admins saving the same
+		// collection within the same request window).
+		uniqueCollection: uniqueIndex("collections_client_month_year_amount_unique").on(
+			table.clientId,
+			table.month,
+			table.year,
+			table.amount
+		),
+	})
+);
 
 // Define relations for Drizzle ORM
 // --- RELATIONS ---
