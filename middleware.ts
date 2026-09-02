@@ -6,6 +6,17 @@ const isPublicRoute = createRouteMatcher([
 	"/sign-in(.*)",
 	"/",
 	"/api/webhooks(.*)",
+	// The mobile app's mandatory version-check — genuinely has to be
+	// reachable BEFORE Clerk sign-in, since it's what decides whether an
+	// outdated build is even allowed to reach the sign-in screen at all.
+	// Without this, clerkMiddleware's blanket auth.protect() below
+	// intercepted every unauthenticated call to this route and returned
+	// 404 (Clerk's default for a blocked non-page request, to avoid
+	// revealing the route exists) — before the request ever reached
+	// app/api/app-version/route.ts, which was already correctly written
+	// with no auth check of its own. The route-level code was right; it
+	// just needed middleware to actually let the request through to it.
+	"/api/app-version(.*)",
 ]);
 
 // App pages that require the user's account to be ACTIVE and have a role
