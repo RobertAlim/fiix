@@ -167,6 +167,7 @@ async function createFromSchedule(
 			clientId: schedules.clientId,
 			locationId: schedules.locationId,
 			scheduledAt: schedules.scheduledAt,
+			sequence: schedules.sequence,
 		})
 		.from(schedules)
 		.where(eq(schedules.id, scheduleId))
@@ -219,6 +220,14 @@ async function createFromSchedule(
 			technicianId: callerId,
 			scheduledAt: schedule.scheduledAt,
 			scheduleId: schedule.id,
+			// Inherits the originating schedule's sequence — this row is
+			// excluded from GET /api/support-services' own list (see that
+			// route's isNull(scheduleId) filter), so this value is really
+			// only for internal consistency (e.g. if something ever queries
+			// supportServices directly for reporting), not for the mobile
+			// itinerary ordering, which reads sequence off the SCHEDULE
+			// itself for this card.
+			sequence: schedule.sequence,
 			status: data.status,
 			technicianNotes: data.notes,
 			signatoryId: data.signatoryId,

@@ -14,7 +14,7 @@ import {
 	locations,
 	locationGeofences,
 } from "@/db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, isNull } from "drizzle-orm";
 import { requireRole } from "@/lib/require-role";
 
 export async function GET(req: Request) {
@@ -54,6 +54,12 @@ export async function GET(req: Request) {
 			completedAt: supportServices.completedAt,
 			latitude: locationGeofences.latitude,
 			longitude: locationGeofences.longitude,
+			// NEW — same purpose as schedules.sequence: lets the mobile
+			// Dashboard interleave this row into ONE combined, correctly-
+			// ordered itinerary instead of always appending Support
+			// Services after every printer stop regardless of the
+			// Scheduler's actual saved order.
+			sequence: supportServices.sequence,
 		})
 		.from(supportServices)
 		.innerJoin(clients, eq(clients.id, supportServices.clientId))
@@ -66,7 +72,22 @@ export async function GET(req: Request) {
 		.where(
 			and(
 				eq(supportServices.technicianId, technicianId),
-				eq(supportServices.scheduledAt, scheduledAt)
+				eq(supportServices.scheduledAt, scheduledAt),
+				// THE DUPLICATE FIX: a row with scheduleId set was created BY
+				// completing a printer-less `schedules` row (see
+				// POST /api/support-services/complete's createFromSchedule
+				// path) — that schedule ALREADY represents this activity in
+				// GET /api/schedule's own response, now carrying
+				// `supportServiceCompletion` populated from this exact row.
+				// Without this filter, the same completed activity showed up
+				// TWICE: once as the schedule card (correctly showing its
+				// locked/Achieved state) and again here as an independent
+				// list entry with its own id — which is what the reported
+				// duplicate actually was. Only genuine Scheduler-created
+				// Support Services (scheduleId IS NULL — nothing to
+				// originate from) belong in this list; a schedule-sourced
+				// completion's single source of truth is its schedule card.
+				isNull(supportServices.scheduleId)
 			)
 		);
 
